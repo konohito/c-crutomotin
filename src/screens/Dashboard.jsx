@@ -50,8 +50,6 @@ export default function Dashboard() {
   const dLine = dAuto.lines[0] || { path: '', pts: [] }
 
   const evsAll = allEvents(state)
-  const todayEv = evsAll.find(e => e.date === D.TODAY && e.kind === 'meas')
-  const nextMeas = evsAll.filter(e => e.kind === 'meas' && e.date >= D.TODAY).sort((a, b) => a.date.localeCompare(b.date))[0]
   const dashEvCards = []
   ;[[D.TODAY, '本日'], [addDays(D.TODAY, 1), '明日']].forEach(([ds, when]) => {
     evsAll.filter(e => e.date === ds && e.kind === 'meas').forEach(e => {
@@ -72,33 +70,78 @@ export default function Dashboard() {
     if (patch) setState(s => ({ ...s, screen: 'imp', ...patch }))
   }
 
+  // ---- 今日のやること（作業キュー） ----
+  const tasks = []
+  if (state.imp === 'idle') {
+    tasks.push({ icon: 'imp', bg: 'var(--brand-50)', fg: 'var(--brand-600)', title: `記録用紙 ${batchN()} 枚が読み取り待ち`, sub: `${D.batchMeta.venue} · モバイル撮影から受信済み`, go: () => set({ screen: 'imp' }) })
+  } else if (state.imp === 'run') {
+    tasks.push({ icon: 'imp', bg: 'var(--brand-50)', fg: 'var(--brand-600)', title: '手書き数値を読み取り中…', sub: `${state.impCount} / ${batchN()} 枚`, go: () => set({ screen: 'imp' }) })
+  } else if (state.imp === 'scanned') {
+    if (pend.length > 0) tasks.push({ icon: 'warn', bg: 'var(--warning-50)', fg: 'var(--warning-700)', title: `要確認の用紙 ${pend.length} 件`, sub: '読み取り結果の確認が必要です', go: () => openFlagged(pend[0].no) })
+    else tasks.push({ icon: 'check', bg: 'var(--success-50)', fg: 'var(--success-700)', title: `${batchN()} 枚の本登録待ち`, sub: '確認が完了しました。本登録できます', go: () => set({ screen: 'imp' }) })
+  }
+  const tomorrowMeas = evsAll.filter(e => e.date === addDays(D.TODAY, 1) && e.kind === 'meas')
+  if (tomorrowMeas.length > 0) {
+    tasks.push({ icon: 'printer', bg: 'var(--info-50)', fg: 'var(--info-700)', title: `明日の測定会 ${tomorrowMeas.length} 件の用紙準備`, sub: tomorrowMeas.map(e => e.muni).join('・') + ' — 記録用紙を印刷', go: () => set({ screen: 'sheet' }) })
+  }
+  const [, tm, td] = D.TODAY.split('/').map(Number)
+  const tw = '日月火水木金土'[new Date(D.TODAY).getDay()]
+
   return (
     <div className="screen">
-      {/* ヒーロー */}
-      <div className="hero">
-        <svg width="360" height="160" viewBox="0 0 360 160" style={{ position: 'absolute', right: -20, top: -6, opacity: 0.85 }} aria-hidden="true">
-          <defs><pattern id="cmDots" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="2" fill="#FF8A3C" /></pattern></defs>
-          <rect width="360" height="160" fill="url(#cmDots)" />
-        </svg>
-        <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--brand-100)' }}>令和7年度 介護予防・体力測定</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 2, flexWrap: 'wrap' }}>
-            <span className="t-display" style={{ fontSize: 29, lineHeight: 1.25, color: '#fff' }}>
-              {todayEv ? '本日の測定会 — ' + todayEv.venue : (nextMeas ? '次回の測定会 — ' + nextMeas.venue : '令和7年度の測定はすべて終了しました')}
-            </span>
-          </div>
-          <div style={{ fontSize: 13, color: '#fff', fontWeight: 500, marginTop: 6 }}>
-            {todayEv ? todayEv.muni + ' · 受付 9:30〜 · 記録用紙はモバイル撮影から送信できます' : (nextMeas ? nextMeas.muni + ' · ' + mdw(nextMeas.date) : '')}
-          </div>
-          <div style={{ fontSize: 12.5, color: 'var(--brand-100)', marginTop: 4 }}>
-            今年度 測定・取り込み済 <span className="t-num" style={{ color: '#fff', fontWeight: 600 }}>{done}</span> 名 · 要確認 <span className="t-num" style={{ color: '#fff', fontWeight: 600 }}>{pend.length}</span> 件
+      {/* 今日のやること */}
+      <Card style={{ display: 'flex', alignItems: 'stretch', padding: 0, overflow: 'hidden', flexWrap: 'wrap' }}>
+        {/* 日めくりブロック */}
+        <div style={{ width: 128, background: 'linear-gradient(150deg, var(--brand-500), var(--brand-600))', color: '#fff', padding: '14px 16px', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+          <svg width="128" height="110" viewBox="0 0 128 110" style={{ position: 'absolute', right: -8, bottom: -10, opacity: 0.5 }} aria-hidden="true">
+            <defs><pattern id="cmDots" width="14" height="14" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.6" fill="#FF8A3C" /></pattern></defs>
+            <rect width="128" height="110" fill="url(#cmDots)" />
+          </svg>
+          <div style={{ position: 'relative' }}>
+            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--brand-100)' }}>令和7年度</div>
+            <div className="t-display t-num" style={{ fontSize: 30, lineHeight: 1.2, marginTop: 2 }}>{tm}/{td}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--brand-100)', marginTop: 1 }}>{tw}曜日</div>
           </div>
         </div>
-        <div style={{ position: 'relative', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button className="btn" style={{ height: 40, border: '1.5px solid rgba(255,255,255,0.6)', background: 'transparent', color: '#fff' }} onClick={() => set({ screen: 'cal' })}>カレンダー</button>
-          <button className="btn" style={{ height: 40, background: '#fff', color: 'var(--brand-700)', boxShadow: 'var(--shadow-sm)' }} onClick={() => set({ screen: 'imp' })}>取り込みを開く</button>
+        {/* 作業キュー */}
+        <div style={{ flex: 1, minWidth: 320, display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', flexWrap: 'wrap' }}>
+          <div className="t-overline" style={{ writingMode: 'vertical-rl', letterSpacing: '0.22em', color: 'var(--brand-600)', flexShrink: 0, marginRight: 4 }}>やること</div>
+          {tasks.length === 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 4px' }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--success-50)', color: 'var(--success-700)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                <Icon name="check" size={16} strokeWidth={2} />
+              </div>
+              <div>
+                <div style={{ fontSize: 13.5, fontWeight: 600 }}>本日のやることはありません</div>
+                <div style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>受信した用紙はすべて処理済みです</div>
+              </div>
+            </div>
+          )}
+          {tasks.map((t, i) => (
+            <button key={i} onClick={t.go} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px 8px 8px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--slate-25)', cursor: 'pointer', textAlign: 'left', transition: 'background var(--dur-fast), border-color var(--dur-fast)', minWidth: 0 }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.borderColor = 'var(--border-default)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--slate-25)'; e.currentTarget.style.borderColor = 'var(--border-subtle)' }}>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: t.bg, color: t.fg, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                <Icon name={t.icon} size={16} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>{t.title}</div>
+                <div style={{ fontSize: 11, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300 }}>{t.sub}</div>
+              </div>
+              <Icon name="chevR" size={14} style={{ color: 'var(--slate-400)', flexShrink: 0 }} />
+            </button>
+          ))}
         </div>
-      </div>
+        {/* 年度進捗 */}
+        <div style={{ width: 216, borderLeft: '1px solid var(--border-subtle)', padding: '14px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 7, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <div className="t-overline">年度の測定進捗</div>
+            <span className="t-num" style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-600)' }}>{Math.round((done / Math.max(1, D.users.length)) * 100)}%</span>
+          </div>
+          <div className="meter"><div style={{ width: Math.round((done / Math.max(1, D.users.length)) * 100) + '%' }} /></div>
+          <div className="t-num" style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>{done} / {D.users.length} 名 · 残り {D.users.length - done} 名</div>
+        </div>
+      </Card>
 
       {/* 統計カード */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
