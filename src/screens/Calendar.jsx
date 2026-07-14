@@ -53,6 +53,7 @@ export default function Calendar() {
           {cells.map((c, i) => (
             <div key={i}
               onClick={c.inM ? () => openEvModal(c.ds) : undefined}
+              className="cal-day"
               style={{
                 minHeight: 94,
                 borderBottom: '1px solid var(--border-subtle)', borderRight: '1px solid var(--border-subtle)',

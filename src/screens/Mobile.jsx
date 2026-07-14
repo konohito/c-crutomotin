@@ -33,7 +33,7 @@ export default function Mobile() {
   ] : []
 
   return (
-    <div className="screen" style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 24, alignItems: 'start' }}>
+    <div className="screen mobile-grid" style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 24, alignItems: 'start' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         <Card style={{ padding: '20px 22px' }}>
           <div className="t-h4">現場スタッフ用 撮影アプリ</div>
@@ -54,7 +54,7 @@ export default function Mobile() {
         </Card>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'center' }}>
+      <div className="ios-zoom" style={{ display: 'flex', justifyContent: 'center' }}>
         <IOSDevice dark={state.mob === 'camera'}>
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--slate-50)', fontFamily: 'var(--font-sans)', overflow: 'hidden' }}>
             {/* ホーム */}

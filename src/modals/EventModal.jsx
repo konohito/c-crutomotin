@@ -71,7 +71,7 @@ export default function EventModal() {
             </div>
           )}
         </Field>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14 }}>
+        <div className="form-duo" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14 }}>
           <Field label="会場">
             <input className="field" value={state.evVenue} onChange={(e) => set({ evVenue: e.target.value })} placeholder="例: 桜川市民体育館" />
           </Field>

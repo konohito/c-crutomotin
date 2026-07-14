@@ -111,7 +111,7 @@ export default function Detail() {
         </div>
       </Card>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 16, alignItems: 'start' }}>
+      <div className="detail-grid" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 16, alignItems: 'start' }}>
         {/* 左カラム */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <Card pad>
@@ -200,7 +200,7 @@ export default function Detail() {
 
         {/* 右カラム */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '290px 1fr', gap: 16, alignItems: 'stretch' }}>
+          <div className="radar-trend" style={{ display: 'grid', gridTemplateColumns: '290px 1fr', gap: 16, alignItems: 'stretch' }}>
             <Card pad>
               <div className="t-h4">5領域評価</div>
               <svg width="100%" viewBox="0 0 260 232" style={{ display: 'block', marginTop: 4 }}>
@@ -253,7 +253,7 @@ export default function Detail() {
             </Card>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+          <div className="quad" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
             {detMult.map(m => (
               <Card key={m.id} style={{ padding: '12px 14px', minWidth: 0 }}>
                 <div style={{ fontSize: 11.5, color: 'var(--fg-3)', fontWeight: 500 }}>{m.label}</div>

@@ -61,7 +61,7 @@ export default function ReviewModal() {
             onClose={close}
           />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 0 }}>
+        <div className="review-grid" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 0 }}>
           {/* スキャン画像モック */}
           <div style={{ padding: 20, borderRight: '1px solid var(--border-subtle)', background: 'var(--slate-50)' }}>
             <Overline style={{ marginBottom: 10 }}>スキャン画像</Overline>

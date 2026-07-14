@@ -92,12 +92,12 @@ export default function Dashboard() {
       {/* 今日のやること */}
       <Card style={{ display: 'flex', alignItems: 'stretch', padding: 0, overflow: 'hidden', flexWrap: 'wrap' }}>
         {/* 日めくりブロック */}
-        <div style={{ width: 128, background: 'linear-gradient(150deg, var(--brand-500), var(--brand-600))', color: '#fff', padding: '14px 16px', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
+        <div className="today-date" style={{ width: 128, background: 'linear-gradient(150deg, var(--brand-500), var(--brand-600))', color: '#fff', padding: '14px 16px', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>
           <svg width="128" height="110" viewBox="0 0 128 110" style={{ position: 'absolute', right: -8, bottom: -10, opacity: 0.5 }} aria-hidden="true">
             <defs><pattern id="cmDots" width="14" height="14" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.6" fill="#FF8A3C" /></pattern></defs>
             <rect width="128" height="110" fill="url(#cmDots)" />
           </svg>
-          <div style={{ position: 'relative' }}>
+          <div className="today-date-inner" style={{ position: 'relative' }}>
             <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--brand-100)' }}>令和7年度</div>
             <div className="t-display t-num" style={{ fontSize: 30, lineHeight: 1.2, marginTop: 2 }}>{tm}/{td}</div>
             <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--brand-100)', marginTop: 1 }}>{tw}曜日</div>
@@ -133,7 +133,7 @@ export default function Dashboard() {
           ))}
         </div>
         {/* 年度進捗 */}
-        <div style={{ width: 216, borderLeft: '1px solid var(--border-subtle)', padding: '14px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 7, flexShrink: 0 }}>
+        <div className="today-progress" style={{ width: 216, borderLeft: '1px solid var(--border-subtle)', padding: '14px 18px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 7, flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <div className="t-overline">年度の測定進捗</div>
             <span className="t-num" style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand-600)' }}>{Math.round((done / Math.max(1, D.users.length)) * 100)}%</span>
@@ -144,7 +144,7 @@ export default function Dashboard() {
       </Card>
 
       {/* 統計カード */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
         <StatCard label="登録利用者" value={D.users.length} unit="名" foot={<>うち今年度の新規 <span className="t-num">{newN}</span> 名</>} />
         <StatCard label="令和7年度 測定済" value={done} unit="名" foot={<>参加率 <span className="t-num">{Math.round((done / Math.max(1, D.users.length)) * 100)}</span>%</>} />
         <StatCard label="要確認" labelColor="var(--warning-700)" value={pend.length} valueColor={pend.length ? 'var(--warning-700)' : 'var(--fg-1)'} unit="件" foot="読み取り結果の確認待ち" onClick={() => set({ screen: 'imp' })} />
@@ -173,7 +173,7 @@ export default function Dashboard() {
       ))}
 
       {/* 区域別 + 要確認 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 16, alignItems: 'start' }}>
+      <div className="duo" style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 16, alignItems: 'start' }}>
         <Card pad>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <div className="t-h4">区域別の参加状況</div>
@@ -228,7 +228,7 @@ export default function Dashboard() {
       </div>
 
       {/* 直近の取り込み + 推移 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.25fr', gap: 16, alignItems: 'start' }}>
+      <div className="duo" style={{ display: 'grid', gridTemplateColumns: '1fr 1.25fr', gap: 16, alignItems: 'start' }}>
         <Card pad>
           <div className="t-h4">直近の取り込み</div>
           <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>

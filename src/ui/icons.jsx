@@ -24,6 +24,7 @@ export const ICON_PATHS = {
   camera: ['M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z', 'M12 16a3 3 0 1 0 0-6 3 3 0 0 0 0 6'],
   info: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20', 'M12 16v-4', 'M12 8h.01'],
   file: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z', 'M14 2v5h5', 'M8 13h2', 'M14 13h2', 'M8 17h2', 'M14 17h2'],
+  menu: ['M4 6h16', 'M4 12h16', 'M4 18h16'],
 }
 
 export function Icon({ name, size = 18, strokeWidth = 1.5, style, className }) {
