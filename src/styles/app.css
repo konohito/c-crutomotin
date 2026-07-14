@@ -434,22 +434,6 @@ select.field, select.select {
 .retro-corner.bl { left: 20px; bottom: 20px; border-left: 1.5px solid var(--brand-300); border-bottom: 1.5px solid var(--brand-300); }
 .retro-corner.br { right: 20px; bottom: 20px; border-right: 1.5px solid var(--brand-300); border-bottom: 1.5px solid var(--brand-300); }
 
-.hero {
-  background: linear-gradient(120deg, var(--brand-500) 0%, #E85D12 55%, var(--brand-600) 100%);
-  border-radius: var(--radius-xl);
-  padding: 22px 28px;
-  display: flex; align-items: center; gap: 32px;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 8px 24px rgba(217, 83, 15, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.18);
-}
-.hero::after {
-  content: '';
-  position: absolute; inset: 0;
-  background: radial-gradient(120% 140% at 100% 0%, rgba(255, 255, 255, 0.14) 0%, transparent 44%);
-  pointer-events: none;
-}
-
 /* ==== Progress bars ========================================================= */
 .meter { height: 8px; border-radius: var(--radius-pill); background: var(--slate-100); overflow: hidden; }
 .meter > div {
