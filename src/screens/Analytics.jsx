@@ -119,7 +119,7 @@ export default function Analytics() {
       </Card>
 
       {/* バー + ヒストグラム */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16, alignItems: 'start' }}>
+      <div className="duo" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16, alignItems: 'start' }}>
         <Card pad>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <div className="t-h4">{state.anaUnit === 'region' ? '圏域別 平均総合スコア' : '市町村別 平均総合スコア'}</div>

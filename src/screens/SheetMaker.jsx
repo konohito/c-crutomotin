@@ -183,9 +183,9 @@ export default function SheetMaker() {
   const pages = withBlanks.map((u, i) => mk(u, i, total)).concat(Array.from({ length: state.shBlank }, (_, j) => mk(null, withBlanks.length + j, total)))
 
   return (
-    <div className="print-screen" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', height: '100%', minHeight: 0 }}>
+    <div className="print-screen panel-screen" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', height: '100%', minHeight: 0 }}>
       {/* 設定パネル */}
-      <div className="noprint" style={{ background: 'var(--bg-surface)', borderRight: '1px solid var(--border-default)', overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div className="noprint side-panel" style={{ background: 'var(--bg-surface)', borderRight: '1px solid var(--border-default)', overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div>
           <Overline style={{ marginBottom: 8 }}>作成対象</Overline>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

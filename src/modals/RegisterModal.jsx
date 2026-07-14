@@ -51,7 +51,7 @@ export default function RegisterModal() {
     <Modal onClose={close} width="min(520px, 94vw)">
       <ModalHead title="利用者の新規登録" sub="参加者 ID は会場に応じて自動で採番されます" onClose={close} />
       <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        <div className="form-duo" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <Field label="氏名（漢字）">
             <input className="field" value={state.regName} onChange={(e) => set({ regName: e.target.value })} placeholder="例: 山田花子" />
           </Field>

@@ -103,7 +103,8 @@ export default function ImportScreen() {
 
       {/* 読み取り結果テーブル */}
       {state.imp !== 'idle' && (
-        <Card style={{ overflow: 'hidden' }}>
+        <Card style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 1060 }}>
           <div className="tbl-head" style={{ display: 'grid', gridTemplateColumns: GRID, gap: 0, padding: '0 12px', height: 40, alignItems: 'center' }}>
             <div className="t-overline">No</div>
             <div className="t-overline">氏名照合</div>
@@ -165,6 +166,7 @@ export default function ImportScreen() {
               </div>
             )
           })}
+          </div>
         </Card>
       )}
     </div>

@@ -9,7 +9,7 @@ export const BATCH_SIZE = 24      // 1 バッチの読み取り枚数
 const StoreCtx = createContext(null)
 
 const initialState = {
-  screen: 'dash', q: '',
+  screen: 'dash', q: '', navOpen: false,
   // OCR 取り込み
   imp: 'idle', impCount: 0, resolved: {}, mdNo: null, mdVals: {}, mdUser: null,
   // 台帳

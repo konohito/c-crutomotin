@@ -51,7 +51,7 @@ function NavItem({ id, label, badge }) {
   const { state, set } = useStore()
   const active = state.screen === id
   return (
-    <button className={`nav-item${active ? ' active' : ''}`} onClick={() => set({ screen: id })}>
+    <button className={`nav-item${active ? ' active' : ''}`} onClick={() => set({ screen: id, navOpen: false })}>
       <Icon name={id} size={18} />
       <span style={{ flex: 1 }}>{label}</span>
       {badge ? <span className="nav-badge t-num">{badge}</span> : null}
@@ -64,7 +64,7 @@ function Sidebar() {
   const pending = pendingSheets(state)
   const nextMeas = allEvents(state).filter(e => e.kind === 'meas' && e.date >= D.TODAY).sort((a, b) => a.date.localeCompare(b.date))[0]
   return (
-    <aside className="sidebar noprint">
+    <aside className={`sidebar noprint${state.navOpen ? ' open' : ''}`}>
       <div className="sidebar-brand">
         <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 34, display: 'block' }} />
         <div className="t-display" style={{ fontSize: 14, letterSpacing: '0.05em', color: 'var(--slate-800)', background: 'var(--slate-100)', borderRadius: 5, padding: '1px 7px 2px 6px' }}>motion</div>
@@ -77,7 +77,7 @@ function Sidebar() {
         <div className="t-overline" style={{ padding: '14px 12px 6px' }}>分析</div>
         {NAV_ANA.map(([id, label]) => <NavItem key={id} id={id} label={label} badge={0} />)}
       </nav>
-      <button className="sidebar-next" onClick={() => set({ screen: 'cal' })}>
+      <button className="sidebar-next" onClick={() => set({ screen: 'cal', navOpen: false })}>
         <div className="t-overline" style={{ color: 'var(--brand-700)' }}>次回の測定会</div>
         <div className="t-num" style={{ fontSize: 14, fontWeight: 600, marginTop: 4 }}>
           {nextMeas ? (nextMeas.date === D.TODAY ? '本日 · ' : '') + mdw(nextMeas.date) : '予定なし'}
@@ -116,9 +116,12 @@ function Header() {
   }, [])
   return (
     <header className="app-header noprint">
+      <button className="icon-btn menu-btn" aria-label="メニュー" onClick={() => set({ navOpen: true })}>
+        <Icon name="menu" size={18} />
+      </button>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.4 }}>{title}</div>
-        <div style={{ fontSize: 12, color: 'var(--fg-3)', lineHeight: 1.4 }}>{typeof sub === 'function' ? sub() : sub}</div>
+        <div style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+        <div className="header-sub" style={{ fontSize: 12, color: 'var(--fg-3)', lineHeight: 1.4 }}>{typeof sub === 'function' ? sub() : sub}</div>
       </div>
       <div className="header-search">
         <input
@@ -138,7 +141,7 @@ function Header() {
       {state.screen === 'ros' && (
         <button className="btn btn-primary" onClick={() => set({ regOpen: true, regError: '' })}>
           <Icon name="plus" size={15} strokeWidth={2} />
-          新規登録
+          <span className="btn-label">新規登録</span>
         </button>
       )}
     </header>
@@ -151,11 +154,12 @@ const SCREENS = {
 }
 
 function AppInner() {
-  const { state } = useStore()
+  const { state, set } = useStore()
   const Screen = SCREENS[state.screen] || Dashboard
   return (
     <div className="app-root">
       <Sidebar />
+      {state.navOpen && <div className="sidebar-backdrop noprint" onClick={() => set({ navOpen: false })} />}
       <main className="app-main">
         <Header />
         <div className="app-content">
