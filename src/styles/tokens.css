@@ -1,0 +1,97 @@
+/* ==========================================================================
+   Cruto Motion — Design Tokens
+   Cruto Orange × cool slate。レトロモダンの温かみと Apple 的な精密さを両立。
+   ========================================================================== */
+:root {
+  /* === Brand: Cruto Orange ============================================== */
+  --brand-50:  #FFF4EC;
+  --brand-100: #FFE3CC;
+  --brand-200: #FFC79A;
+  --brand-300: #FFA866;
+  --brand-400: #FF8A3C;
+  --brand-500: #F26A1F;
+  --brand-600: #D9530F;
+  --brand-700: #B03F09;
+  --brand-800: #832F0A;
+  --brand-900: #5A210A;
+
+  /* === Neutrals (cool slate) ============================================ */
+  --slate-0:   #FFFFFF;
+  --slate-25:  #FBFBFC;
+  --slate-50:  #F6F7F9;
+  --slate-100: #EEF0F4;
+  --slate-200: #DFE3EA;
+  --slate-300: #C7CDD7;
+  --slate-400: #9AA3B2;
+  --slate-500: #6C7688;
+  --slate-600: #4B5467;
+  --slate-700: #343C4D;
+  --slate-800: #212838;
+  --slate-900: #0F1422;
+
+  /* === Semantic status ================================================== */
+  --success-50:  #ECFBF3;
+  --success-500: #17A566;
+  --success-700: #0E7A4B;
+  --warning-50:  #FFF8E6;
+  --warning-500: #E5A30B;
+  --warning-700: #8A5F04;
+  --danger-50:   #FEEDED;
+  --danger-500:  #D93B3B;
+  --danger-700:  #9B1F1F;
+  --info-50:     #ECF4FE;
+  --info-500:    #2E74D6;
+  --info-700:    #1A4A94;
+
+  /* === Foreground / background ========================================== */
+  --fg-1: var(--slate-900);
+  --fg-2: var(--slate-700);
+  --fg-3: var(--slate-500);
+  --fg-4: var(--slate-400);
+  --fg-on-brand: #FFFFFF;
+  --bg-canvas:   #F4F5F8;
+  --bg-surface:  var(--slate-0);
+  --bg-sunken:   var(--slate-100);
+  --bg-hover:    var(--slate-50);
+  --bg-selected: var(--brand-50);
+
+  /* === Borders =========================================================== */
+  --border-subtle:  #EDEFF3;
+  --border-default: var(--slate-200);
+  --border-strong:  var(--slate-300);
+  --border-focus:   var(--brand-500);
+
+  /* === Radii ============================================================= */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-pill: 999px;
+
+  /* === Shadows — soft paper on tinted canvas ============================ */
+  --shadow-xs: 0 1px 0 rgba(15, 20, 34, 0.04);
+  --shadow-sm: 0 1px 2px rgba(15, 20, 34, 0.05), 0 1px 1px rgba(15, 20, 34, 0.03);
+  --shadow-md: 0 4px 12px rgba(15, 20, 34, 0.07), 0 1px 2px rgba(15, 20, 34, 0.05);
+  --shadow-lg: 0 12px 28px rgba(15, 20, 34, 0.10), 0 2px 6px rgba(15, 20, 34, 0.06);
+  --shadow-xl: 0 24px 60px rgba(15, 20, 34, 0.16), 0 4px 12px rgba(15, 20, 34, 0.07);
+  --shadow-focus: 0 0 0 3px rgba(242, 106, 31, 0.22);
+  --shadow-card-hover: 0 6px 20px rgba(15, 20, 34, 0.08), 0 2px 4px rgba(15, 20, 34, 0.04);
+
+  /* === Motion — Apple 的なばね感 ========================================= */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.36, 0.44, 1);
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 320ms;
+
+  /* === Type ============================================================== */
+  --font-sans: "Noto Sans JP", "Inter", -apple-system, BlinkMacSystemFont,
+               "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Yu Gothic UI",
+               "Meiryo", sans-serif;
+  --font-display: "Mohave", "Noto Sans JP", sans-serif;
+  --font-num:  "Inter", "Noto Sans JP", sans-serif;
+  --font-hand: "Yomogi", cursive;
+}

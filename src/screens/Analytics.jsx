@@ -1,0 +1,195 @@
+import D from '../data/engine.js'
+import { useStore } from '../store.jsx'
+import { deltaOf, eraOf, fmtD, colsPlus, itemAvg, autoLines, betterNote } from '../lib/helpers.js'
+import { Card, Select, Segmented } from '../ui/kit.jsx'
+
+function heatBg(v) {
+  if (v === null || v === undefined || !v) return 'var(--slate-50)'
+  return v < 2 ? 'var(--slate-50)' : v < 2.6 ? 'var(--brand-50)' : v < 3.2 ? 'var(--brand-100)' : v < 3.7 ? 'var(--brand-200)' : v < 4.2 ? 'var(--brand-300)' : 'var(--brand-400)'
+}
+
+export default function Analytics() {
+  const { state, set } = useStore()
+  const y = state.anaYear
+  const inScope = (u) => state.anaRegion === 'all' || u.region === state.anaRegion
+  const scopeAgg = D.agg(inScope, y)
+  const munis = D.MUNIS.filter(m => state.anaRegion === 'all' || m.region === state.anaRegion)
+  const groups = state.anaUnit === 'region'
+    ? D.REGIONS.filter(r => state.anaRegion === 'all' || r === state.anaRegion).map(r => ({ name: r, sub: '', filter: (u) => u.region === r }))
+    : munis.map(m => ({ name: m.name, sub: m.region, filter: (u) => u.muni === m.id }))
+
+  const barsRaw = groups.map(g => {
+    const a = D.agg(g.filter, y)
+    const p = D.agg(g.filter, y - 1)
+    return { g, a, d: deltaOf(a.total || null, p.total || null, 1, 'high') }
+  }).sort((x, z) => (z.a.total || 0) - (x.a.total || 0))
+
+  const colors = ['var(--brand-500)', 'var(--info-500)', 'var(--success-500)']
+  const cbm = colsPlus()
+  const exCol = cbm.find(c => c.id === state.exItem) || cbm[3]
+  const exYears = D.YEARS.filter(yy => yy >= state.exFrom)
+  const exRegions = state.anaRegion === 'all' ? D.REGIONS : [state.anaRegion]
+  const sexOk = (u) => state.exSex === 'all' || u.sex === state.exSex
+  const ageOk = (u) => state.exAge === 'all' || (state.exAge === 'u75' ? u.age < 75 : state.exAge === 'a75' ? (u.age >= 75 && u.age < 85) : u.age >= 85)
+  let cohortN = 0
+  const seriesList = exRegions.map((r) => {
+    let pool = D.users.filter(u => u.region === r && sexOk(u) && ageOk(u))
+    if (state.exCohort === 'cohort') {
+      pool = pool.filter(u => exYears.every(yy => u.meas[yy] && u.meas[yy].values[exCol.id] !== null && u.meas[yy].values[exCol.id] !== undefined))
+      cohortN += pool.length
+    }
+    const n = state.exCohort === 'cohort' ? pool.length : pool.filter(u => u.meas[D.CUR]).length
+    return { pts: exYears.map(yy => ({ year: yy, v: itemAvg(pool, yy, exCol.id) })), color: colors[D.REGIONS.indexOf(r)] || colors[0], label: r, n }
+  })
+  const exAuto = autoLines(seriesList, exYears, 46, 820, 18, 190)
+  const exXs = (i) => Math.round(46 + (exYears.length > 1 ? (i * (820 - 46)) / (exYears.length - 1) : 0))
+
+  const heatRows = [{ name: '全体', fw: 700, agg: scopeAgg }].concat(groups.map(g => ({ name: g.name, fw: 500, agg: D.agg(g.filter, y) })))
+  const totals = D.users.filter(u => inScope(u) && u.meas[y]).map(u => u.meas[y].total).sort((a, b) => a - b)
+  const median = totals.length ? totals[Math.floor(totals.length / 2)] : '—'
+  const bins = Array.from({ length: 10 }, (_, i) => totals.filter(t => t >= i * 10 && (i === 9 ? t <= 100 : t < i * 10 + 10)).length)
+  const mx = Math.max(1, ...bins)
+  const medBin = median === '—' ? -1 : Math.min(9, Math.floor(median / 10))
+  const opt = (v, l) => ({ v, l })
+
+  const cohortNote = state.exCohort === 'cohort'
+    ? '【同一集団で比較中】' + eraOf(state.exFrom) + '〜令和7年度のすべての年度に「' + exCol.label + '」の記録がある ' + cohortN + ' 名だけで平均した推移です。同じ方々の変化を純粋に追跡できます。ただし継続して参加できている比較的元気な方に偏りやすい点にご注意ください。' + (state.exAge !== 'all' ? '（年代は令和7年度時点の年齢で区分）' : '')
+    : '【全参加者で比較中】各年度に測定したすべての方の平均です。年度ごとに参加メンバーが入れ替わる（新規参加・欠席・転出など）ため、集団の構成変化の影響を含みます。同じ方々だけの純粋な変化を見たい場合は「同一集団」に切り替えてください。' + (state.exAge !== 'all' ? '（年代は令和7年度時点の年齢で区分）' : '')
+
+  return (
+    <div className="screen">
+      {/* フィルタバー */}
+      <Card style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <Segmented value={state.anaUnit} onChange={(v) => set({ anaUnit: v })} options={[{ v: 'region', l: '圏域別' }, { v: 'muni', l: '市町村別' }]} />
+        <Select value={state.anaYear} onChange={(e) => set({ anaYear: Number(e.target.value) })}
+          options={D.YEARS.slice().reverse().map(yy => opt(yy, eraOf(yy) + '年度（' + yy + '）'))} />
+        <Select value={state.anaRegion} onChange={(e) => set({ anaRegion: e.target.value })}
+          options={[opt('all', '全圏域')].concat(D.REGIONS.map(r => opt(r, r)))} />
+        <div style={{ flex: 1 }} />
+        <div style={{ fontSize: 12.5, color: 'var(--fg-3)' }}>
+          対象 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{scopeAgg.count}</span> 名（{eraOf(y)}年度 測定済）
+        </div>
+      </Card>
+
+      {/* 年次推移チャート */}
+      <Card pad>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div className="t-h4" style={{ flex: 1, minWidth: 170 }}>運動機能の年次推移（区域別）</div>
+          <Select sm value={state.exItem} onChange={(e) => set({ exItem: e.target.value })} options={cbm.map(c => ({ v: c.id, l: c.label }))} />
+          <Select sm value={state.exSex} onChange={(e) => set({ exSex: e.target.value })} options={[opt('all', '男女計'), opt('F', '女性のみ'), opt('M', '男性のみ')]} />
+          <Select sm value={state.exAge} onChange={(e) => set({ exAge: e.target.value })} options={[opt('all', '全年代'), opt('u75', '〜74歳'), opt('a75', '75〜84歳'), opt('a85', '85歳〜')]} />
+          <Select sm value={String(state.exFrom)} onChange={(e) => set({ exFrom: +e.target.value })}
+            options={[opt('2020', '全期間（令和2〜7）'), opt('2022', '令和4〜7年度'), opt('2023', '令和5〜7年度'), opt('2024', '令和6〜7年度')]} />
+          <Segmented sm value={state.exCohort} onChange={(v) => set({ exCohort: v })} options={[{ v: 'all', l: '全参加者' }, { v: 'cohort', l: '同一集団' }]} />
+        </div>
+        <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          {seriesList.map(sr => (
+            <span key={sr.label} className="t-num" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--fg-2)' }}>
+              <span style={{ width: 14, height: 3, borderRadius: 2, background: sr.color }} />
+              {sr.label}（{sr.n}名）
+            </span>
+          ))}
+          <span style={{ flex: 1 }} />
+          <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>{betterNote(exCol) ? '※ ' + exCol.label + ' は' + betterNote(exCol) + 'です' : ''}</span>
+        </div>
+        <svg width="100%" height="228" viewBox="0 0 880 228" preserveAspectRatio="none" style={{ display: 'block', marginTop: 6 }}>
+          {exAuto.ticks.map((tk, i) => (
+            <g key={i}>
+              <line x1="46" y1={tk.y} x2="828" y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
+              <text x="40" y={tk.y + 3.5} textAnchor="end" fontSize="10" fill="var(--slate-400)" fontFamily="Inter">{fmtD(tk.v, exCol.dec)}</text>
+            </g>
+          ))}
+          {exAuto.lines.map((ln, i) => (
+            <g key={i}>
+              <path d={ln.path} fill="none" stroke={ln.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              {ln.pts.length > 0 && (
+                <text x={ln.pts[ln.pts.length - 1].x + 7} y={ln.pts[ln.pts.length - 1].y + 4} fontSize="11" fontWeight="700" fill={ln.color} fontFamily="Inter">
+                  {fmtD(Math.round(ln.pts[ln.pts.length - 1].v * 10) / 10, exCol.dec)}
+                </text>
+              )}
+            </g>
+          ))}
+          {exYears.map((yy, i) => (
+            <text key={yy} x={exXs(i)} y="220" textAnchor="middle" fontSize="10" fill="var(--slate-500)" fontFamily="Inter">{eraOf(yy)}</text>
+          ))}
+        </svg>
+        <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 8, background: 'var(--slate-25)', border: '1px solid var(--border-subtle)', fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7 }}>
+          {cohortNote}
+        </div>
+      </Card>
+
+      {/* バー + ヒストグラム */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16, alignItems: 'start' }}>
+        <Card pad>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <div className="t-h4">{state.anaUnit === 'region' ? '圏域別 平均総合スコア' : '市町村別 平均総合スコア'}</div>
+            <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>前年差</div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+            {barsRaw.map((b, i) => (
+              <div key={b.g.name} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 42px 50px', gap: 10, alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{b.g.name}</div>
+                  <div className="t-num" style={{ fontSize: 10.5, color: 'var(--fg-4)' }}>{(b.g.sub ? b.g.sub + ' · ' : '') + b.a.count + '名'}</div>
+                </div>
+                <div style={{ height: 18, borderRadius: 4, background: 'var(--slate-50)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', borderRadius: 4, background: i === 0 ? 'var(--brand-500)' : 'var(--brand-300)', width: Math.max(4, Math.round(((b.a.total || 0) / 85) * 100)) + '%', transition: 'width var(--dur-slow) var(--ease-emphasized)' }} />
+                </div>
+                <div className="t-num" style={{ fontSize: 14, fontWeight: 600, textAlign: 'right' }}>{b.a.total || '—'}</div>
+                <div className="t-num" style={{ fontSize: 11.5, fontWeight: 600, textAlign: 'right', color: b.d.fg }}>{b.d.txt}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card pad style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <div className="t-h4">総合スコアの分布</div>
+            <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>中央値 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{median}</span></div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 150, marginTop: 16, padding: '0 4px' }}>
+            {bins.map((c, i) => (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end' }}>
+                <div className="t-num" style={{ fontSize: 10, color: 'var(--fg-3)' }}>{c || ''}</div>
+                <div style={{ width: '100%', borderRadius: '4px 4px 2px 2px', background: i === medBin ? 'var(--brand-500)' : 'var(--brand-200)', height: Math.max(2, Math.round((c / mx) * 100)) + '%', transition: 'height var(--dur-slow) var(--ease-emphasized)' }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, padding: '0 4px' }}>
+            <span className="t-num" style={{ fontSize: 10, color: 'var(--fg-4)' }}>0</span>
+            <span className="t-num" style={{ fontSize: 10, color: 'var(--fg-4)' }}>50</span>
+            <span className="t-num" style={{ fontSize: 10, color: 'var(--fg-4)' }}>100</span>
+          </div>
+        </Card>
+      </div>
+
+      {/* ヒートマップ */}
+      <Card pad style={{ overflowX: 'auto' }}>
+        <div className="t-h4">{state.anaUnit === 'region' ? '評価領域 × 圏域（平均スコア）' : '評価領域 × 市町村（平均スコア）'}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '86px repeat(5, 1fr)', gap: 4, marginTop: 14, minWidth: 460 }}>
+          <div />
+          {['歩行速度', 'バランス', '筋力', '複合動作', '体格'].map(h => (
+            <div key={h} className="t-overline" style={{ textAlign: 'center' }}>{h}</div>
+          ))}
+          {heatRows.map(r => [
+            <div key={r.name + '-label'} style={{ fontSize: 12.5, fontWeight: r.fw, alignSelf: 'center' }}>{r.name}</div>,
+            ...D.AXES.map(a => (
+              <div key={r.name + '-' + a.id} className="t-num" style={{ height: 34, borderRadius: 6, background: r.agg.count ? heatBg(r.agg.axes[a.id]) : 'var(--slate-50)', color: 'var(--slate-800)', display: 'grid', placeItems: 'center', fontSize: 12.5, fontWeight: 600 }}>
+                {r.agg.count ? r.agg.axes[a.id].toFixed(1) : '—'}
+              </div>
+            )),
+          ])}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
+          <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>低 1.0</span>
+          <div style={{ display: 'flex', gap: 2 }}>
+            {['var(--slate-50)', 'var(--brand-50)', 'var(--brand-100)', 'var(--brand-200)', 'var(--brand-300)'].map((c, i) => (
+              <div key={i} style={{ width: 22, height: 10, borderRadius: 2, background: c }} />
+            ))}
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>高 5.0</span>
+        </div>
+      </Card>
+    </div>
+  )
+}
