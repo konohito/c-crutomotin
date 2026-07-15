@@ -28,7 +28,7 @@ const stripOf = (id) => String(id || '').split('').reduce((acc, ch) => {
   return acc
 }, [])
 
-const CELL_LABEL = { padding: '4px 10px', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-300)', fontSize: 9.5, letterSpacing: '0.08em', color: 'var(--slate-600)' }
+const CELL_LABEL = { padding: '4px 10px', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)' }
 
 function SheetPage({ p }) {
   return (
@@ -47,8 +47,8 @@ function SheetPage({ p }) {
             <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 R7-02</div>
             <div style={{ fontSize: 10.5, color: 'var(--slate-500)' }}>読み取り対応</div>
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: '0.04em', marginTop: 8 }}>令和7年度 体力測定 記録用紙</div>
-          <div style={{ fontSize: 11, color: 'var(--slate-600)', marginTop: 3 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
+          <div style={{ fontSize: 27, fontWeight: 700, letterSpacing: '0.04em', marginTop: 8 }}>令和7年度 体力測定 記録用紙</div>
+          <div style={{ fontSize: 14, color: 'var(--slate-600)', marginTop: 3 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 9.5, letterSpacing: '0.1em', color: 'var(--slate-600)', marginBottom: 4 }}>参加者 ID</div>
@@ -72,52 +72,52 @@ function SheetPage({ p }) {
         <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>年齢</div>
         <div style={CELL_LABEL}>性別</div>
         <div style={{ padding: '7px 10px 9px', borderRight: '1px solid var(--slate-300)', minHeight: 34 }}>
-          <span style={{ fontSize: 9.5, color: 'var(--slate-500)' }}>{p.kana}</span><br />
-          <span style={{ fontSize: 17, fontWeight: 700 }}>{p.name}</span>
+          <span style={{ fontSize: 13, color: 'var(--slate-500)' }}>{p.kana}</span><br />
+          <span style={{ fontSize: 24, fontWeight: 700 }}>{p.name}</span>
         </div>
-        <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 13 }}>{p.birth}</div>
-        <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 13 }}>{p.age}</div>
-        <div style={{ padding: '8px 10px', alignSelf: 'center', fontSize: 13 }}>{p.sex}</div>
+        <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.birth}</div>
+        <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.age}</div>
+        <div style={{ padding: '8px 10px', alignSelf: 'center', fontSize: 17 }}>{p.sex}</div>
       </div>
 
       {/* 記入例 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, padding: '8px 12px', background: 'var(--slate-50)', border: '1px solid var(--slate-200)' }}>
-        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--slate-700)', flexShrink: 0 }}>記入例</div>
+        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--slate-700)', flexShrink: 0 }}>記入例</div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end' }}>
           {['2', '4'].map((d, i) => (
-            <div key={i} style={{ width: 26, height: 32, border: '2px solid var(--slate-800)', borderRadius: 2, display: 'grid', placeItems: 'center' }}>
-              <span className="t-hand" style={{ fontSize: 19, color: 'var(--slate-800)' }}>{d}</span>
+            <div key={i} style={{ width: 30, height: 38, border: '2px solid var(--slate-800)', borderRadius: 2, display: 'grid', placeItems: 'center' }}>
+              <span className="t-hand" style={{ fontSize: 23, color: 'var(--slate-800)' }}>{d}</span>
             </div>
           ))}
           <div style={{ fontSize: 16, fontWeight: 900, paddingBottom: 1 }}>.</div>
-          <div style={{ width: 26, height: 32, border: '2px solid var(--slate-800)', borderRadius: 2, display: 'grid', placeItems: 'center' }}>
-            <span className="t-hand" style={{ fontSize: 19, color: 'var(--slate-800)' }}>5</span>
+          <div style={{ width: 30, height: 38, border: '2px solid var(--slate-800)', borderRadius: 2, display: 'grid', placeItems: 'center' }}>
+            <span className="t-hand" style={{ fontSize: 23, color: 'var(--slate-800)' }}>5</span>
           </div>
         </div>
-        <div style={{ fontSize: 10.5, color: 'var(--slate-600)', lineHeight: 1.6 }}>
+        <div style={{ fontSize: 13.5, color: 'var(--slate-600)', lineHeight: 1.7 }}>
           太枠の中に <b>1 マス 1 桁</b> ではっきりと記入してください。小数点は印字済みです。訂正は二重線を引き、枠の右の余白に書き直してください。未実施の項目は空欄のままにしてください。
         </div>
       </div>
 
       {/* 記入欄 */}
       <div style={{ marginTop: 14, borderTop: '2px solid var(--slate-900)', paddingTop: 2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 92px auto 64px', gap: 10, padding: '5px 0 3px', borderBottom: '1px solid var(--slate-300)', fontSize: 9.5, letterSpacing: '0.08em', color: 'var(--slate-600)', alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 92px auto 64px', gap: 10, padding: '5px 0 3px', borderBottom: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)', alignItems: 'end' }}>
           <div>測定項目</div>
-          <div>参考（前回値）</div>
+          <div style={{ whiteSpace: "nowrap" }}>前回値</div>
           <div style={{ textAlign: 'right' }}>記入枠</div>
           <div>単位</div>
         </div>
         {p.rows.map(r => (
-          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1fr 92px auto 64px', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600 }}>{r.label}</div>
-            <div className="t-num" style={{ fontSize: 10.5, color: 'var(--slate-400)' }}>{r.prev}</div>
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1fr 88px auto 64px', gap: 10, padding: '5px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
+            <div style={{ fontSize: 22, fontWeight: 600 }}>{r.label}</div>
+            <div className="t-num" style={{ fontSize: 14, color: 'var(--slate-500)' }}>{r.prev}</div>
             <div style={{ display: 'flex', gap: 5, alignItems: 'flex-end', justifyContent: 'flex-end' }}>
               {r.boxes.map((bx, i) => bx.d
-                ? <div key={i} style={{ width: 34, height: 40, border: '2px solid var(--slate-800)', borderRadius: 2, background: '#fff' }} />
-                : <div key={i} style={{ fontSize: 18, fontWeight: 900, paddingBottom: 2, width: 8, textAlign: 'center' }}>.</div>
+                ? <div key={i} style={{ width: 40, height: 48, border: '2px solid var(--slate-800)', borderRadius: 2, background: '#fff' }} />
+                : <div key={i} style={{ fontSize: 22, fontWeight: 900, paddingBottom: 2, width: 10, textAlign: 'center' }}>.</div>
               )}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--slate-500)' }}>{r.unit}</div>
+            <div style={{ fontSize: 16, color: 'var(--slate-600)' }}>{r.unit}</div>
           </div>
         ))}
       </div>
@@ -127,14 +127,14 @@ function SheetPage({ p }) {
       {/* 特記事項 */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 12, marginTop: 14, alignItems: 'stretch' }}>
         <div style={{ border: '1px solid var(--slate-300)' }}>
-          <div style={{ padding: '4px 10px', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-200)', fontSize: 9.5, letterSpacing: '0.1em', color: 'var(--slate-600)' }}>特記事項（体調・中止項目など）</div>
+          <div style={{ padding: '4px 10px', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-200)', fontSize: 12.5, letterSpacing: '0.08em', color: 'var(--slate-600)' }}>特記事項（体調・中止項目など）</div>
           <div style={{ padding: '4px 12px 8px' }}>
-            <div style={{ height: 24, borderBottom: '1px dotted var(--slate-300)' }} />
-            <div style={{ height: 24, borderBottom: '1px dotted var(--slate-300)' }} />
+            <div style={{ height: 30, borderBottom: '1px dotted var(--slate-300)' }} />
+            <div style={{ height: 30, borderBottom: '1px dotted var(--slate-300)' }} />
           </div>
         </div>
         <div style={{ border: '1px solid var(--slate-300)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '4px 10px', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-200)', fontSize: 9.5, letterSpacing: '0.1em', color: 'var(--slate-600)', textAlign: 'center' }}>測定者名</div>
+          <div style={{ padding: '4px 10px', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-200)', fontSize: 12.5, letterSpacing: '0.08em', color: 'var(--slate-600)', textAlign: 'center' }}>測定者名</div>
           <div style={{ flex: 1, minHeight: 40 }} />
         </div>
       </div>

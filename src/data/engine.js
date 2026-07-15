@@ -305,5 +305,22 @@ export function agg(filterFn, year) {
   return out;
 }
 
+// ---- InBody(体組成) データ ---------------------------------------------------
+// 測定年の約 75% に InBody 測定があるものとして生成する（LookinBody CSV 取り込み相当）
+users.forEach(u => {
+  u.inbody = {};
+  YEARS.forEach(y => {
+    const m = u.meas[y];
+    if (!m || R() < 0.25) return;
+    const age = y - u.birth;
+    const v = m.values;
+    const smm = r1(clamp((u.sex === 'M' ? v.weight * 0.42 : v.weight * 0.34) + gauss() * 1.6 - (age - 75) * 0.06, 10, 40));
+    const fatPct = r1(clamp((u.sex === 'M' ? 23 : 30) + gauss() * 5 + ((v.bmi || 22) - 22) * 1.1, 8, 45));
+    const smi = r1(clamp((u.sex === 'M' ? 7.3 : 6.0) + gauss() * 0.7 - (age - 75) * 0.025 + u.theta * 0.25, 4.2, 9.5));
+    const score = Math.round(clamp(72 + u.theta * 6 + gauss() * 5 - (age - 75) * 0.25, 45, 95));
+    u.inbody[y] = { weight: v.weight, smm, fatPct, smi, score, date: m.date };
+  });
+});
+
 const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, COLS, AXES, SHEET_COLS, STAFF, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf };
 export default D;
