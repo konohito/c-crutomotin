@@ -25,6 +25,7 @@ export const ICON_PATHS = {
   info: ['M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20', 'M12 16v-4', 'M12 8h.01'],
   file: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z', 'M14 2v5h5', 'M8 13h2', 'M14 13h2', 'M8 17h2', 'M14 17h2'],
   menu: ['M4 6h16', 'M4 12h16', 'M4 18h16'],
+  csvout: ['M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6', 'M3 9h18', 'M3 15h7', 'M3 5v14a2 2 0 0 0 2 2h5', 'M17 14v7', 'm14 18 3 3 3-3'],
 }
 
 export function Icon({ name, size = 18, strokeWidth = 1.5, style, className }) {
