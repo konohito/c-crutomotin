@@ -34,6 +34,8 @@ const initialState = {
     { date: '2025/09/26', kind: 'class', title: 'いきいき百歳体操 教室', venue: '第一地区公民館', time: '10:00〜11:30' },
     { date: '2025/09/30', kind: 'meet', title: '圏域連絡会議', venue: '県庁 3F 会議室', time: '14:00〜' },
   ],
+  // CSV 出力
+  expYear: 2025, expScope: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true,
   // メモ / CSV / 新規登録
   memos: {}, memoDraft: '', csvMuni: 'sakuragawa', csvDrag: false,
   regOpen: false, regName: '', regKana: '', regBirth: '', regSex: 'F', regMuni: 'sakuragawa', regPhone: '', regError: '',

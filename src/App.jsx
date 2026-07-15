@@ -7,6 +7,7 @@ import { Toast } from './ui/kit.jsx'
 import Dashboard from './screens/Dashboard.jsx'
 import ImportScreen from './screens/Import.jsx'
 import CsvImport from './screens/CsvImport.jsx'
+import CsvExport from './screens/CsvExport.jsx'
 import Roster from './screens/Roster.jsx'
 import Detail from './screens/Detail.jsx'
 import Analytics from './screens/Analytics.jsx'
@@ -30,6 +31,7 @@ const TITLES = {
   sheet: ['用紙作成', '読み取り対応の記録用紙を印刷'],
   ana: ['集計分析', '市町村・圏域別の年次集計'],
   pdf: ['PDF 出力', '個人結果票の一括出力'],
+  exp: ['CSV 出力', '県報告用データの一括出力'],
   mob: ['モバイル撮影', '現場スタッフ用の撮影フロー'],
 }
 
@@ -45,6 +47,7 @@ const NAV_MAIN = [
 const NAV_ANA = [
   ['ana', '集計分析'],
   ['pdf', 'PDF 出力'],
+  ['exp', 'CSV 出力'],
 ]
 
 function NavItem({ id, label, badge }) {
@@ -150,7 +153,7 @@ function Header() {
 
 const SCREENS = {
   dash: Dashboard, imp: ImportScreen, csv: CsvImport, ros: Roster, det: Detail,
-  ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, mob: Mobile,
+  ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, mob: Mobile, exp: CsvExport,
 }
 
 function AppInner() {
