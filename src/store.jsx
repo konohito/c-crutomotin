@@ -21,7 +21,7 @@ const initialState = {
   dashItem: 'gripR', exItem: 'gripR', exSex: 'all', exAge: 'all', exCohort: 'all', exFrom: 2020,
   // PDF
   pdfMode: 'single', pdfUser: null, pdfMuni: 'sakuragawa', pdfYear: 2025, pdfQ: '',
-  incRadar: true, incTrend: true, incPrev: true, incAvg: true, incComment: true,
+  incRadar: true, incTrend: true, incPrev: true, incAvg: true, incComment: true, incFrail: true, incInbody: true,
   // 用紙作成
   shMode: 'event', shEvent: '', shMuni: 'sakuragawa', shBlank: 0,
   // モバイル
@@ -169,6 +169,37 @@ export function importCsvText({ text, fname, state, set, showToast }) {
   const iHt = fi(h => h.includes('身長'))
   const iWt = fi(h => h.includes('体重'))
   if (iName < 0) { showToast('「氏名」列が見つかりません。ヘッダー行をご確認ください'); return }
+
+  // InBody(体組成) 形式の判別: 骨格筋量・体脂肪率・SMI などの列があれば紐づけ取り込みにする
+  const iSmm = fi(h => h.includes('骨格筋量'))
+  const iFat = fi(h => h.includes('体脂肪'))
+  const iSmi = fi(h => /SMI|ＳＭＩ|骨格筋指数/i.test(h))
+  const iScore = fi(h => /InBody点数|ＩｎＢｏｄｙ|点数/i.test(h))
+  if (iSmm >= 0 || iSmi >= 0 || iFat >= 0) {
+    let linked = 0, unmatched = 0
+    lines.slice(1).forEach(line => {
+      const c = csvSplit(line)
+      const val = (i) => (i >= 0 && i < c.length ? String(c[i]).trim() : '')
+      const name = val(iName).replace(/[\s　]+/g, '')
+      if (!name) return
+      const id = val(iId).replace(/[^\d]/g, '')
+      const u = (id && D.users.find(x => x.id === id)) || D.users.find(x => x.name.replace(/[\s　]/g, '') === name)
+      if (!u) { unmatched++; return }
+      const num = (i) => { const sv = val(i).replace(/[^\d.\-]/g, ''); if (!sv) return null; const n = parseFloat(sv); return isNaN(n) ? null : n }
+      const iWtLocal = fi(h => h.includes('体重'))
+      u.inbody = u.inbody || {}
+      u.inbody[D.CUR] = {
+        weight: num(iWtLocal) ?? (u.meas[D.CUR] ? u.meas[D.CUR].values.weight : null),
+        smm: num(iSmm), fatPct: num(iFat), smi: num(iSmi), score: num(iScore),
+        date: D.TODAY,
+      }
+      linked++
+    })
+    set(s => ({ rev: s.rev + 1 }))
+    showToast('「' + fname + '」から InBody データ ' + linked + ' 名分を台帳に紐づけました' + (unmatched ? '（未一致 ' + unmatched + ' 件）' : ''))
+    return
+  }
+
   const mu = D.MUNIS.find(x => x.id === state.csvMuni) || D.MUNIS[0]
   let added = 0, updated = 0, measN = 0
   lines.slice(1).forEach(line => {

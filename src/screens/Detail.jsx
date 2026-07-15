@@ -1,6 +1,6 @@
 import D from '../data/engine.js'
 import { useStore, memosFor } from '../store.jsx'
-import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAvg } from '../lib/helpers.js'
+import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAvg, frailtyOf, FRAIL_LEVELS, FRAIL_ITEMS } from '../lib/helpers.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -57,6 +57,14 @@ export default function Detail() {
     return { era: eraOf(y), date: m ? m.date : '—', total: m ? m.total : '—', suffix: m ? '/100' : '', st }
   })
 
+  const frail = last ? frailtyOf(u, lastY) : null
+  const fl = frail ? FRAIL_LEVELS[frail.level] : null
+  const ibYears = Object.keys(u.inbody || {}).map(Number).sort((a, b) => a - b)
+  const ibLast = ibYears.length ? u.inbody[ibYears[ibYears.length - 1]] : null
+  const ibPrev = ibYears.length > 1 ? u.inbody[ibYears[ibYears.length - 2]] : null
+  const ibLastY = ibYears.length ? ibYears[ibYears.length - 1] : null
+  const smiCut = u.sex === 'M' ? 7.0 : 5.7
+
   const memos = memosFor(state, u)
   const memoAdd = () => {
     const t = state.memoDraft.trim()
@@ -93,6 +101,11 @@ export default function Detail() {
             <span className="chip" style={{ height: 22, fontSize: 11.5 }}><span className="t-num">{u.age}</span> 歳 · {u.sexLabel}</span>
             <span className="chip" style={{ height: 22, fontSize: 11.5 }}>{u.muniName} · {u.venueName}</span>
             <span className="chip" style={{ height: 22, fontSize: 11.5, background: 'var(--brand-50)', color: 'var(--brand-700)' }}>測定 <span className="t-num" style={{ margin: '0 3px' }}>{ys.length}</span> 回</span>
+            {frail && (
+              <span className="chip" title={'該当: ' + (frail.hitShorts.join('・') || 'なし')} style={{ height: 22, fontSize: 11.5, background: fl.bg, color: fl.fg, fontWeight: 600 }}>
+                {fl.label} <span className="t-num" style={{ marginLeft: 3 }}>{frail.n}/5</span>
+              </span>
+            )}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -196,6 +209,37 @@ export default function Detail() {
               </div>
             ))}
           </Card>
+
+          {ibLast && (
+            <Card pad>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                <div className="t-h4">体組成（InBody）</div>
+                <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{eraOf(ibLastY)}年度 · {ibLast.date}</div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
+                {[
+                  ['骨格筋量', ibLast.smm, 'kg', ibPrev?.smm, 'high', 1],
+                  ['体脂肪率', ibLast.fatPct, '%', ibPrev?.fatPct, 'none', 1],
+                  ['SMI（骨格筋指数）', ibLast.smi, 'kg/m²', ibPrev?.smi, 'high', 1],
+                  ['InBody 点数', ibLast.score, '点', ibPrev?.score, 'high', 0],
+                ].map(([label, v, unit, pv, better, dec]) => {
+                  const d = deltaOf(v, pv ?? null, dec, better)
+                  const low = String(label).startsWith('SMI') && v !== null && v < smiCut
+                  return (
+                    <div key={label} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 64px', gap: 6, alignItems: 'baseline', padding: '6px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                      <div style={{ fontSize: 12.5 }}>
+                        {label} <span style={{ fontSize: 10.5, color: 'var(--fg-4)' }}>{unit}</span>
+                        {low && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--danger-700)', background: 'var(--danger-50)', borderRadius: 999, padding: '1px 7px' }}>基準未満</span>}
+                      </div>
+                      <div className="t-num" style={{ fontSize: 13.5, fontWeight: 600, textAlign: 'right', color: low ? 'var(--danger-700)' : 'var(--fg-1)' }}>{fmtD(v, dec)}</div>
+                      <div className="t-num" style={{ fontSize: 12, fontWeight: 600, textAlign: 'right', color: d.fg }}>{d.txt}</div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>SMI 男性 7.0 / 女性 5.7 kg/m² 未満は筋肉量低下（サルコペニア）の指標。CSV 取り込みで LookinBody の書き出しに対応しています。</div>
+            </Card>
+          )}
         </div>
 
         {/* 右カラム */}

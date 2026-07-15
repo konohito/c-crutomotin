@@ -117,3 +117,42 @@ export function parseBirthYear(sv) {
   m = String(sv).match(/[TtＴ大]\D*(\d{1,2})/); if (m) return 1911 + +m[1]
   return 1950
 }
+
+// ---- フレイル簡易評価（J-CHS 基準を参考にした体力測定版） -------------------------
+// 測定値から判定できる 5 項目。3 項目以上該当でフレイル相当、1〜2 項目でプレフレイル相当。
+// 問診（疲労感・活動量）を含む正式なフレイル診断ではない点に注意。
+export const FRAIL_ITEMS = [
+  { id: 'walk',   label: '歩行速度の低下', short: '歩行',    desc: '５ｍ通常歩行 1.0 秒/m 以上' },
+  { id: 'grip',   label: '筋力の低下',    short: '筋力',    desc: '握力 男性 28kg / 女性 18kg 未満' },
+  { id: 'bal',    label: 'バランスの低下', short: 'バランス', desc: '開眼片足立ち 5 秒未満' },
+  { id: 'tug',    label: '複合動作の低下', short: '複合動作', desc: 'TUG 13.5 秒以上' },
+  { id: 'weight', label: '低栄養の傾向',  short: '体重',    desc: 'BMI 18.5 未満 または 前年比 -2kg 以上' },
+]
+
+export const FRAIL_LEVELS = {
+  frail: { label: 'フレイル相当', bg: 'var(--danger-50)', fg: 'var(--danger-700)', bar: 'var(--danger-500)' },
+  pre:   { label: 'プレフレイル相当', bg: 'var(--warning-50)', fg: 'var(--warning-700)', bar: 'var(--warning-500)' },
+  ok:    { label: '良好', bg: 'var(--success-50)', fg: 'var(--success-700)', bar: 'var(--success-500)' },
+}
+
+export function frailtyOf(u, y) {
+  const m = u.meas[y]
+  if (!m) return null
+  const v = m.values
+  const prevYs = Object.keys(u.meas).map(Number).filter(x => x < y).sort((a, b) => b - a)
+  const prev = prevYs.length ? u.meas[prevYs[0]] : null
+  const grip = Math.max(v.gripR ?? -1, v.gripL ?? -1)
+  const bal = Math.max(v.balR ?? -1, v.balL ?? -1)
+  const hits = {
+    walk: v.walk5 !== null && v.walk5 !== undefined && v.walk5 >= 1.0,
+    grip: grip >= 0 && grip < (u.sex === 'M' ? 28 : 18),
+    bal: bal >= 0 && bal < 5,
+    tug: v.tug !== null && v.tug !== undefined && v.tug >= 13.5,
+    weight: (v.bmi !== null && v.bmi !== undefined && v.bmi < 18.5) ||
+      (!!prev && v.weight !== null && prev.values.weight !== null && prev.values.weight - v.weight >= 2),
+  }
+  const n = Object.values(hits).filter(Boolean).length
+  const level = n >= 3 ? 'frail' : n >= 1 ? 'pre' : 'ok'
+  const hitShorts = FRAIL_ITEMS.filter(it => hits[it.id]).map(it => it.short)
+  return { hits, n, pct: n * 20, level, hitShorts }
+}

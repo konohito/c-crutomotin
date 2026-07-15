@@ -1,6 +1,6 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { deltaOf, eraOf, fmtD, colsPlus, itemAvg, autoLines, betterNote } from '../lib/helpers.js'
+import { deltaOf, eraOf, fmtD, colsPlus, itemAvg, autoLines, betterNote, frailtyOf, FRAIL_ITEMS, FRAIL_LEVELS } from '../lib/helpers.js'
 import { Card, Select, Segmented } from '../ui/kit.jsx'
 
 function heatBg(v) {
@@ -50,6 +50,19 @@ export default function Analytics() {
   const bins = Array.from({ length: 10 }, (_, i) => totals.filter(t => t >= i * 10 && (i === 9 ? t <= 100 : t < i * 10 + 10)).length)
   const mx = Math.max(1, ...bins)
   const medBin = median === '—' ? -1 : Math.min(9, Math.floor(median / 10))
+  // ---- フレイル簡易評価の集計（報告用） ----
+  const frailCount = (pool) => {
+    const c = { frail: 0, pre: 0, ok: 0, total: 0 }
+    pool.forEach(u => {
+      const f = frailtyOf(u, y)
+      if (f) { c[f.level]++; c.total++ }
+    })
+    return c
+  }
+  const frailScope = frailCount(D.users.filter(u => inScope(u) && u.meas[y]))
+  const frailGroups = groups.map(g => ({ name: g.name, c: frailCount(D.users.filter(u => g.filter(u) && u.meas[y])) }))
+  const pctOf = (n, total) => (total ? Math.round((n / total) * 100) : 0)
+
   const opt = (v, l) => ({ v, l })
 
   const cohortNote = state.exCohort === 'cohort'
@@ -188,6 +201,50 @@ export default function Analytics() {
             ))}
           </div>
           <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>高 5.0</span>
+        </div>
+      </Card>
+
+      {/* フレイル簡易評価（報告用） */}
+      <Card pad>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div className="t-h4">フレイル簡易評価 — {eraOf(y)}年度（報告用集計）</div>
+          <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>5 項目中 3 項目以上該当でフレイル相当（J-CHS 基準を参考にした測定値判定）</div>
+        </div>
+
+        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 14 }}>
+          {[['frail', 'フレイル相当'], ['pre', 'プレフレイル相当'], ['ok', '良好']].map(([k, label]) => (
+            <div key={k} style={{ borderRadius: 10, padding: '14px 16px', background: FRAIL_LEVELS[k].bg }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: FRAIL_LEVELS[k].fg }}>{label}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginTop: 4 }}>
+                <span className="t-num" style={{ fontSize: 28, fontWeight: 700, color: FRAIL_LEVELS[k].fg }}>{frailScope[k]}</span>
+                <span style={{ fontSize: 12, color: FRAIL_LEVELS[k].fg }}>名</span>
+                <span className="t-num" style={{ fontSize: 13, fontWeight: 600, color: FRAIL_LEVELS[k].fg, marginLeft: 'auto' }}>{pctOf(frailScope[k], frailScope.total)}%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
+          {frailGroups.map(g => (
+            <div key={g.name} style={{ display: 'grid', gridTemplateColumns: '86px 1fr 168px', gap: 12, alignItems: 'center' }}>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{g.name}</div>
+              <div style={{ display: 'flex', height: 16, borderRadius: 4, overflow: 'hidden', background: 'var(--slate-50)' }}>
+                {['frail', 'pre', 'ok'].map(k => (
+                  g.c.total > 0 && g.c[k] > 0
+                    ? <div key={k} style={{ width: (g.c[k] / g.c.total) * 100 + '%', background: FRAIL_LEVELS[k].bar, opacity: k === 'ok' ? 0.55 : 0.9 }} />
+                    : null
+                ))}
+              </div>
+              <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-2)', textAlign: 'right' }}>
+                フレイル <b style={{ color: 'var(--danger-700)' }}>{g.c.frail}</b> · プレ <b style={{ color: 'var(--warning-700)' }}>{g.c.pre}</b> / {g.c.total} 名
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 8, background: 'var(--slate-25)', border: '1px solid var(--border-subtle)', fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7 }}>
+          <b>判定基準（5 項目）</b>: {FRAIL_ITEMS.map(it => it.label + '（' + it.desc + '）').join(' / ')}。
+          3 項目以上該当 = フレイル相当、1〜2 項目 = プレフレイル相当。測定値のみによる簡易判定であり、問診（疲労感・活動量）を含む正式なフレイル診断ではありません。個人結果票にも本人向けに掲載されます。
         </div>
       </Card>
     </div>
