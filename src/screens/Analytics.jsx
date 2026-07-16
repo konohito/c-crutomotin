@@ -1,6 +1,7 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, itemAvg, autoLines, betterNote, frailtyOf, FRAIL_ITEMS, FRAIL_LEVELS } from '../lib/helpers.js'
+import { kclScore, KCL_DOMAINS } from '../data/kihon.js'
 import { Card, Select, Segmented } from '../ui/kit.jsx'
 
 function heatBg(v) {
@@ -62,6 +63,23 @@ export default function Analytics() {
   const frailScope = frailCount(D.users.filter(u => inScope(u) && u.meas[y]))
   const frailGroups = groups.map(g => ({ name: g.name, c: frailCount(D.users.filter(u => g.filter(u) && u.meas[y])) }))
   const pctOf = (n, total) => (total ? Math.round((n / total) * 100) : 0)
+
+  // ---- 基本チェックリスト 事業対象者の集計（報告用） ----
+  const kclCount = (pool) => {
+    const c = { target: 0, total: 0, sum: 0, domains: {} }
+    KCL_DOMAINS.forEach(d => { c.domains[d.id] = 0 })
+    pool.forEach(u => {
+      const s = kclScore(u, y)
+      if (!s) return
+      c.total++; c.sum += s.total
+      if (s.target) c.target++
+      KCL_DOMAINS.forEach(d => { if (s.domainCounts[d.id] > 0) c.domains[d.id]++ })
+    })
+    return c
+  }
+  const kclScopeC = kclCount(D.users.filter(u => inScope(u) && u.meas[y]))
+  const kclGroups = groups.map(g => ({ name: g.name, c: kclCount(D.users.filter(u => g.filter(u) && u.meas[y])) }))
+  const kclAvg = kclScopeC.total ? (kclScopeC.sum / kclScopeC.total).toFixed(1) : '—'
 
   const opt = (v, l) => ({ v, l })
 
@@ -245,6 +263,74 @@ export default function Analytics() {
         <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 8, background: 'var(--slate-25)', border: '1px solid var(--border-subtle)', fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7 }}>
           <b>判定基準（5 項目）</b>: {FRAIL_ITEMS.map(it => it.label + '（' + it.desc + '）').join(' / ')}。
           3 項目以上該当 = フレイル相当、1〜2 項目 = プレフレイル相当。測定値のみによる簡易判定であり、問診（疲労感・活動量）を含む正式なフレイル診断ではありません。個人結果票にも本人向けに掲載されます。
+        </div>
+      </Card>
+
+      {/* 基本チェックリスト 事業対象者（報告用） */}
+      <Card pad>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div className="t-h4">基本チェックリスト 事業対象者 — {eraOf(y)}年度（報告用集計）</div>
+          <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>25 項目の合計 平均 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{kclAvg}</span> 点</div>
+        </div>
+
+        <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginTop: 14 }}>
+          <div style={{ borderRadius: 10, padding: '14px 16px', background: 'var(--danger-50)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--danger-700)' }}>事業対象者 該当</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginTop: 4 }}>
+              <span className="t-num" style={{ fontSize: 28, fontWeight: 700, color: 'var(--danger-700)' }}>{kclScopeC.target}</span>
+              <span style={{ fontSize: 12, color: 'var(--danger-700)' }}>名</span>
+              <span className="t-num" style={{ fontSize: 13, fontWeight: 600, color: 'var(--danger-700)', marginLeft: 'auto' }}>{pctOf(kclScopeC.target, kclScopeC.total)}%</span>
+            </div>
+          </div>
+          <div style={{ borderRadius: 10, padding: '14px 16px', background: 'var(--success-50)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--success-700)' }}>非該当</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginTop: 4 }}>
+              <span className="t-num" style={{ fontSize: 28, fontWeight: 700, color: 'var(--success-700)' }}>{kclScopeC.total - kclScopeC.target}</span>
+              <span style={{ fontSize: 12, color: 'var(--success-700)' }}>名</span>
+              <span className="t-num" style={{ fontSize: 13, fontWeight: 600, color: 'var(--success-700)', marginLeft: 'auto' }}>{pctOf(kclScopeC.total - kclScopeC.target, kclScopeC.total)}%</span>
+            </div>
+          </div>
+          <div style={{ borderRadius: 10, padding: '14px 16px', background: 'var(--slate-50)' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)' }}>問診 回答者</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginTop: 4 }}>
+              <span className="t-num" style={{ fontSize: 28, fontWeight: 700, color: 'var(--fg-1)' }}>{kclScopeC.total}</span>
+              <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>名</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 圏域/市町村別 事業対象者率 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
+          {kclGroups.map(g => (
+            <div key={g.name} style={{ display: 'grid', gridTemplateColumns: '86px 1fr 132px', gap: 12, alignItems: 'center' }}>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>{g.name}</div>
+              <div style={{ height: 16, borderRadius: 4, background: 'var(--slate-50)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', background: 'var(--danger-500)', opacity: 0.85, width: pctOf(g.c.target, g.c.total) + '%' }} />
+              </div>
+              <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-2)', textAlign: 'right' }}>
+                該当 <b style={{ color: 'var(--danger-700)' }}>{g.c.target}</b> / {g.c.total} 名（{pctOf(g.c.target, g.c.total)}%）
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 領域別 該当者数 */}
+        <div className="t-overline" style={{ marginTop: 16, marginBottom: 8 }}>領域別の該当者数（1 項目以上該当）</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {KCL_DOMAINS.map(d => (
+            <div key={d.id} style={{ flex: '1 1 120px', minWidth: 110, border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '8px 12px' }}>
+              <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{d.label}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span className="t-num" style={{ fontSize: 18, fontWeight: 700 }}>{kclScopeC.domains[d.id]}</span>
+                <span style={{ fontSize: 11, color: 'var(--fg-4)' }}>名</span>
+                <span className="t-num" style={{ fontSize: 11.5, color: 'var(--fg-3)', marginLeft: 'auto' }}>{pctOf(kclScopeC.domains[d.id], kclScopeC.total)}%</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 8, background: 'var(--slate-25)', border: '1px solid var(--border-subtle)', fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7 }}>
+          基本チェックリスト（25 項目）の合計点と、①No.1〜20の10項目以上 ②運動器3項目以上 ③栄養2項目 ④口腔2項目以上 ⑤閉じこもり(No.16該当) ⑥認知1項目以上 ⑦うつ2項目以上 のいずれかを満たす方を「事業対象者」として集計しています。※ ダミー回答による集計です。
         </div>
       </Card>
     </div>

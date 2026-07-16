@@ -3,6 +3,8 @@
    参加者ID(会場コード2桁+連番) / 氏名(漢字・かな) / 生年月日 / 性別 / 電話 / 診察日
    ５ｍ通常歩行(秒/m) / 開眼片足立ち右・左(秒,上限60) / 握力右・左(kg,0.5刻み) / TUG(秒) / 身長 / 体重 / BMI */
 
+import { makeDummyKcl } from './kihon.js';
+
 // ---- seeded RNG -----------------------------------------------------------
 function mulberry32(a) {
   return function () {
@@ -275,6 +277,9 @@ export function commitSheet(sheet, finalValues) {
   const ax = axesOf(u.sex, v);
   const total = Math.round(((ax.walk + ax.balance + ax.grip + ax.mobility + ax.body) / 25) * 100);
   u.meas[CUR] = { values: v, axes: ax, total, date: batchMeta.date };
+  // 本登録した年に問診回答が未登録なら、ダミーの問診回答も併せて作成する
+  if (!u.kcl) u.kcl = {};
+  if (!u.kcl[CUR]) u.kcl[CUR] = makeDummyKcl(R, gauss, CUR - u.birth, u.theta, batchMeta.date);
   delete u.isNew;
 }
 
@@ -319,6 +324,17 @@ users.forEach(u => {
     const smi = r1(clamp((u.sex === 'M' ? 7.3 : 6.0) + gauss() * 0.7 - (age - 75) * 0.025 + u.theta * 0.25, 4.2, 9.5));
     const score = Math.round(clamp(72 + u.theta * 6 + gauss() * 5 - (age - 75) * 0.25, 45, 95));
     u.inbody[y] = { weight: v.weight, smm, fatPct, smi, score, date: m.date };
+  });
+});
+
+// ---- 基本チェックリスト（問診票）ダミー回答 ------------------------------------
+// 測定がある年に問診回答があるものとして、年齢・体力傾向(theta)に相関する回答を生成する。
+users.forEach(u => {
+  u.kcl = {};
+  YEARS.forEach(y => {
+    const m = u.meas[y];
+    if (!m) return;
+    u.kcl[y] = makeDummyKcl(R, gauss, y - u.birth, u.theta, m.date);
   });
 });
 
