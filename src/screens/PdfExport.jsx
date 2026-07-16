@@ -1,6 +1,7 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_ITEMS, FRAIL_LEVELS } from '../lib/helpers.js'
+import { kclScore, kclLevel, KCL_LEVELS } from '../data/kihon.js'
 import { RadioCard, CheckRow, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -58,6 +59,7 @@ function buildPage(state, u, y, i) {
   const pts = linePts(D.YEARS.map(yy => ({ year: yy, v: u.meas[yy] && yy <= y ? u.meas[yy].total : null })), D.YEARS, 56, 630, 100, 0, 16, 108)
   const mpts = linePts(D.YEARS.map(yy => ({ year: yy, v: yy <= y ? (D.agg(x => x.muni === u.muni, yy).total || null) : null })), D.YEARS, 56, 630, 100, 0, 16, 108)
   const frail = frailtyOf(u, y)
+  const kcl = kclScore(u, y)
   const inbody = u.inbody && u.inbody[y] ? u.inbody[y] : null
   const ibPrevY = u.inbody ? Object.keys(u.inbody).map(Number).filter(v => v < y).sort((a, b) => b - a)[0] : null
   const inbodyPrev = ibPrevY ? u.inbody[ibPrevY] : null
@@ -71,7 +73,7 @@ function buildPage(state, u, y, i) {
     trendDots: dotsOf(pts).map(d => ({ x: d.x, y: d.y, ly: d.y < 34 ? d.y + 22 : d.y - 11, v: d.v, year: eraOf(d.year) })),
     pageNo: i + 1,
     commentText: commentFor(u, m, prev),
-    frail, inbody, inbodyPrev,
+    frail, kcl, inbody, inbodyPrev,
   }
 }
 
@@ -209,6 +211,23 @@ function PdfPage({ p, state, count }) {
         )}
       </div>
 
+      {/* 基本チェックリスト（問診） */}
+      {state.incKcl && p.kcl && (
+        <div style={{ marginTop: 8, border: `1px solid ${p.kcl.target ? 'var(--danger-500)' : 'var(--slate-200)'}`, background: p.kcl.target ? 'var(--danger-50)' : 'transparent', display: 'flex', alignItems: 'center', gap: 12, padding: '4px 12px', flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 13, letterSpacing: '0.06em', color: 'var(--slate-600)', flexShrink: 0 }}>基本チェックリスト（問診）</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+            <span className="t-num" style={{ fontSize: 21, fontWeight: 700, color: KCL_LEVELS[kclLevel(p.kcl.total)].fg }}>{p.kcl.total}</span>
+            <span style={{ fontSize: 13, color: 'var(--slate-500)' }}>/ 25 点</span>
+          </div>
+          <span style={{ fontSize: 15, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: p.kcl.target ? 'var(--danger-500)' : 'var(--success-50)', color: p.kcl.target ? '#fff' : 'var(--success-700)', whiteSpace: 'nowrap' }}>
+            {p.kcl.target ? '事業対象者 該当' : '非該当'}
+          </span>
+          <span style={{ fontSize: 13, color: 'var(--slate-600)', flex: 1, minWidth: 0 }}>
+            {p.kcl.target ? '該当理由: ' + p.kcl.reasons.map(r => r.label).join(' / ') : '事業対象者の該当基準には当てはまりません'}
+          </span>
+        </div>
+      )}
+
       {/* InBody 体組成 */}
       {state.incInbody && p.inbody && (
         <div style={{ marginTop: 8 }}>
@@ -243,7 +262,7 @@ function PdfPage({ p, state, count }) {
             <span style={{ fontSize: 16, fontWeight: 700 }}>総合スコアの推移</span>
             <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>実線 = 本人 / 破線 = {p.avgHead}</span>
           </div>
-          <svg width="100%" height="108" viewBox="0 0 660 148" preserveAspectRatio="none" style={{ display: 'block', marginTop: 4 }}>
+          <svg width="100%" height="86" viewBox="0 0 660 148" preserveAspectRatio="none" style={{ display: 'block', marginTop: 4 }}>
             {[['100', 16], ['75', 47], ['50', 78], ['25', 108]].map(([lb, yy]) => (
               <g key={lb}>
                 <line x1="30" y1={yy} x2="650" y2={yy} stroke={yy === 108 ? 'var(--slate-200)' : 'var(--slate-100)'} strokeWidth="1" />
@@ -270,9 +289,9 @@ function PdfPage({ p, state, count }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 148px', gap: 12, marginTop: 12, alignItems: 'stretch' }}>
           <div style={{ border: '1px solid var(--slate-300)' }}>
             <div style={{ ...CELL_LABEL, letterSpacing: '0.08em' }}>総合コメント</div>
-            <div style={{ padding: '2px 14px 6px', position: 'relative', minHeight: 92 }}>
-              {[36, 68].map(t => <div key={t} style={{ position: 'absolute', left: 14, right: 14, top: t, borderBottom: '1px dotted var(--slate-300)' }} />)}
-              <div className="t-hand" style={{ position: 'relative', fontSize: 19, lineHeight: '33px', color: 'var(--slate-800)' }}>{p.commentText}</div>
+            <div style={{ padding: '2px 14px 5px', position: 'relative', minHeight: 74 }}>
+              {[34, 63].map(t => <div key={t} style={{ position: 'absolute', left: 14, right: 14, top: t, borderBottom: '1px dotted var(--slate-300)' }} />)}
+              <div className="t-hand" style={{ position: 'relative', fontSize: 18, lineHeight: '30px', color: 'var(--slate-800)' }}>{p.commentText}</div>
             </div>
           </div>
           <div style={{ border: '1px solid var(--slate-300)', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
@@ -322,7 +341,7 @@ export default function PdfExport() {
   ]
   const incs = [
     ['incRadar', 'レーダーチャート'], ['incTrend', '時系列の推移グラフ'], ['incPrev', '前回との比較'], ['incAvg', '市町村平均の列'],
-    ['incFrail', 'フレイル簡易評価'], ['incInbody', 'InBody（体組成）'], ['incComment', '総合コメント欄'],
+    ['incFrail', 'フレイル簡易評価'], ['incKcl', '基本チェックリスト（問診）'], ['incInbody', 'InBody（体組成）'], ['incComment', '総合コメント欄'],
   ]
 
   return (

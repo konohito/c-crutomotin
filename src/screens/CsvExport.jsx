@@ -1,6 +1,7 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { eraOf, fmtD, frailtyOf, FRAIL_LEVELS } from '../lib/helpers.js'
+import { kclScore, KCL_DOMAINS } from '../data/kihon.js'
 import { Card, Select, CheckRow, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -40,6 +41,13 @@ const INBODY_COLS = [
   ['SMI(kg/m2)', (u, y, m, fr, ib) => ib ? fmtCsv(ib.smi, 1) : ''],
   ['InBody点数', (u, y, m, fr, ib) => ib ? ib.score : ''],
 ]
+const KCL_COLS = [
+  ['基本CL合計点', (u, y, m, fr, ib, kc) => kc ? kc.total : ''],
+  ['事業対象者判定', (u, y, m, fr, ib, kc) => kc ? (kc.target ? '該当' : '非該当') : ''],
+  ['該当理由', (u, y, m, fr, ib, kc) => kc ? kc.reasons.map(r => r.label).join('・') : ''],
+].concat(KCL_DOMAINS.map(d => [
+  'CL_' + d.label, (u, y, m, fr, ib, kc) => kc ? kc.domainCounts[d.id] : '',
+]))
 
 function fmtCsv(v, dec) {
   return v === null || v === undefined ? '' : Number(v).toFixed(dec)
@@ -61,13 +69,14 @@ export function buildExport(state) {
   let users = D.users.filter(inScope)
   if (state.expMeasuredOnly) users = users.filter(u => u.meas[y])
   users = users.slice().sort((a, b) => a.id.localeCompare(b.id))
-  const cols = BASE_COLS.concat(state.expFrail ? FRAIL_COLS : [], state.expInbody ? INBODY_COLS : [])
+  const cols = BASE_COLS.concat(state.expFrail ? FRAIL_COLS : [], state.expKcl ? KCL_COLS : [], state.expInbody ? INBODY_COLS : [])
   const header = cols.map(c => c[0])
   const rows = users.map(u => {
     const m = u.meas[y] || null
     const fr = m ? frailtyOf(u, y) : null
     const ib = u.inbody && u.inbody[y] ? u.inbody[y] : null
-    return cols.map(c => c[1](u, y, m, fr, ib))
+    const kc = kclScore(u, y)
+    return cols.map(c => c[1](u, y, m, fr, ib, kc))
   })
   return { header, rows, count: users.length }
 }
@@ -136,6 +145,7 @@ export default function CsvExport() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 12, flexWrap: 'wrap' }}>
           <Overline style={{ marginRight: 8 }}>追加の列</Overline>
           <CheckRow on={state.expFrail} label="フレイル簡易評価（該当数・判定・該当項目）" onClick={() => set({ expFrail: !state.expFrail })} />
+          <CheckRow on={state.expKcl} label="基本チェックリスト（合計点・事業対象者判定・領域別）" onClick={() => set({ expKcl: !state.expKcl })} />
           <CheckRow on={state.expInbody} label="InBody（骨格筋量・体脂肪率・SMI・点数）" onClick={() => set({ expInbody: !state.expInbody })} />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-subtle)', flexWrap: 'wrap' }}>

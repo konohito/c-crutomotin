@@ -21,7 +21,7 @@ const initialState = {
   dashItem: 'gripR', exItem: 'gripR', exSex: 'all', exAge: 'all', exCohort: 'all', exFrom: 2020,
   // PDF
   pdfMode: 'single', pdfUser: null, pdfMuni: 'sakuragawa', pdfYear: 2025, pdfQ: '',
-  incRadar: true, incTrend: true, incPrev: true, incAvg: true, incComment: true, incFrail: true, incInbody: true,
+  incRadar: true, incTrend: true, incPrev: true, incAvg: true, incComment: true, incFrail: true, incInbody: true, incKcl: true,
   // 用紙作成
   shMode: 'event', shEvent: '', shMuni: 'sakuragawa', shBlank: 0,
   // モバイル
@@ -35,7 +35,7 @@ const initialState = {
     { date: '2025/09/30', kind: 'meet', title: '圏域連絡会議', venue: '県庁 3F 会議室', time: '14:00〜' },
   ],
   // CSV 出力
-  expYear: 2025, expScope: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true,
+  expYear: 2025, expScope: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true, expKcl: true,
   // メモ / CSV / 新規登録
   memos: {}, memoDraft: '', csvMuni: 'sakuragawa', csvDrag: false,
   regOpen: false, regName: '', regKana: '', regBirth: '', regSex: 'F', regMuni: 'sakuragawa', regPhone: '', regError: '',

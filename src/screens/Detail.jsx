@@ -1,6 +1,7 @@
 import D from '../data/engine.js'
 import { useStore, memosFor } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAvg, frailtyOf, FRAIL_LEVELS, FRAIL_ITEMS } from '../lib/helpers.js'
+import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAINS } from '../data/kihon.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -59,6 +60,14 @@ export default function Detail() {
 
   const frail = last ? frailtyOf(u, lastY) : null
   const fl = frail ? FRAIL_LEVELS[frail.level] : null
+
+  // ---- 基本チェックリスト（問診票） ----
+  const kcl = kclScore(u, lastY)
+  const kclL = kcl ? KCL_LEVELS[kclLevel(kcl.total)] : null
+  const kclSeries = D.YEARS.map(y => ({ year: y, v: (u.kcl && u.kcl[y]) ? (kclScore(u, y) || {}).total : null }))
+  const kclAuto = autoLines([{ pts: kclSeries }], D.YEARS, 40, 250, 12, 78)
+  const kclLine = kclAuto.lines[0] || { path: '', pts: [] }
+
   const ibYears = Object.keys(u.inbody || {}).map(Number).sort((a, b) => a - b)
   const ibLast = ibYears.length ? u.inbody[ibYears[ibYears.length - 1]] : null
   const ibPrev = ibYears.length > 1 ? u.inbody[ibYears[ibYears.length - 2]] : null
@@ -104,6 +113,11 @@ export default function Detail() {
             {frail && (
               <span className="chip" title={'該当: ' + (frail.hitShorts.join('・') || 'なし')} style={{ height: 22, fontSize: 11.5, background: fl.bg, color: fl.fg, fontWeight: 600 }}>
                 {fl.label} <span className="t-num" style={{ marginLeft: 3 }}>{frail.n}/5</span>
+              </span>
+            )}
+            {kcl && kcl.target && (
+              <span className="chip" title={kcl.reasons.map(r => r.label).join(' / ')} style={{ height: 22, fontSize: 11.5, background: 'var(--danger-50)', color: 'var(--danger-700)', fontWeight: 600 }}>
+                事業対象者 該当
               </span>
             )}
           </div>
@@ -238,6 +252,93 @@ export default function Detail() {
                 })}
               </div>
               <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>SMI 男性 7.0 / 女性 5.7 kg/m² 未満は筋肉量低下（サルコペニア）の指標。CSV 取り込みで LookinBody の書き出しに対応しています。</div>
+            </Card>
+          )}
+
+          {kcl && (
+            <Card pad>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <div className="t-h4">基本チェックリスト（問診）</div>
+                <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{eraOf(lastY)}年度 · {kcl.date}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                <div style={{ textAlign: 'center', minWidth: 74, padding: '8px 10px', borderRadius: 10, background: kclL.bg }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, justifyContent: 'center' }}>
+                    <span className="t-num" style={{ fontSize: 26, fontWeight: 700, color: kclL.fg }}>{kcl.total}</span>
+                    <span style={{ fontSize: 11, color: kclL.fg }}>/25</span>
+                  </div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: kclL.fg }}>{kclL.label}</div>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {kcl.target ? (
+                    <div style={{ fontSize: 12.5, lineHeight: 1.55 }}>
+                      <span style={{ fontWeight: 700, color: 'var(--danger-700)' }}>事業対象者に該当</span><br />
+                      <span style={{ color: 'var(--fg-3)', fontSize: 11.5 }}>{kcl.reasons.map(r => r.label).join(' / ')}</span>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>事業対象者の該当基準には当てはまりません</div>
+                  )}
+                </div>
+              </div>
+
+              {/* 領域別 該当項目数 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 12 }}>
+                {KCL_DOMAINS.map(d => {
+                  const c = kcl.domainCounts[d.id], max = d.nos.length
+                  const hit = c > 0
+                  return (
+                    <div key={d.id} style={{ display: 'grid', gridTemplateColumns: '68px 1fr 42px', gap: 10, alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, color: hit ? 'var(--fg-1)' : 'var(--fg-3)', fontWeight: hit ? 600 : 400 }}>{d.label}</div>
+                      <div style={{ display: 'flex', gap: 3 }}>
+                        {Array.from({ length: max }, (_, i) => (
+                          <div key={i} style={{ flex: 1, height: 7, borderRadius: 2, background: i < c ? kclL.bar : 'var(--slate-100)' }} />
+                        ))}
+                      </div>
+                      <div className="t-num" style={{ fontSize: 11.5, color: 'var(--fg-3)', textAlign: 'right' }}>{c}/{max}</div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* 合計点の推移 */}
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 14 }}>
+                <div className="t-overline">合計点の推移</div>
+                <div style={{ fontSize: 10.5, color: 'var(--fg-4)' }}>点が低いほど良好</div>
+              </div>
+              <svg width="100%" height="88" viewBox="0 0 280 96" preserveAspectRatio="none" style={{ display: 'block', marginTop: 4 }}>
+                {kclAuto.ticks.map((tk, i) => (
+                  <g key={i}>
+                    <line x1="26" y1={tk.y} x2="272" y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
+                    <text x="22" y={tk.y + 3.5} textAnchor="end" fontSize="9" fill="var(--slate-400)" fontFamily="Inter">{tk.v}</text>
+                  </g>
+                ))}
+                <path d={kclLine.path} fill="none" stroke={kclL.bar} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                {kclLine.pts.map((p, i) => (
+                  <g key={i}>
+                    <circle cx={p.x} cy={p.y} r="3.2" fill="var(--bg-surface)" stroke={kclL.bar} strokeWidth="2" />
+                    <text x={p.x} y={p.y < 20 ? p.y + 15 : p.y - 8} textAnchor="middle" fontSize="10" fontWeight="600" fill="var(--slate-700)" fontFamily="Inter">{p.v}</text>
+                  </g>
+                ))}
+                {D.YEARS.map((y, i) => (
+                  <text key={y} x={Math.round(40 + (i * (250 - 40)) / 5)} y="92" textAnchor="middle" fontSize="9" fill="var(--slate-500)">{eraOf(y).replace('令和', 'R')}</text>
+                ))}
+              </svg>
+
+              {/* 該当した設問 */}
+              {kcl.hitQuestions.length > 0 && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-subtle)' }}>
+                  <div className="t-overline" style={{ marginBottom: 6 }}>該当した設問（{kcl.hitQuestions.length} 件）</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {kcl.hitQuestions.map(q => (
+                      <div key={q.no} style={{ display: 'flex', gap: 7, alignItems: 'flex-start', fontSize: 11.5, lineHeight: 1.5 }}>
+                        <span className="t-num" style={{ color: 'var(--fg-4)', flexShrink: 0, minWidth: 18 }}>{q.no}.</span>
+                        <span style={{ color: 'var(--fg-2)' }}>{q.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div style={{ fontSize: 10.5, color: 'var(--fg-4)', marginTop: 10, lineHeight: 1.6 }}>設問により「はい／いいえ」どちらで1点かが異なります。No.12（BMI 18.5 未満）は測定値から自動判定。</div>
             </Card>
           )}
         </div>
