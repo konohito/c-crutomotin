@@ -1,7 +1,7 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, itemAvg, autoLines, betterNote, frailtyOf, FRAIL_ITEMS, FRAIL_LEVELS } from '../lib/helpers.js'
-import { kclScore, KCL_DOMAINS } from '../data/kihon.js'
+import { kclScore, KCL_DOMAINS, KCL_CRITERIA_NOTE } from '../data/kihon.js'
 import { Card, Select, Segmented } from '../ui/kit.jsx'
 
 function heatBg(v) {
@@ -87,6 +87,13 @@ export default function Analytics() {
     ? '【同一集団で比較中】' + eraOf(state.exFrom) + '〜令和7年度のすべての年度に「' + exCol.label + '」の記録がある ' + cohortN + ' 名だけで平均した推移です。同じ方々の変化を純粋に追跡できます。ただし継続して参加できている比較的元気な方に偏りやすい点にご注意ください。' + (state.exAge !== 'all' ? '（年代は令和7年度時点の年齢で区分）' : '')
     : '【全参加者で比較中】各年度に測定したすべての方の平均です。年度ごとに参加メンバーが入れ替わる（新規参加・欠席・転出など）ため、集団の構成変化の影響を含みます。同じ方々だけの純粋な変化を見たい場合は「同一集団」に切り替えてください。' + (state.exAge !== 'all' ? '（年代は令和7年度時点の年齢で区分）' : '')
 
+  // 線末尾の値ラベルは系列が収束すると重なるため、最低 13px 間隔になるよう上下にずらす
+  const endLabels = exAuto.lines
+    .map((ln, i) => (ln.pts.length ? { i, y: ln.pts[ln.pts.length - 1].y + 4 } : null))
+    .filter(Boolean).sort((a, b) => a.y - b.y)
+  for (let k = 1; k < endLabels.length; k++) if (endLabels[k].y - endLabels[k - 1].y < 13) endLabels[k].y = endLabels[k - 1].y + 13
+  const endLabelY = {}; endLabels.forEach(e => { endLabelY[e.i] = e.y })
+
   return (
     <div className="screen">
       {/* フィルタバー */}
@@ -134,7 +141,7 @@ export default function Analytics() {
             <g key={i}>
               <path d={ln.path} fill="none" stroke={ln.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
               {ln.pts.length > 0 && (
-                <text x={ln.pts[ln.pts.length - 1].x + 7} y={ln.pts[ln.pts.length - 1].y + 4} fontSize="11" fontWeight="700" fill={ln.color} fontFamily="Inter">
+                <text x={ln.pts[ln.pts.length - 1].x + 7} y={endLabelY[i]} fontSize="11" fontWeight="700" fill={ln.color} fontFamily="Inter">
                   {fmtD(Math.round(ln.pts[ln.pts.length - 1].v * 10) / 10, exCol.dec)}
                 </text>
               )}
@@ -330,7 +337,7 @@ export default function Analytics() {
         </div>
 
         <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 8, background: 'var(--slate-25)', border: '1px solid var(--border-subtle)', fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7 }}>
-          基本チェックリスト（25 項目）の合計点と、①No.1〜20の10項目以上 ②運動器3項目以上 ③栄養2項目 ④口腔2項目以上 ⑤閉じこもり(No.16該当) ⑥認知1項目以上 ⑦うつ2項目以上 のいずれかを満たす方を「事業対象者」として集計しています。※ ダミー回答による集計です。
+          基本チェックリスト（25 項目）の合計点をもとに集計しています。{KCL_CRITERIA_NOTE} ※ ダミー回答による集計です。
         </div>
       </Card>
     </div>

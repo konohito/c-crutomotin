@@ -19,11 +19,10 @@ export default function RegisterModal() {
     if (!state.regName.trim() || !state.regKana.trim()) { set({ regError: '氏名（漢字・かな）を入力してください' }); return }
     const mu = D.MUNIS.find(x => x.id === state.regMuni)
     const code = mu.venues[0][0]
-    const seq = D.users.filter(u => u.venueCode === code).length + 1 + 900
     const by = parseInt(state.regBirth, 10)
     const birth = isNaN(by) ? 1950 : by
     D.users.push({
-      id: String(code * 1000 + seq).slice(0, 5), name: state.regName.trim(), kana: state.regKana.trim(),
+      id: D.newUserId(code), name: state.regName.trim(), kana: state.regKana.trim(),
       sex: state.regSex, sexLabel: state.regSex === 'M' ? '男' : '女', birth,
       birthDate: state.regBirth.trim() || '—', age: D.CUR - birth,
       muni: mu.id, muniName: mu.name, region: mu.region,

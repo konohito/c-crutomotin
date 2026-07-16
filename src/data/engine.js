@@ -277,10 +277,23 @@ export function commitSheet(sheet, finalValues) {
   const ax = axesOf(u.sex, v);
   const total = Math.round(((ax.walk + ax.balance + ax.grip + ax.mobility + ax.body) / 25) * 100);
   u.meas[CUR] = { values: v, axes: ax, total, date: batchMeta.date };
-  // 本登録した年に問診回答が未登録なら、ダミーの問診回答も併せて作成する
-  if (!u.kcl) u.kcl = {};
-  if (!u.kcl[CUR]) u.kcl[CUR] = makeDummyKcl(R, gauss, CUR - u.birth, u.theta, batchMeta.date);
+  ensureKcl(u, CUR, batchMeta.date);
   delete u.isNew;
+}
+
+// 測定を登録した年に問診回答が未登録なら、ダミーの問診回答も併せて作成する
+// (OCR 本登録・CSV 取り込みなど、一括生成後に測定が増える経路すべてから呼ぶ)
+export function ensureKcl(u, y, date) {
+  if (!u.kcl) u.kcl = {};
+  if (!u.kcl[y]) u.kcl[y] = makeDummyKcl(R, gauss, y - u.birth, u.theta, date);
+}
+
+// 新規利用者の参加者 ID 採番。会場コード×1000 + 901〜 の空き番号を返す(既存 ID と衝突しない)
+export function newUserId(code) {
+  let seq = users.filter(u => u.venueCode === code).length + 901;
+  let id = String(code * 1000 + seq).padStart(5, '0');
+  while (users.some(u => u.id === id)) { seq++; id = String(code * 1000 + seq).padStart(5, '0'); }
+  return id;
 }
 
 // ---- 集計 -------------------------------------------------------------------------
@@ -338,5 +351,5 @@ users.forEach(u => {
   });
 });
 
-const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, COLS, AXES, SHEET_COLS, STAFF, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf };
+const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, COLS, AXES, SHEET_COLS, STAFF, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf, ensureKcl, newUserId };
 export default D;

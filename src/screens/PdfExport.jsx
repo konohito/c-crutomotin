@@ -1,6 +1,6 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_ITEMS, FRAIL_LEVELS } from '../lib/helpers.js'
+import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_LEVELS } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS } from '../data/kihon.js'
 import { RadioCard, CheckRow, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -325,7 +325,9 @@ function PdfPage({ p, state, count }) {
 export default function PdfExport() {
   const { state, set } = useStore()
   const y = state.pdfYear
-  const pdfUser = state.pdfUser || (D.users.find(u => u.meas[y]) || {}).id
+  // 選択中の利用者に選択年度の測定がない場合は、その年度の測定済み先頭者に自動フォールバック
+  const chosen = state.pdfUser ? D.users.find(x => x.id === state.pdfUser && x.meas[y]) : null
+  const pdfUser = (chosen || D.users.find(u => u.meas[y]) || {}).id
   let scope
   if (state.pdfMode === 'single') { const u = D.users.find(x => x.id === pdfUser && x.meas[y]); scope = u ? [u] : [] }
   else if (state.pdfMode === 'muni') scope = D.users.filter(u => u.muni === state.pdfMuni && u.meas[y])

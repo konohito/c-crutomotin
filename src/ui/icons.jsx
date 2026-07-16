@@ -27,6 +27,8 @@ export const ICON_PATHS = {
   menu: ['M4 6h16', 'M4 12h16', 'M4 18h16'],
   csvout: ['M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6', 'M3 9h18', 'M3 15h7', 'M3 5v14a2 2 0 0 0 2 2h5', 'M17 14v7', 'm14 18 3 3 3-3'],
 }
+// ナビ ID とアイコン名が異なるものの別名(CSV 出力画面 = exp)
+ICON_PATHS.exp = ICON_PATHS.csvout
 
 export function Icon({ name, size = 18, strokeWidth = 1.5, style, className }) {
   const paths = ICON_PATHS[name] || []

@@ -156,7 +156,7 @@ export function importCsvText({ text, fname, state, set, showToast }) {
   if (lines.length < 2) { showToast('CSV にデータ行が見つかりません'); return }
   const head = csvSplit(lines[0]).map(h => h.replace(/[\s　"]/g, ''))
   const fi = (f) => head.findIndex(f)
-  const iId = fi(h => /ID|ＩＤ|番号/i.test(h) && !h.includes('会場'))
+  const iId = fi(h => /ID|ＩＤ|番号/i.test(h) && !/会場|電話|郵便|ＦＡＸ|FAX/i.test(h))
   const iName = fi(h => (h.includes('氏名') || h.includes('名前')) && !/かな|カナ|ふりがな|フリガナ/.test(h))
   const iKana = fi(h => /かな|カナ|ふりがな|フリガナ/.test(h))
   const iBirth = fi(h => h.includes('生年月日'))
@@ -217,7 +217,7 @@ export function importCsvText({ text, fname, state, set, showToast }) {
       const code = mu.venues[0][0]
       const by = parseBirthYear(val(iBirth))
       u = {
-        id: id || String(code * 1000 + 900 + (D.users.length % 90)), name, kana: val(iKana) || '', sex,
+        id: id || D.newUserId(code), name, kana: val(iKana) || '', sex,
         sexLabel: sex === 'M' ? '男' : '女', birth: by, birthDate: val(iBirth) || '—', age: D.CUR - by,
         muni: mu.id, muniName: mu.name, region: mu.region, venueCode: code, venueName: mu.venues[0][1],
         phone: val(iTel), joined: D.CUR, isNew: true, theta: 0, meas: {},
@@ -235,6 +235,7 @@ export function importCsvText({ text, fname, state, set, showToast }) {
       const v = { walk5, balR, balL, gripR, gripL, tug, height, weight, bmi }
       const ax = D.axesOf(u.sex, v)
       u.meas[D.CUR] = { values: v, axes: ax, total: Math.round(((ax.walk + ax.balance + ax.grip + ax.mobility + ax.body) / 25) * 100), date: D.TODAY }
+      D.ensureKcl(u, D.CUR, D.TODAY)
       measN++
     }
   })
