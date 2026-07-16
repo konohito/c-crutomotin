@@ -1,6 +1,6 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { eraOf, fmtD, frailtyOf, FRAIL_LEVELS } from '../lib/helpers.js'
+import { eraOf, frailtyOf, FRAIL_LEVELS } from '../lib/helpers.js'
 import { kclScore, KCL_DOMAINS } from '../data/kihon.js'
 import { Card, Select, CheckRow, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
