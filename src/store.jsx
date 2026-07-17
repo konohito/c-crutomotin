@@ -35,7 +35,7 @@ const initialState = {
     { date: '2025/09/30', kind: 'meet', title: '圏域連絡会議', venue: '県庁 3F 会議室', time: '14:00〜' },
   ],
   // CSV 出力
-  expYear: 2025, expScope: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true, expKcl: true,
+  expYear: 2025, expScope: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true, expKcl: true, expFormat: 'std',
   // メモ / CSV / 新規登録
   memos: {}, memoDraft: '', csvMuni: 'sakuragawa', csvDrag: false,
   regOpen: false, regName: '', regKana: '', regBirth: '', regSex: 'F', regMuni: 'sakuragawa', regPhone: '', regError: '',
