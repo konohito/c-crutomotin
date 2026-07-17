@@ -1,0 +1,11 @@
+{
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20",
+    "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run test"]
+  },
+  "emulators": {
+    "functions": { "port": 5001 },
+    "ui": { "enabled": true }
+  }
+}

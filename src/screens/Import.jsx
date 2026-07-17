@@ -1,11 +1,84 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import D from '../data/engine.js'
-import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, needsReview, openSheetVals } from '../store.jsx'
+import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, needsReview, openSheetVals, CONF_THRESHOLD } from '../store.jsx'
 import { fmtD } from '../lib/helpers.js'
+import { ocrEnabled, recognizeSheet } from '../lib/ocr.js'
 import { Card, Pill } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 const GRID = '42px 168px repeat(8, 1fr) 92px 88px'
+
+// 実バックエンド(Document AI)で 1 枚読み取るライブ確認パネル。
+// VITE_OCR_ENDPOINT が設定されている時だけ表示される(デモ環境では非表示)。
+function LiveOcrCard() {
+  const inputRef = useRef(null)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+
+  const onPick = async (e) => {
+    const file = e.target.files && e.target.files[0]
+    if (!file) return
+    setBusy(true); setError(''); setResult(null)
+    try { setResult(await recognizeSheet(file)) }
+    catch (err) { setError(err.message || '認識に失敗しました') }
+    finally { setBusy(false); if (inputRef.current) inputRef.current.value = '' }
+  }
+
+  return (
+    <Card pad style={{ borderColor: 'var(--brand-200)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--brand-50)', color: 'var(--brand-600)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+          <Icon name="camera" size={18} />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>実データで読み取り（Document AI）</div>
+          <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 1 }}>記録用紙の写真を 1 枚選ぶと、実際のバックエンドで認識します</div>
+        </div>
+        <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={onPick} style={{ display: 'none' }} />
+        <button className="btn btn-primary" disabled={busy} onClick={() => inputRef.current && inputRef.current.click()}>
+          {busy ? '認識中…' : '画像を選ぶ'}
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--danger-700)', background: 'var(--danger-50)', borderRadius: 8, padding: '8px 12px' }}>{error}</div>
+      )}
+
+      {result && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 14, fontWeight: 600 }}>{result.ocrName || '（氏名未取得）'}</span>
+            {result.ocrKana && <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>{result.ocrKana}</span>}
+            {result.matched
+              ? <Pill bg="var(--success-50)" fg="var(--success-700)">台帳照合 OK · ID {result.userId}</Pill>
+              : <Pill bg="var(--warning-50)" fg="var(--warning-700)">台帳に一致なし</Pill>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8, marginTop: 12 }}>
+            {D.SHEET_COLS.map(cid => {
+              const col = D.COLS.find(c => c.id === cid)
+              const f = result.fields[cid]
+              const low = f.conf > 0 && f.conf < CONF_THRESHOLD
+              const blank = f.value === null
+              return (
+                <div key={cid} style={{ border: `1px solid ${low ? 'var(--warning-500)' : 'var(--border-subtle)'}`, background: low ? 'var(--warning-50)' : 'var(--bg-surface)', borderRadius: 8, padding: '7px 10px' }}>
+                  <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>{col.short}</div>
+                  <div className="t-num" style={{ fontSize: 16, fontWeight: 700, color: blank ? 'var(--fg-4)' : 'var(--fg-1)' }}>
+                    {blank ? '—' : fmtD(f.value, col.dec)}<span style={{ fontSize: 10, fontWeight: 400, color: 'var(--fg-4)', marginLeft: 2 }}>{col.unit}</span>
+                  </div>
+                  <div className="t-num" style={{ fontSize: 10, color: low ? 'var(--warning-700)' : 'var(--fg-4)' }}>信頼度 {f.conf}%</div>
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--fg-3)', marginTop: 10 }}>
+            信頼度 {CONF_THRESHOLD}% 未満の項目（黄色）は、本番フローでは自動で「要確認」に振り分けられます。
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
 
 export default function ImportScreen() {
   const { state, set, setState, showToast } = useStore()
@@ -47,6 +120,9 @@ export default function ImportScreen() {
 
   return (
     <div className="screen">
+      {/* 実バックエンドが設定されている時のみ表示（デモ環境では非表示） */}
+      {ocrEnabled() && <LiveOcrCard />}
+
       {/* バッチヘッダー */}
       <Card pad style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--brand-50)', color: 'var(--brand-600)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
