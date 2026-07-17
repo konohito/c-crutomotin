@@ -4,8 +4,18 @@
     "runtime": "nodejs20",
     "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run test"]
   },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "emulators": {
     "functions": { "port": 5001 },
+    "firestore": { "port": 8080 },
+    "storage": { "port": 9199 },
+    "auth": { "port": 9099 },
     "ui": { "enabled": true }
   }
 }

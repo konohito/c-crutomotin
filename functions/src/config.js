@@ -8,4 +8,5 @@ module.exports = {
   apiKey: process.env.OCR_API_KEY || '',        // 任意: フロントの X-Api-Key と一致させる簡易認証
   allowOrigin: process.env.OCR_ALLOW_ORIGIN || '*',
   maxImageBytes: parseInt(process.env.OCR_MAX_BYTES || '10485760', 10), // 10MB
+  reviewThreshold: parseInt(process.env.OCR_REVIEW_THRESHOLD || '80', 10), // 要確認しきい値(%)。フロントの CONF_THRESHOLD と揃える
 }

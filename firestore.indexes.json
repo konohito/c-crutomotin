@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "recognitions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "no", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

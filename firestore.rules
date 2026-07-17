@@ -1,0 +1,34 @@
+rules_version = '2';
+// Firestore セキュリティルール — 認証済みの職員のみ読み書き可。
+// 本番では Firebase Auth で職員ログインを必須にする(request.auth を検証)。
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    // 読み取りキュー(OCR 結果)。作成はバックエンド(Admin SDK)が行うためルールをすり抜ける。
+    // クライアントは閲覧と、確認・本登録に伴うステータス更新のみ許可する。
+    match /batches/{batchId} {
+      allow read: if signedIn();
+      allow write: if false; // メタ更新はバックエンドのみ
+
+      match /recognitions/{recognitionId} {
+        allow read: if signedIn();
+        // 職員による確認・本登録の反映のみ許可(status / 解決値 / 照合ユーザ)。新規作成・削除は不可。
+        allow update: if signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'resolvedValues', 'matchedUserId', 'reviewedBy', 'reviewedAt']);
+        allow create, delete: if false;
+      }
+    }
+
+    // 本登録された測定データ。職員が作成・閲覧可。上書き削除は不可(監査性のため)。
+    match /measurements/{measurementId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['userId', 'year', 'values', 'source'])
+        && request.resource.data.source == 'ocr';
+      allow update, delete: if false;
+    }
+  }
+}

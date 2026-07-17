@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import D from '../data/engine.js'
 import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, needsReview, openSheetVals, CONF_THRESHOLD } from '../store.jsx'
 import { fmtD } from '../lib/helpers.js'
-import { ocrEnabled, recognizeSheet } from '../lib/ocr.js'
+import { ocrEnabled, recognizeSheet, matchUser } from '../lib/ocr.js'
+import { dbEnabled, uploadSheetImage, watchRecognitions, commitRecognition } from '../lib/db.js'
 import { Card, Pill } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
+
+const LIVE_BATCH_ID = `batch-${String(D.batchMeta.date).replace(/\//g, '')}-${D.batchMeta.muni}`
 
 const GRID = '42px 168px repeat(8, 1fr) 92px 88px'
 
@@ -80,6 +83,110 @@ function LiveOcrCard() {
   )
 }
 
+// フェーズ2: 撮影→Storage→自動OCR→Firestore キューを読む本番取り込みパネル。
+// VITE_FIREBASE_CONFIG 設定時のみ表示（デモ環境では非表示）。
+function LiveQueueCard() {
+  const { showToast } = useStore()
+  const inputRef = useRef(null)
+  const [queue, setQueue] = useState([])
+  const [uploading, setUploading] = useState(false)
+  const [committing, setCommitting] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let unsub = () => {}
+    watchRecognitions(LIVE_BATCH_ID, setQueue).then(fn => { unsub = fn }).catch(e => setError(e.message))
+    return () => unsub()
+  }, [])
+
+  const onUpload = async (e) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    setUploading(true); setError('')
+    try {
+      for (let i = 0; i < files.length; i++) await uploadSheetImage(files[i], { batchId: LIVE_BATCH_ID, no: queue.length + i + 1 })
+      showToast(files.length + ' 枚をアップロードしました。読み取り結果がキューに順次届きます')
+    } catch (err) { setError(err.message || 'アップロードに失敗しました') }
+    finally { setUploading(false); if (inputRef.current) inputRef.current.value = '' }
+  }
+
+  const commit = async (rec) => {
+    const u = matchUser(rec)
+    if (!u) { showToast('台帳に一致する利用者がいません'); return }
+    const finalValues = {}
+    D.SHEET_COLS.forEach(cid => { finalValues[cid] = rec.fields[cid] ? rec.fields[cid].value : null })
+    setCommitting(rec.id); setError('')
+    try {
+      await commitRecognition({ batchId: LIVE_BATCH_ID, recognitionId: rec.id, user: u, finalValues, meta: { date: D.batchMeta.date, year: D.CUR } })
+      showToast(u.name + ' さんを本登録しました')
+    } catch (err) { setError(err.message || '本登録に失敗しました') }
+    finally { setCommitting('') }
+  }
+
+  const done = queue.filter(r => r.status === 'committed').length
+  return (
+    <Card pad style={{ borderColor: 'var(--brand-200)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--brand-50)', color: 'var(--brand-600)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+          <Icon name="upload" size={18} />
+        </div>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>ライブ取り込み（Firestore キュー）</div>
+          <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 1 }}>撮影画像を送信 → 自動 OCR → 下のキューに届きます · 本登録 {done}/{queue.length}</div>
+        </div>
+        <input ref={inputRef} type="file" accept="image/*" capture="environment" multiple onChange={onUpload} style={{ display: 'none' }} />
+        <button className="btn btn-primary" disabled={uploading} onClick={() => inputRef.current && inputRef.current.click()}>
+          {uploading ? '送信中…' : '記録用紙を送信'}
+        </button>
+      </div>
+
+      {error && <div style={{ marginTop: 12, fontSize: 12.5, color: 'var(--danger-700)', background: 'var(--danger-50)', borderRadius: 8, padding: '8px 12px' }}>{error}</div>}
+
+      {queue.length === 0 ? (
+        <div style={{ marginTop: 14, fontSize: 12.5, color: 'var(--fg-3)', textAlign: 'center', padding: '18px 0' }}>
+          まだ読み取り結果がありません。「記録用紙を送信」から画像をアップロードしてください。
+        </div>
+      ) : (
+        <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {queue.map(rec => {
+            const u = matchUser(rec)
+            const st = rec.status === 'committed' ? ['登録済', 'var(--success-50)', 'var(--success-700)']
+              : rec.status === 'error' ? ['エラー', 'var(--danger-50)', 'var(--danger-700)']
+              : rec.needsReview ? ['要確認', 'var(--warning-50)', 'var(--warning-700)']
+              : ['自動判定', 'var(--slate-100)', 'var(--slate-600)']
+            return (
+              <div key={rec.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', border: '1px solid var(--border-subtle)', borderRadius: 8, flexWrap: 'wrap' }}>
+                <span className="t-num" style={{ fontSize: 12, color: 'var(--fg-4)', width: 24 }}>{rec.no ?? '—'}</span>
+                <div style={{ minWidth: 120, flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{rec.ocrName || '（氏名未取得）'}</div>
+                  <div className="t-num" style={{ fontSize: 11, color: u ? 'var(--fg-3)' : 'var(--danger-700)' }}>{u ? 'ID ' + u.id + ' · 照合 OK' : '台帳に一致なし'}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 2, minWidth: 180 }}>
+                  {D.SHEET_COLS.map(cid => {
+                    const f = rec.fields && rec.fields[cid]
+                    const low = f && f.conf > 0 && f.conf < CONF_THRESHOLD
+                    return (
+                      <span key={cid} className="t-num" style={{ fontSize: 12, padding: '1px 6px', borderRadius: 4, background: low ? 'var(--warning-50)' : 'transparent', color: low ? 'var(--warning-700)' : 'var(--fg-2)' }}>
+                        {f && f.value !== null ? fmtD(f.value, 1) : '—'}
+                      </span>
+                    )
+                  })}
+                </div>
+                <Pill bg={st[1]} fg={st[2]}>{st[0]}</Pill>
+                {rec.status === 'recognized' && u && !rec.needsReview && (
+                  <button className="btn btn-outline btn-sm" style={{ height: 28, padding: '0 10px', fontSize: 12 }} disabled={committing === rec.id} onClick={() => commit(rec)}>
+                    {committing === rec.id ? '登録中…' : '本登録'}
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 export default function ImportScreen() {
   const { state, set, setState, showToast } = useStore()
   const scanT = useRef(null)
@@ -120,8 +227,11 @@ export default function ImportScreen() {
 
   return (
     <div className="screen">
-      {/* 実バックエンドが設定されている時のみ表示（デモ環境では非表示） */}
-      {ocrEnabled() && <LiveOcrCard />}
+      {/* Firebase(Firestore キュー)が設定されている時のみ表示（デモ環境では非表示） */}
+      {dbEnabled() && <LiveQueueCard />}
+
+      {/* Document AI エンドポイントのみ設定時の単票読み取り（キュー未使用時の確認用） */}
+      {ocrEnabled() && !dbEnabled() && <LiveOcrCard />}
 
       {/* バッチヘッダー */}
       <Card pad style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
