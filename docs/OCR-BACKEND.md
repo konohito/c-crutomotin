@@ -24,19 +24,50 @@ flowchart LR
   - `src/documentai.js` … Document AI 呼び出し（認証は Functions のサービスアカウント＝ADC）
   - `src/mapping.js` … Document AI レスポンス → 記録用紙スキーマ（項目エイリアス照合・数値/全角処理・信頼度%化）※ GCP 非依存で単体テスト可
 
-### 将来（フェーズ2：保存層まで本番化する場合）
+### フェーズ2：非同期 OCR 取り込みパイプライン（実装済み）
 
 ```mermaid
 flowchart LR
-  A[モバイル撮影] -->|保存| S[Cloud Storage]
-  S -->|onObjectFinalized| B[Cloud Functions]
+  A[モバイル撮影] -->|sheets/{batchId}/…| S[Cloud Storage]
+  S -->|onObjectFinalized| B[onSheetImageUpload<br/>Cloud Functions]
   B --> C[Document AI]
-  B -->|結果保存| F[(Firestore キュー)]
-  F --> E[取り込み画面]
+  B -->|recognition 保存| F[(Firestore<br/>読み取りキュー)]
+  F -->|onSnapshot| E[取り込み画面<br/>ライブ取り込み]
+  E -->|本登録| M[(Firestore<br/>measurements)]
 ```
 
-撮影 → Storage 保存 → トリガで自動 OCR → Firestore キューへ、という非同期構成。今回は範囲外
-（モバイル画面の「Cloud Storage へ送信」という説明はこの構成を想定した文言）。
+撮影 → Storage 保存 → トリガで自動 OCR → Firestore の読み取りキュー、という非同期構成。
+台帳照合・本登録は職員がフロントで行い、本登録時に `measurements` へ永続化する。
+**台帳・分析などの表示は現状シード生成のまま**（読み取り側の Firestore 移行は次段）。
+
+- **バックエンド**: `functions/index.js` の `onSheetImageUpload`（Storage トリガ）
+  - `src/recognition.js` … パス解析・recognition ドキュメント組み立て（純粋・テスト対象）
+- **フロント**: `src/lib/db.js`（`VITE_FIREBASE_CONFIG` があれば有効）
+  - `uploadSheetImage` / `watchRecognitions`（onSnapshot 購読）/ `commitRecognition`（measurement 書込＋キュー更新）
+  - firebase SDK は動的 import で読み込むため、未設定時はデモのバンドルに含まれない
+- **セキュリティルール**: `firestore.rules` / `storage.rules`（認証済み職員のみ・作成はバックエンド）
+- **Firestore データモデル**:
+
+  | コレクション | 主なフィールド |
+  |---|---|
+  | `batches/{batchId}` | `sheetCount` `updatedAt` |
+  | `batches/{batchId}/recognitions/{id}` | `no` `status(recognized/committed/error)` `ocrName` `ocrKana` `ocrId` `nameConf` `fields{cid:{value,raw,conf}}` `needsReview` |
+  | `measurements/{userId}_{year}` | `userId` `year` `values` `axes` `total` `source:'ocr'` `batchId` |
+
+#### フェーズ2 の追加デプロイ
+
+```bash
+# ルールとインデックスを反映(関数は前掲の deploy に含まれる)
+firebase deploy --only firestore:rules,firestore:indexes,storage,functions
+```
+
+フロントは `VITE_FIREBASE_CONFIG`（Firebase コンソールの Web アプリ構成 JSON を 1 行で）を設定すると、
+取り込み画面に「ライブ取り込み（Firestore キュー）」が出現する。職員ログイン（Firebase Auth）は
+ルールが `request.auth` を必須にしているため本番前に必ず導入すること。
+
+```
+VITE_FIREBASE_CONFIG={"apiKey":"…","authDomain":"…","projectId":"…","storageBucket":"…","appId":"…"}
+```
 
 ---
 
