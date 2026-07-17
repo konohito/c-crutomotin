@@ -18,14 +18,14 @@ export default function EventModal() {
 
   const save = () => {
     const m = String(state.evDate).match(/(\d{4})[\/\-年.](\d{1,2})[\/\-月.](\d{1,2})/)
-    if (!m) { showToast('日付は 2025/10/05 の形式で入力してください'); return }
-    if (!state.evVenue.trim() && !state.evTitle.trim()) { showToast('タイトルまたは会場を入力してください'); return }
+    if (!m) { showToast('日付は 2025/10/05 の形式で入力してください', 'err'); return }
+    if (!state.evVenue.trim() && !state.evTitle.trim()) { showToast('タイトルまたは会場を入力してください', 'err'); return }
     const ds = m[1] + '/' + String(m[2]).padStart(2, '0') + '/' + String(m[3]).padStart(2, '0')
     let muniName = ''
     let customMunis = state.customMunis
     if (state.evMuni === '__new') {
       const nm = state.evNewMuni.trim()
-      if (!nm) { showToast('市町村・地域名を入力してください'); return }
+      if (!nm) { showToast('市町村・地域名を入力してください', 'err'); return }
       const rg = state.evNewRegion.trim() || 'その他圏域'
       customMunis = customMunis.concat([{ id: '_c' + Date.now(), name: nm, region: rg, venues: [] }])
       muniName = nm

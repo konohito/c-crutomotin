@@ -427,6 +427,16 @@ select.field, select.select {
   max-width: min(480px, calc(100vw - 48px));
 }
 
+/* 「視差効果を減らす」等の OS 設定を尊重: アニメーションを実質無効化 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ==== Retro-modern ornaments =============================================== */
 .retro-corner { position: absolute; width: 14px; height: 14px; pointer-events: none; }
 .retro-corner.tl { left: 20px; top: 20px; border-left: 1.5px solid var(--brand-300); border-top: 1.5px solid var(--brand-300); }

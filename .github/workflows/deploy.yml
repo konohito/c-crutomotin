@@ -22,7 +22,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # 本番接続はリポジトリ Secrets で有効化する(未設定なら空 → 従来どおりデモとして動く)
+      #   OCR_ENDPOINT    … recognizeSheet 関数の URL(単票読み取り/フェーズ1)
+      #   OCR_API_KEY     … functions/.env の OCR_API_KEY と一致させる簡易キー(任意)
+      #   FIREBASE_CONFIG … Firebase Web アプリ構成 JSON を 1 行で(ライブ取り込み+職員ログイン/フェーズ2)
       - run: npm run build
+        env:
+          VITE_OCR_ENDPOINT: ${{ secrets.OCR_ENDPOINT }}
+          VITE_OCR_API_KEY: ${{ secrets.OCR_API_KEY }}
+          VITE_FIREBASE_CONFIG: ${{ secrets.FIREBASE_CONFIG }}
       # gh-pages ブランチへ dist を push すると Pages が自動配信する
       - name: Publish to gh-pages
         run: |

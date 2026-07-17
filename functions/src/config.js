@@ -6,6 +6,8 @@ module.exports = {
   location: process.env.DOCAI_LOCATION || 'us', // Document AI のロケーション: 'us' / 'eu' など
   processorId: process.env.DOCAI_PROCESSOR_ID || '',
   apiKey: process.env.OCR_API_KEY || '',        // 任意: フロントの X-Api-Key と一致させる簡易認証
+  // 職員ログイン必須(Firebase Auth の ID トークンを検証)。本番では 1 を推奨。
+  requireAuth: /^(1|true|yes)$/i.test(process.env.OCR_REQUIRE_AUTH || ''),
   allowOrigin: process.env.OCR_ALLOW_ORIGIN || '*',
   maxImageBytes: parseInt(process.env.OCR_MAX_BYTES || '10485760', 10), // 10MB
   reviewThreshold: parseInt(process.env.OCR_REVIEW_THRESHOLD || '80', 10), // 要確認しきい値(%)。フロントの CONF_THRESHOLD と揃える

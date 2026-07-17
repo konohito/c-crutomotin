@@ -70,10 +70,11 @@ export function StoreProvider({ children }) {
     setState(s => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch) }))
   }, [])
 
-  const showToast = useCallback((msg) => {
+  // type: 'ok'（既定・緑チェック）/ 'err'（赤・少し長く表示）/ 'info'
+  const showToast = useCallback((msg, type = 'ok') => {
     clearTimeout(timers.current.toast)
-    setState(s => ({ ...s, toast: msg }))
-    timers.current.toast = setTimeout(() => setState(s => ({ ...s, toast: null })), 2800)
+    setState(s => ({ ...s, toast: { text: msg, type } }))
+    timers.current.toast = setTimeout(() => setState(s => ({ ...s, toast: null })), type === 'err' ? 4200 : 2800)
   }, [])
 
   const value = useMemo(() => ({ state, set, setState, showToast, timers }), [state, set, showToast])
@@ -153,7 +154,7 @@ export function openSheetVals(state, no) {
 
 export function importCsvText({ text, fname, state, set, showToast }) {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim())
-  if (lines.length < 2) { showToast('CSV にデータ行が見つかりません'); return }
+  if (lines.length < 2) { showToast('CSV にデータ行が見つかりません', 'err'); return }
   const head = csvSplit(lines[0]).map(h => h.replace(/[\s　"]/g, ''))
   const fi = (f) => head.findIndex(f)
   const iId = fi(h => /ID|ＩＤ|番号/i.test(h) && !/会場|電話|郵便|ＦＡＸ|FAX/i.test(h))
@@ -170,7 +171,7 @@ export function importCsvText({ text, fname, state, set, showToast }) {
   const iTug = fi(h => /TUG|ＴＵＧ/i.test(h))
   const iHt = fi(h => h.includes('身長'))
   const iWt = fi(h => h.includes('体重'))
-  if (iName < 0) { showToast('「氏名」列が見つかりません。ヘッダー行をご確認ください'); return }
+  if (iName < 0) { showToast('「氏名」列が見つかりません。ヘッダー行をご確認ください', 'err'); return }
 
   // InBody(体組成) 形式の判別: 骨格筋量・体脂肪率・SMI などの列があれば紐づけ取り込みにする
   const iSmm = fi(h => h.includes('骨格筋量'))
@@ -245,7 +246,7 @@ export function importCsvText({ text, fname, state, set, showToast }) {
 
 export function readCsvFile({ file, state, set, showToast }) {
   if (!file) return
-  if (!/\.csv$|text\/csv/i.test(file.name + '|' + file.type)) { showToast('CSV ファイルを選択してください'); return }
+  if (!/\.csv$|text\/csv/i.test(file.name + '|' + file.type)) { showToast('CSV ファイルを選択してください', 'err'); return }
   const fname = file.name
   const reader = new FileReader()
   reader.onload = () => {

@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import D from './data/engine.js'
 import { useStore, pendingSheets, allEvents, StoreProvider } from './store.jsx'
 import { mdw } from './lib/helpers.js'
+import { dbEnabled } from './lib/db.js'
+import { ocrEnabled } from './lib/ocr.js'
 import { Icon } from './ui/icons.jsx'
 import { Toast } from './ui/kit.jsx'
 import Dashboard from './screens/Dashboard.jsx'
@@ -18,6 +20,7 @@ import Mobile from './screens/Mobile.jsx'
 import ReviewModal from './modals/ReviewModal.jsx'
 import RegisterModal from './modals/RegisterModal.jsx'
 import EventModal from './modals/EventModal.jsx'
+import AuthGate, { useAuthUser, signOutStaff } from './screens/Login.jsx'
 
 const BASE = import.meta.env.BASE_URL
 
@@ -92,6 +95,17 @@ function Sidebar() {
           <div className="t-num" style={{ fontSize: 11, color: 'var(--warning-700)', marginTop: 6 }}>要確認の用紙 {pending.length} 件</div>
         )}
       </button>
+      <SidebarUser />
+    </aside>
+  )
+}
+
+// サイドバー最下部の職員表示。ログイン中(Firebase Auth)は実アカウント＋ログアウト、
+// デモ環境(未設定)は従来のダミー職員を出す。
+function SidebarUser() {
+  const authUser = useAuthUser()
+  if (!authUser) {
+    return (
       <div className="sidebar-user">
         <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, var(--slate-200), var(--slate-300))', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 600, color: 'var(--fg-2)', flexShrink: 0 }}>相</div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -99,7 +113,21 @@ function Sidebar() {
           <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>事務局 · 管理者権限</div>
         </div>
       </div>
-    </aside>
+    )
+  }
+  const label = authUser.displayName || (authUser.email || '').split('@')[0] || '職員'
+  const initial = label.trim().charAt(0).toUpperCase() || '職'
+  return (
+    <div className="sidebar-user">
+      <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, var(--brand-100), var(--brand-200))', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 600, color: 'var(--brand-800)', flexShrink: 0 }}>{initial}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</div>
+        <div style={{ fontSize: 11, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={authUser.email || ''}>{authUser.email || '職員アカウント'}</div>
+      </div>
+      <button className="icon-btn" title="ログアウト" aria-label="ログアウト" onClick={() => signOutStaff()}>
+        <Icon name="logout" size={16} />
+      </button>
+    </div>
   )
 }
 
@@ -123,7 +151,16 @@ function Header() {
         <Icon name="menu" size={18} />
       </button>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <div style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+          {/* 実データ接続時のみ表示(デモは従来どおり無表示)。職員が環境を取り違えないための目印 */}
+          {(dbEnabled() || ocrEnabled()) && (
+            <span className="pill" title="実データ(本番バックエンド)に接続しています" style={{ background: 'var(--success-50)', color: 'var(--success-700)', flexShrink: 0 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success-500)' }} />
+              本番接続
+            </span>
+          )}
+        </div>
         <div className="header-sub" style={{ fontSize: 12, color: 'var(--fg-3)', lineHeight: 1.4 }}>{typeof sub === 'function' ? sub() : sub}</div>
       </div>
       <div className="header-search">
@@ -179,8 +216,10 @@ function AppInner() {
 
 export default function App() {
   return (
-    <StoreProvider>
-      <AppInner />
-    </StoreProvider>
+    <AuthGate>
+      <StoreProvider>
+        <AppInner />
+      </StoreProvider>
+    </AuthGate>
   )
 }

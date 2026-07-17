@@ -38,3 +38,13 @@ npm run build    # dist/ に出力
 ```
 
 `main` ブランチへの push で GitHub Pages へ自動デプロイされます。
+
+## 本番接続（実データ OCR / Firestore / 職員ログイン）
+
+デモは環境変数なしで動きます。実データに接続する場合:
+
+1. `bash scripts/setup-gcp.sh` — GCP / Firebase / Document AI / 職員ログインを対話式で一括セットアップ
+2. リポジトリ Secrets に `OCR_ENDPOINT` / `FIREBASE_CONFIG` を登録して再デプロイ
+
+手順の全体像は [`docs/運用者チェックリスト.md`](docs/運用者チェックリスト.md)、
+技術詳細は [`docs/OCR-BACKEND.md`](docs/OCR-BACKEND.md) を参照。

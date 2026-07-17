@@ -14,14 +14,48 @@ const SHEET_COLS = ['walk5', 'balR', 'balL', 'gripR', 'gripL', 'tug', 'height', 
 let _app, _sdk
 async function sdk() {
   if (_sdk) return _sdk
-  const [{ initializeApp }, firestore, storage] = await Promise.all([
+  const [{ initializeApp }, firestore, storage, auth] = await Promise.all([
     import('firebase/app'),
     import('firebase/firestore'),
     import('firebase/storage'),
+    import('firebase/auth'),
   ])
   _app = initializeApp(CONFIG)
-  _sdk = { firestore, storage, db: firestore.getFirestore(_app), bucket: storage.getStorage(_app) }
+  _sdk = {
+    firestore, storage, auth,
+    db: firestore.getFirestore(_app), bucket: storage.getStorage(_app), authInst: auth.getAuth(_app),
+  }
   return _sdk
+}
+
+// ============ 職員ログイン（Firebase Auth） ============
+// セキュリティルールが request.auth を必須にしているため、Firebase 設定時は必ずログインを通す。
+
+// 認証状態を購読する。cb(user|null) を呼び、解除関数を返す。
+export async function watchAuth(cb) {
+  if (!dbEnabled()) { cb(null); return () => {} }
+  const { auth, authInst } = await sdk()
+  return auth.onAuthStateChanged(authInst, cb)
+}
+
+export async function signIn(email, password) {
+  if (!dbEnabled()) throw new Error('Firebase 未設定です（VITE_FIREBASE_CONFIG）')
+  const { auth, authInst } = await sdk()
+  const cred = await auth.signInWithEmailAndPassword(authInst, email, password)
+  return cred.user
+}
+
+export async function signOutStaff() {
+  if (!dbEnabled()) return
+  const { auth, authInst } = await sdk()
+  await auth.signOut(authInst)
+}
+
+// 現在ログイン中の職員の ID トークン（未ログインなら ''）。OCR エンドポイント呼び出しに添付する。
+export async function getIdToken() {
+  if (!dbEnabled()) return ''
+  const { authInst } = await sdk()
+  return authInst.currentUser ? authInst.currentUser.getIdToken() : ''
 }
 
 // 記録用紙画像を Storage へアップロード → バックエンドの onSheetImageUpload が発火する

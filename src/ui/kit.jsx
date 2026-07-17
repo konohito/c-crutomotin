@@ -72,7 +72,7 @@ export function Modal({ onClose, width, children, className = '' }) {
   }, [onClose])
   return (
     <div className="modal-backdrop noprint" onClick={onClose}>
-      <div className={`modal-panel ${className}`} style={{ width }} onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-panel ${className}`} style={{ width }} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
         {children}
       </div>
     </div>
@@ -98,12 +98,20 @@ export function ModalHead({ icon, iconBg, iconFg, title, sub, onClose }) {
   )
 }
 
+// 種別ごとにアイコンと色を変える（エラーまで緑チェックにならないように）
+const TOAST_KIND = {
+  ok: ['check', 'var(--success-500)'],
+  err: ['warn', '#FF9D9D'],
+  info: ['info', '#8FBCF7'],
+}
 export function Toast({ msg }) {
   if (!msg) return null
+  const { text, type } = typeof msg === 'string' ? { text: msg, type: 'ok' } : msg
+  const [icon, color] = TOAST_KIND[type] || TOAST_KIND.ok
   return (
-    <div className="toast noprint" role="status">
-      <Icon name="check" size={16} strokeWidth={2.5} style={{ color: 'var(--success-500)', flexShrink: 0 }} />
-      {msg}
+    <div className="toast noprint" role={type === 'err' ? 'alert' : 'status'}>
+      <Icon name={icon} size={16} strokeWidth={2.5} style={{ color, flexShrink: 0 }} />
+      {text}
     </div>
   )
 }

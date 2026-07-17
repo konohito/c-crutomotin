@@ -17,6 +17,9 @@ npm run deploy    # firebase deploy --only functions
 
 `POST recognizeSheet`
 
+ヘッダー: `OCR_REQUIRE_AUTH=1` の場合は `Authorization: Bearer <Firebase ID トークン>` が必須
+（フロントは職員ログイン中なら自動添付）。`OCR_API_KEY` 設定時は `X-Api-Key` も必要。
+
 ```jsonc
 // リクエスト
 { "imageBase64": "…", "mimeType": "image/jpeg" }   // または { "gcsUri": "gs://…" }

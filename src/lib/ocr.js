@@ -2,6 +2,7 @@
    VITE_OCR_ENDPOINT が設定されていれば実バックエンド(Firebase Functions + Document AI)を呼ぶ。
    未設定なら ocrEnabled()=false となり、デモは従来どおり engine のモックを使う(GitHub Pages 用)。 */
 import D from '../data/engine.js'
+import { dbEnabled, getIdToken } from './db.js'
 
 export const OCR_ENDPOINT = import.meta.env.VITE_OCR_ENDPOINT || ''
 export const OCR_API_KEY = import.meta.env.VITE_OCR_API_KEY || ''
@@ -37,9 +38,15 @@ export function matchUser(rec) {
 export async function recognizeSheet(file, opts = {}) {
   if (!ocrEnabled()) throw new Error('OCR エンドポイントが未設定です（VITE_OCR_ENDPOINT）')
   const imageBase64 = await fileToBase64(file)
+  const headers = { 'Content-Type': 'application/json', ...(OCR_API_KEY ? { 'X-Api-Key': OCR_API_KEY } : {}) }
+  // 職員ログイン中は ID トークンを添付する(バックエンドの OCR_REQUIRE_AUTH=1 で検証必須にできる)
+  if (dbEnabled()) {
+    const token = await getIdToken()
+    if (token) headers['Authorization'] = `Bearer ${token}`
+  }
   const res = await fetch(OCR_ENDPOINT, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(OCR_API_KEY ? { 'X-Api-Key': OCR_API_KEY } : {}) },
+    headers,
     body: JSON.stringify({ imageBase64, mimeType: file.type || 'image/jpeg' }),
   })
   let payload

@@ -112,7 +112,7 @@ function LiveQueueCard() {
 
   const commit = async (rec) => {
     const u = matchUser(rec)
-    if (!u) { showToast('台帳に一致する利用者がいません'); return }
+    if (!u) { showToast('台帳に一致する利用者がいません', 'err'); return }
     const finalValues = {}
     D.SHEET_COLS.forEach(cid => { finalValues[cid] = rec.fields[cid] ? rec.fields[cid].value : null })
     setCommitting(rec.id); setError('')
@@ -208,7 +208,7 @@ export default function ImportScreen() {
   }
 
   const commitAll = () => {
-    if (pendingSheets(state).length > 0) { showToast('要確認の用紙が残っています'); return }
+    if (pendingSheets(state).length > 0) { showToast('要確認の用紙が残っています', 'err'); return }
     sheetsAll().forEach(sh => {
       const res = state.resolved[sh.no]
       let values = {}

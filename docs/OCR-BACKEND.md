@@ -62,8 +62,10 @@ firebase deploy --only firestore:rules,firestore:indexes,storage,functions
 ```
 
 フロントは `VITE_FIREBASE_CONFIG`（Firebase コンソールの Web アプリ構成 JSON を 1 行で）を設定すると、
-取り込み画面に「ライブ取り込み（Firestore キュー）」が出現する。職員ログイン（Firebase Auth）は
-ルールが `request.auth` を必須にしているため本番前に必ず導入すること。
+**アプリ全体が職員ログイン（Firebase Auth・メール／パスワード）必須になり**、
+取り込み画面に「ライブ取り込み（Firestore キュー）」が出現する。ルールが `request.auth` を
+必須にしているため、ログイン画面・ログアウト・ID トークン添付はコード実装済み
+（`src/screens/Login.jsx` / `src/lib/db.js`）。未設定のデモでは従来どおりログインなしで動く。
 
 ```
 VITE_FIREBASE_CONFIG={"apiKey":"…","authDomain":"…","projectId":"…","storageBucket":"…","appId":"…"}
@@ -72,6 +74,10 @@ VITE_FIREBASE_CONFIG={"apiKey":"…","authDomain":"…","projectId":"…","stora
 ---
 
 ## セットアップ手順
+
+> **一括自動実行**: 以下の手順（API 有効化〜デプロイ・Auth 設定・Web アプリ構成の取得まで）は
+> `bash scripts/setup-gcp.sh` が対話式でまとめて実行します。以降は個別に手動でやる場合、
+> またはスクリプトが失敗したステップだけ手当てする場合のリファレンスです。
 
 前提: GCP プロジェクト（課金有効）、`gcloud` / `firebase-tools`、Node 20。
 
@@ -95,11 +101,14 @@ gcloud services enable documentai.googleapis.com cloudfunctions.googleapis.com \
 
 ### 3. IAM（Functions のサービスアカウントに権限付与）
 
-Cloud Functions 実行 SA（既定 `YOUR_PROJECT@appspot.gserviceaccount.com`）に Document AI 呼び出し権限を付与:
+本リポジトリの関数は **Cloud Functions v2（第 2 世代）** のため、既定の実行 SA は
+**Compute Engine 既定 SA（`PROJECT_NUMBER-compute@developer.gserviceaccount.com`）**。
+こちらに Document AI 呼び出し権限を付与する（App Engine 既定 SA は v1/カスタム構成向け）:
 
 ```bash
+PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT --format='value(projectNumber)')
 gcloud projects add-iam-policy-binding YOUR_PROJECT \
-  --member "serviceAccount:YOUR_PROJECT@appspot.gserviceaccount.com" \
+  --member "serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role "roles/documentai.apiUser"
 ```
 
@@ -118,6 +127,7 @@ cd functions && npm install
 | `DOCAI_PROJECT_ID` | `my-proj` | ローカルのみ必要（本番は自動設定） |
 | `DOCAI_LOCATION` | `us` | プロセッサのロケーション |
 | `DOCAI_PROCESSOR_ID` | `abcdef012345` | 作成したプロセッサ ID |
+| `OCR_REQUIRE_AUTH` | `1` | 職員ログイン必須（Firebase Auth の ID トークンを検証）。**本番は 1 を推奨** |
 | `OCR_API_KEY` | （任意） | フロントの `VITE_OCR_API_KEY` と一致させる簡易認証 |
 | `OCR_ALLOW_ORIGIN` | `https://konohito.github.io` | CORS 許可オリジン |
 
@@ -162,9 +172,12 @@ firebase deploy --only functions   # predeploy で npm test が走る
 
 ## セキュリティ（本番前に必須）
 
-- **公開 SPA から呼ぶ点に注意**: エンドポイントもフロントの API キーも利用者に見える。恒久策は
-  **職員ログイン（Firebase Auth）＋ App Check** を導入し、関数側でトークン検証すること。`OCR_API_KEY`
-  は導入までの簡易的な速度制限に過ぎない
+- **職員ログイン（Firebase Auth）は実装済み**: `VITE_FIREBASE_CONFIG` を設定するとフロントは
+  全画面ログイン必須になり、`recognizeSheet` 呼び出しに ID トークンを添付する。
+  関数側は `OCR_REQUIRE_AUTH=1` でトークン検証を必須化できる（`scripts/setup-gcp.sh` は既定で 1 にする）
+- ログインの有効化（メール／パスワード プロバイダ）と職員アカウント作成が必要
+  → `scripts/setup-gcp.sh` が自動化。手動なら Firebase コンソール → Authentication
+- `OCR_API_KEY` は認証未設定期間の簡易的な抑止に過ぎない。さらに強化するなら **App Check** の導入を検討
 - `OCR_ALLOW_ORIGIN` は本番の SPA URL に限定する（`*` のままにしない）
 - `maxInstances`（既定 10）で暴発時のコスト上限を掛けている
 

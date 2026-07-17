@@ -32,7 +32,7 @@ export default function ReviewModal() {
       if (isNaN(n)) { bad = true; return }
       values[cid] = n
     })
-    if (bad) { showToast('数値として読めない入力があります'); return }
+    if (bad) { showToast('数値として読めない入力があります', 'err'); return }
     const resolved = { ...state.resolved, [sheet.no]: { values, userId: state.mdUser } }
     const nextPend = pendingSheets(state).filter(x => x.no !== sheet.no)
     setState(s => ({ ...s, resolved, mdNo: null }))

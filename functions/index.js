@@ -20,7 +20,7 @@ setGlobalOptions({ region: 'asia-northeast1', memory: '512MiB', timeoutSeconds: 
 function setCors(res) {
   res.set('Access-Control-Allow-Origin', cfg.allowOrigin)
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.set('Access-Control-Allow-Headers', 'Content-Type, X-Api-Key')
+  res.set('Access-Control-Allow-Headers', 'Content-Type, X-Api-Key, Authorization')
   res.set('Access-Control-Max-Age', '3600')
 }
 
@@ -30,6 +30,13 @@ exports.recognizeSheet = onRequest(async (req, res) => {
   if (req.method !== 'POST') { res.status(405).json({ ok: false, error: 'POST のみ対応しています' }); return }
   if (cfg.apiKey && req.get('X-Api-Key') !== cfg.apiKey) {
     res.status(401).json({ ok: false, error: '認証に失敗しました' }); return
+  }
+  // 職員ログイン必須(OCR_REQUIRE_AUTH=1): フロントが添付する Firebase Auth の ID トークンを検証する
+  if (cfg.requireAuth) {
+    const m = /^Bearer\s+(.+)$/i.exec(req.get('Authorization') || '')
+    if (!m) { res.status(401).json({ ok: false, error: '職員ログインが必要です' }); return }
+    try { await admin.auth().verifyIdToken(m[1]) }
+    catch { res.status(401).json({ ok: false, error: 'ログインの有効期限が切れています。再ログインしてください' }); return }
   }
   try {
     const { imageBase64, gcsUri, mimeType } = req.body || {}
