@@ -156,3 +156,22 @@ export function frailtyOf(u, y) {
   const hitShorts = FRAIL_ITEMS.filter(it => hits[it.id]).map(it => it.short)
   return { hits, n, pct: n * 20, level, hitShorts }
 }
+
+// 結果票・行政提出データ共通の総合コメント自動生成（前回測定との比較ベース）
+// 結果票のコメント欄（罫線 2 行 ≒ 57 字）に収まる長さで生成する
+export function commentFor(u, m, prev) {
+  const NAMES = { walk: '歩行速度', balance: 'バランス', grip: '筋力（握力）', mobility: '複合動作（TUG）', body: '体格' }
+  const ADVICE = { walk: '大股歩きを意識した散歩', balance: '机につかまっての片足立ち練習', grip: 'タオル絞りなどの手指の運動', mobility: '椅子からの立ち座り運動', body: '毎日の体重測定と食事の記録' }
+  const tail = (t) => (t.length <= 44 ? t + '次回もお待ちしています。' : t)
+  if (!prev) {
+    const best = Object.keys(m.axes).reduce((a, b) => (m.axes[a] >= m.axes[b] ? a : b))
+    const worst = Object.keys(m.axes).reduce((a, b) => (m.axes[a] <= m.axes[b] ? a : b))
+    return tail('初回の測定おつかれさまでした。' + NAMES[best] + 'は良好です。' + NAMES[worst] + 'には' + ADVICE[worst] + 'がおすすめです。')
+  }
+  const dts = Object.keys(m.axes).map(k => ({ k, d: m.axes[k] - prev.axes[k] }))
+  const up = dts.slice().sort((a, b) => b.d - a.d)[0]
+  const down = dts.slice().sort((a, b) => a.d - b.d)[0]
+  let t = up.d > 0 ? NAMES[up.k] + 'が昨年より改善しています。' : '全体として昨年の水準を維持できています。'
+  t += down.d < 0 ? NAMES[down.k] + 'は低下傾向のため、' + ADVICE[down.k] + 'がおすすめです。' : '無理のない範囲で活動量を保ちましょう。'
+  return tail(t)
+}

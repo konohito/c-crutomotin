@@ -1,30 +1,11 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_LEVELS } from '../lib/helpers.js'
+import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_LEVELS, commentFor } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS } from '../data/kihon.js'
 import { RadioCard, CheckRow, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 const BASE = import.meta.env.BASE_URL
-
-function commentFor(u, m, prev) {
-  const NAMES = { walk: '歩行速度', balance: 'バランス', grip: '筋力（握力）', mobility: '複合動作（TUG）', body: '体格' }
-  const ADVICE = { walk: '大股歩きを意識した散歩', balance: '机につかまっての片足立ち練習', grip: 'タオル絞りなどの手指の運動', mobility: '椅子からの立ち座り運動', body: '毎日の体重測定と食事の記録' }
-  if (!prev) {
-    const best = Object.keys(m.axes).reduce((a, b) => (m.axes[a] >= m.axes[b] ? a : b))
-    const worst = Object.keys(m.axes).reduce((a, b) => (m.axes[a] <= m.axes[b] ? a : b))
-    return '初回の測定おつかれさまでした。' + NAMES[best] + 'は良好です。' + NAMES[worst] + 'を伸ばすために、' + ADVICE[worst] + 'を週2〜3回続けてみましょう。'
-  }
-  const dts = Object.keys(m.axes).map(k => ({ k, d: m.axes[k] - prev.axes[k] }))
-  const up = dts.slice().sort((a, b) => b.d - a.d)[0]
-  const down = dts.slice().sort((a, b) => a.d - b.d)[0]
-  let t = ''
-  if (up.d > 0) t += NAMES[up.k] + 'が昨年より改善しています。この調子で続けましょう。'
-  else t += '全体として昨年の水準を維持できています。'
-  if (down.d < 0) t += NAMES[down.k] + 'は低下傾向のため、' + ADVICE[down.k] + 'がおすすめです。'
-  else t += '無理のない範囲で活動量を保ちましょう。'
-  return t + '次回もお待ちしています。'
-}
 
 // PDF 専用のレーダー（ラベルを大きく描くため広めの viewBox を使う）
 function pdfRadarGeo() {
@@ -100,7 +81,7 @@ function PdfPage({ p, state, count }) {
     ['InBody 点数', p.inbody.score, '点', p.inbodyPrev?.score],
   ] : []
   return (
-    <div className="pdf-page" style={{ padding: '34px 44px', lineHeight: 1.35 }}>
+    <div className="pdf-page" style={{ padding: '24px 44px', lineHeight: 1.35 }}>
       <div className="retro-corner tl" /><div className="retro-corner tr" /><div className="retro-corner bl" /><div className="retro-corner br" />
 
       {/* ヘッダー */}
@@ -200,12 +181,13 @@ function PdfPage({ p, state, count }) {
         )}
         {state.incFrail && p.frail && (
           <ScoreBox label="フレイル簡易評価（測定値による簡易判定）" flex={2}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
-              <span className="t-num" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15 }}>
+            {/* 1 行固定（折り返すとページが A4 に収まらなくなるため省略記号で切る） */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'nowrap', marginTop: 3, minWidth: 0 }}>
+              <span className="t-num" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, flexShrink: 0 }}>
                 該当 {p.frail.n}<span style={{ fontSize: 15, fontWeight: 600, color: 'var(--slate-500)' }}> / 5 項目</span>
               </span>
-              <span style={{ fontSize: 16, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: fl.bg, color: fl.fg, whiteSpace: 'nowrap' }}>{fl.label}</span>
-              <span style={{ fontSize: 13.5, color: 'var(--slate-600)' }}>{p.frail.n > 0 ? '該当: ' + p.frail.hitShorts.join('・') : '該当なし'}</span>
+              <span style={{ fontSize: 16, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: fl.bg, color: fl.fg, whiteSpace: 'nowrap', flexShrink: 0 }}>{fl.label}</span>
+              <span style={{ fontSize: 13.5, color: 'var(--slate-600)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.frail.n > 0 ? p.frail.hitShorts.join('・') : '該当なし'}</span>
             </div>
           </ScoreBox>
         )}
@@ -213,7 +195,7 @@ function PdfPage({ p, state, count }) {
 
       {/* 基本チェックリスト（問診） */}
       {state.incKcl && p.kcl && (
-        <div style={{ marginTop: 8, border: `1px solid ${p.kcl.target ? 'var(--danger-500)' : 'var(--slate-200)'}`, background: p.kcl.target ? 'var(--danger-50)' : 'transparent', display: 'flex', alignItems: 'center', gap: 12, padding: '4px 12px', flexWrap: 'wrap' }}>
+        <div style={{ marginTop: 8, border: `1px solid ${p.kcl.target ? 'var(--danger-500)' : 'var(--slate-200)'}`, background: p.kcl.target ? 'var(--danger-50)' : 'transparent', display: 'flex', alignItems: 'center', gap: 12, padding: '4px 12px', flexWrap: 'nowrap', minWidth: 0 }}>
           <div style={{ fontSize: 13, letterSpacing: '0.06em', color: 'var(--slate-600)', flexShrink: 0 }}>基本チェックリスト（問診）</div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
             <span className="t-num" style={{ fontSize: 21, fontWeight: 700, color: KCL_LEVELS[kclLevel(p.kcl.total)].fg }}>{p.kcl.total}</span>
@@ -222,7 +204,7 @@ function PdfPage({ p, state, count }) {
           <span style={{ fontSize: 15, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: p.kcl.target ? 'var(--danger-500)' : 'var(--success-50)', color: p.kcl.target ? '#fff' : 'var(--success-700)', whiteSpace: 'nowrap' }}>
             {p.kcl.target ? '事業対象者 該当' : '非該当'}
           </span>
-          <span style={{ fontSize: 13, color: 'var(--slate-600)', flex: 1, minWidth: 0 }}>
+          <span style={{ fontSize: 13, color: 'var(--slate-600)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {p.kcl.target ? '該当理由: ' + p.kcl.reasons.map(r => r.label).join(' / ') : '事業対象者の該当基準には当てはまりません'}
           </span>
         </div>
@@ -262,7 +244,7 @@ function PdfPage({ p, state, count }) {
             <span style={{ fontSize: 16, fontWeight: 700 }}>総合スコアの推移</span>
             <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>実線 = 本人 / 破線 = {p.avgHead}</span>
           </div>
-          <svg width="100%" height="86" viewBox="0 0 660 148" preserveAspectRatio="none" style={{ display: 'block', marginTop: 4 }}>
+          <svg width="100%" height="78" viewBox="0 0 660 148" preserveAspectRatio="none" style={{ display: 'block', marginTop: 4 }}>
             {[['100', 16], ['75', 47], ['50', 78], ['25', 108]].map(([lb, yy]) => (
               <g key={lb}>
                 <line x1="30" y1={yy} x2="650" y2={yy} stroke={yy === 108 ? 'var(--slate-200)' : 'var(--slate-100)'} strokeWidth="1" />
@@ -289,9 +271,10 @@ function PdfPage({ p, state, count }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 148px', gap: 12, marginTop: 12, alignItems: 'stretch' }}>
           <div style={{ border: '1px solid var(--slate-300)' }}>
             <div style={{ ...CELL_LABEL, letterSpacing: '0.08em' }}>総合コメント</div>
-            <div style={{ padding: '2px 14px 5px', position: 'relative', minHeight: 74 }}>
+            <div style={{ padding: '2px 14px 5px', position: 'relative', minHeight: 74, maxHeight: 74, overflow: 'hidden' }}>
               {[34, 63].map(t => <div key={t} style={{ position: 'absolute', left: 14, right: 14, top: t, borderBottom: '1px dotted var(--slate-300)' }} />)}
-              <div className="t-hand" style={{ position: 'relative', fontSize: 18, lineHeight: '30px', color: 'var(--slate-800)' }}>{p.commentText}</div>
+              {/* 罫線 2 行分に収める（3 行目に溢れると A4 からはみ出すため） */}
+              <div className="t-hand" style={{ position: 'relative', fontSize: 18, lineHeight: '30px', color: 'var(--slate-800)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.commentText}</div>
             </div>
           </div>
           <div style={{ border: '1px solid var(--slate-300)', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
