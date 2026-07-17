@@ -175,3 +175,27 @@ export function commentFor(u, m, prev) {
   t += down.d < 0 ? NAMES[down.k] + 'は低下傾向のため、' + ADVICE[down.k] + 'がおすすめです。' : '無理のない範囲で活動量を保ちましょう。'
   return tail(t)
 }
+
+// ログイン時刻と季節でひとことが変わる、さりげない掛け声。
+// 時間帯(朝/昼/夕/夜/深夜) × 季節(春夏秋冬)で「あいさつ」と「ひとこと」を返す。
+// 介護予防の現場向けに、体調を気づかう穏やかなトーンにしている。
+export function loginGreeting(now = new Date()) {
+  const h = now.getHours()
+  const m = now.getMonth() + 1
+  const time = h < 5 ? 'late' : h < 11 ? 'morning' : h < 17 ? 'day' : h < 21 ? 'evening' : 'night'
+  const season = (m >= 3 && m <= 5) ? 'spring' : (m >= 6 && m <= 8) ? 'summer' : (m >= 9 && m <= 11) ? 'autumn' : 'winter'
+  const hello = {
+    morning: 'おはようございます',
+    day: 'おつかれさまです',
+    evening: 'おつかれさまです',
+    night: 'こんばんは',
+    late: '遅くまでおつかれさまです',
+  }[time]
+  const asides = {
+    spring: { morning: '桜のころ、あたたかくなってきましたね', day: '春の陽気が心地よい一日です', evening: '日が長くなってきましたね', night: '夜風がやわらかい季節です', late: '朝晩はまだ冷えます、ご無理なく' },
+    summer: { morning: '暑くなりそうです、水分補給をお忘れなく', day: '暑い日が続きます、こまめに休憩を', evening: '夕暮れが涼しくなってきますね', night: '寝苦しい頃です、お体を大切に', late: '暑さの残る夜、ご無理なく' },
+    autumn: { morning: '秋晴れが気持ちいい朝ですね', day: '過ごしやすい季節になりました', evening: '日暮れが早くなってきましたね', night: '虫の音が心地よい頃ですね', late: '朝晩は冷えます、暖かくして' },
+    winter: { morning: '冷え込む朝、暖かくしてどうぞ', day: '寒い日が続きます、ご自愛ください', evening: '早い日暮れ、足元にお気をつけて', night: '冷えますね、暖かくしてお過ごしを', late: '底冷えする夜、ご無理なく' },
+  }
+  return { hello, aside: asides[season][time], time, season }
+}

@@ -1,6 +1,6 @@
 import D from '../data/engine.js'
 import { useStore, pendingSheets, allEvents, staffNames, flagsFor, batchN, openSheetVals } from '../store.jsx'
-import { mdw, addDays, eraOf, colsPlus, itemAvg, autoLines, betterNote, fmtD } from '../lib/helpers.js'
+import { mdw, addDays, eraOf, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
 import { Card, Pill, Overline, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -86,9 +86,17 @@ export default function Dashboard() {
   }
   const [, tm, td] = D.TODAY.split('/').map(Number)
   const tw = '日月火水木金土'[new Date(D.TODAY).getDay()]
+  const greet = loginGreeting()
+  const staffFamily = (D.STAFF[0].name.split(' ')[0]) || '担当'
 
   return (
     <div className="screen">
+      {/* ログイン時刻と季節でひとことが変わる、さりげない掛け声 */}
+      <div className="cm-greeting" style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '0 2px 2px', flexWrap: 'wrap', fontSize: 12.5, color: 'var(--fg-3)', lineHeight: 1.5, animation: 'rowIn 320ms var(--ease-standard)' }}>
+        <span style={{ color: 'var(--fg-2)', fontWeight: 500 }}>{staffFamily}さん、{greet.hello}。</span>
+        <span>{greet.aside}</span>
+      </div>
+
       {/* 今日のやること */}
       <Card style={{ display: 'flex', alignItems: 'stretch', padding: 0, overflow: 'hidden', flexWrap: 'wrap' }}>
         {/* 日めくりブロック */}
