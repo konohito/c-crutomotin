@@ -7,7 +7,7 @@ import { Icon } from '../ui/icons.jsx'
 const BASE = import.meta.env.BASE_URL
 const SHEET_BOXES = { walk5: [1, 1], walk5max: [1, 1], balR: [2, 1], balL: [2, 1], gripR: [2, 1], gripL: [2, 1], tug: [2, 1], height: [3, 1], weight: [3, 1] }
 // 2 回測定する項目は下書きスペース(①②)を設ける
-const DRAFT_COLS = ['gripR', 'gripL', 'walk5', 'walk5max']
+const DRAFT_COLS = ['gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
 
 function sheetRowsFor(u) {
   const last = u ? Object.keys(u.meas).map(Number).sort((a, b) => b - a)[0] : null

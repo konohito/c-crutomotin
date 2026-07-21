@@ -1,7 +1,7 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_LEVELS, commentFor } from '../lib/helpers.js'
-import { kclScore, kclLevel, KCL_LEVELS } from '../data/kihon.js'
+import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAIN_BY_ID } from '../data/kihon.js'
 import { RadioCard, CheckRow, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -88,7 +88,11 @@ function PdfPage({ p, state, count }) {
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'auto auto', border: '1px solid var(--slate-300)', fontSize: 12 }}>
             <div style={{ ...CELL_LABEL }}>参加者 ID</div>
-            <div className="t-num" style={{ padding: '4px 10px', borderBottom: '1px solid var(--slate-200)', fontWeight: 600 }}>{p.uid}</div>
+            <div className="t-num" style={{ padding: '4px 10px', borderBottom: '1px solid var(--slate-200)', fontWeight: 600 }}>
+              {p.uid}
+              {/* ◆ = 事業対象者の共通認識マーク(スタッフ・包括向け。用紙上では説明しない) */}
+              {p.kcl && p.kcl.target && <span style={{ color: 'var(--brand-600)', fontSize: 10, marginLeft: 6, verticalAlign: '1px' }}>◆</span>}
+            </div>
             <div style={{ ...CELL_LABEL }}>測定日</div>
             <div className="t-num" style={{ padding: '4px 10px', borderBottom: '1px solid var(--slate-200)' }}>{p.date}</div>
             <div style={{ ...CELL_LABEL, borderBottom: 'none' }}>会場</div>
@@ -195,22 +199,29 @@ function PdfPage({ p, state, count }) {
               </div>
             </div>
           )}
-          {state.incKcl && p.kcl && (
-            <div style={{ border: `1px solid ${p.kcl.target ? 'var(--danger-500)' : 'var(--slate-300)'}`, background: p.kcl.target ? 'var(--danger-50)' : 'transparent', padding: '5px 14px 7px', minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, letterSpacing: '0.04em', color: 'var(--slate-600)' }}>基本チェックリスト（問診）</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 3, minWidth: 0 }}>
-                <span style={{ fontSize: 15, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: p.kcl.target ? 'var(--danger-500)' : 'var(--success-50)', color: p.kcl.target ? '#fff' : 'var(--success-700)', whiteSpace: 'nowrap', flexShrink: 0 }}>
-                  {p.kcl.target ? '事業対象者 該当' : '非該当'}
-                </span>
-                <span className="t-num" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.15, color: KCL_LEVELS[kclLevel(p.kcl.total)].fg, flexShrink: 0 }}>
-                  {p.kcl.total}<span style={{ fontSize: 14, fontWeight: 600, color: 'var(--slate-500)' }}> / 25 点</span>
-                </span>
-                <span style={{ fontSize: 12.5, color: 'var(--slate-600)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {p.kcl.target ? '該当理由: ' + p.kcl.reasons.map(r => r.label).join(' / ') : '事業対象者の該当基準には当てはまりません'}
-                </span>
+          {state.incKcl && p.kcl && (() => {
+            // 本人向けには「事業対象者 該当」とは出さず、水準表示に留める。
+            // 該当者は ◆ マーク(参加者 ID 横と同じ)でスタッフ・包括が判別する
+            const lv = KCL_LEVELS[kclLevel(p.kcl.total)]
+            const areas = p.kcl.reasons.map(r => r.id === 'overall' ? '生活機能全般' : (KCL_DOMAIN_BY_ID[r.id] ? KCL_DOMAIN_BY_ID[r.id].label : r.label))
+            return (
+              <div style={{ border: '1px solid var(--slate-300)', padding: '5px 14px 7px', minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, letterSpacing: '0.04em', color: 'var(--slate-600)' }}>
+                  <span>基本チェックリスト（問診）</span>
+                  {p.kcl.target && <span style={{ color: 'var(--brand-600)', fontSize: 10 }}>◆</span>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 3, minWidth: 0 }}>
+                  <span style={{ fontSize: 15, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: lv.bg, color: lv.fg, whiteSpace: 'nowrap', flexShrink: 0 }}>{lv.label}</span>
+                  <span className="t-num" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.15, color: lv.fg, flexShrink: 0 }}>
+                    {p.kcl.total}<span style={{ fontSize: 14, fontWeight: 600, color: 'var(--slate-500)' }}> / 25 点</span>
+                  </span>
+                  <span style={{ fontSize: 12.5, color: 'var(--slate-600)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {areas.length ? '気になる領域: ' + areas.join('・') : '大きな低下はみられません'}
+                  </span>
+                </div>
               </div>
-            </div>
-          )}
+            )
+          })()}
         </div>
       )}
 
