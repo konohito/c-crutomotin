@@ -42,6 +42,7 @@
   --info-50:     #ECF4FE;
   --info-500:    #2E74D6;
   --info-700:    #1A4A94;
+  --pink-500:    #EC5FA3;
 
   /* === Foreground / background ========================================== */
   --fg-1: var(--slate-900);

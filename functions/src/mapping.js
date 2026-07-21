@@ -4,10 +4,11 @@
    どちらのレスポンス形式にも対応する。 */
 
 // engine.js の SHEET_COLS と一致させること
-const SHEET_COLS = ['walk5', 'balR', 'balL', 'gripR', 'gripL', 'tug', 'height', 'weight']
+const SHEET_COLS = ['height', 'weight', 'gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
 
 // 各測定項目の照合エイリアス(ラベル文字列 → cid)。正規化後に部分一致で判定する。
 const FIELD_ALIASES = {
+  walk5max: ['5m最大歩行', '最大5m', '最大歩行', '5メートル最大歩行'],
   walk5:  ['5m通常歩行', '5m歩行', '通常5m', '通常歩行', '歩行速度', '5メートル歩行'],
   balR:   ['開眼片足立ち右', '開眼片脚立位右', '片足立ち右', '片脚立位右', '片足右'],
   balL:   ['開眼片足立ち左', '開眼片脚立位左', '片足立ち左', '片脚立位左', '片足左'],

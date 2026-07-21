@@ -1,7 +1,7 @@
 /* Cruto Motion — 介護予防・体力測定 データエンジン
    実データ(R7 参加者名簿_記録用紙)のスキーマに準拠:
-   参加者ID(会場コード2桁+連番) / 氏名(漢字・かな) / 生年月日 / 性別 / 電話 / 診察日
-   ５ｍ通常歩行(秒/m) / 開眼片足立ち右・左(秒,上限60) / 握力右・左(kg,0.5刻み) / TUG(秒) / 身長 / 体重 / BMI */
+   参加者ID(会場コード2桁+連番) / 氏名(漢字・かな) / 生年月日 / 性別 / 電話 / 診察日 / 介護度
+   ５ｍ通常・最大歩行(秒) / 開眼片足立ち右・左(秒,上限60) / 握力右・左(kg,0.5刻み) / TUG(秒) / 身長 / 体重 / BMI */
 
 import { makeDummyKcl } from './kihon.js';
 
@@ -42,7 +42,8 @@ export const ERA = { 2020: '令和2', 2021: '令和3', 2022: '令和4', 2023: '�
 
 // 記録用紙の列(測定項目)
 export const COLS = [
-  { id: 'walk5',  label: '５ｍ通常歩行',   short: '5m歩行',   unit: '秒/m', dec: 1, better: 'low' },
+  { id: 'walk5',    label: '５ｍ通常歩行', short: '5m通常',   unit: '秒', dec: 1, better: 'low' },
+  { id: 'walk5max', label: '５ｍ最大歩行', short: '5m最大',   unit: '秒', dec: 1, better: 'low' },
   { id: 'balR',   label: '開眼片足立ち 右', short: '片足立ち右', unit: '秒',  dec: 1, better: 'high' },
   { id: 'balL',   label: '開眼片足立ち 左', short: '片足立ち左', unit: '秒',  dec: 1, better: 'high' },
   { id: 'gripR',  label: '握力 右',        short: '握力右',   unit: 'kg',  dec: 1, better: 'high' },
@@ -160,8 +161,11 @@ MUNIS.forEach(m => {
     const heightBase = r1((sex === 'M' ? GEN.height.M : GEN.height.F) + gauss() * GEN.height.sd - (age25 - 75) * 0.12);
     const weightBase = r1(GEN.weight[sex][0] + gauss() * GEN.weight[sex][1]);
     const NOTES = ['膝痛あり（立ち上がりは椅子使用）', '高血圧で服薬中', '補聴器使用・声かけは正面から', '杖歩行（T字杖）', '送迎利用（社協バス）', '転倒歴あり（令和6年冬）', '腰痛のため前屈は無理をしない', 'ペースメーカー装着'];
+    // 介護度: 介護予防事業の参加者層(自立中心・一部要支援/要介護1)。年齢と体力傾向から決定
+    const careScore = (age25 - 74) * 0.05 - theta * 0.55;
+    const careLevel = careScore >= 1.35 ? '要介護1' : careScore >= 0.95 ? '要支援2' : careScore >= 0.5 ? '要支援1' : '自立';
     const u = {
-      id: pid, name, kana, sex, sexLabel: sex === 'M' ? '男' : '女', birth,
+      id: pid, name, kana, sex, sexLabel: sex === 'M' ? '男' : '女', birth, careLevel,
       birthDate: birth + '/' + bm + '/' + bd, age: age25,
       muni: m.id, muniName: m.name, region: m.region,
       venueCode: code, venueName: venue[1], phone, joined, theta, meas: {},
@@ -175,6 +179,8 @@ MUNIS.forEach(m => {
       const drift = (y2, p, sign) => sign * theta * p[2] * 0.82 + sign * slope * (y2 - joined) * p[2] * 0.12 + gauss() * p[2] * 0.15;
       const gW = GEN.walk5[sex];
       const walk5 = r1(clamp(gW[0] + gW[1] * (age - 75) - drift(y, gW, 1), GEN.walk5.lo, GEN.walk5.hi));
+      // 最大歩行は通常歩行より速い。体力(theta)が高いほど速度の余力が大きい
+      const walk5max = r1(clamp(walk5 * clamp(0.85 - theta * 0.02, 0.72, 0.92), 0.4, GEN.walk5.hi));
       const gB = GEN.bal[sex];
       const balR = r1(clamp(gB[0] + gB[1] * (age - 75) + drift(y, gB, 1), 0, 60));
       const balL = r1(clamp(balR + gauss() * 5, 0, 60));
@@ -186,7 +192,7 @@ MUNIS.forEach(m => {
       const height = r1(heightBase - (y === CUR ? 0 : (CUR - y) * 0.1));
       const weight = r1(weightBase + gauss() * 1.2);
       const bmi = r1(weight / Math.pow(height / 100, 2));
-      const values = { walk5, balR, balL, gripR, gripL, tug, height, weight, bmi };
+      const values = { walk5, walk5max, balR, balL, gripR, gripL, tug, height, weight, bmi };
       const ax = axesOf(sex, values);
       const total = Math.round(((ax.walk + ax.balance + ax.grip + ax.mobility + ax.body) / 25) * 100);
       u.meas[y] = { values, axes: ax, total, date: DATES[code][y] };
@@ -207,6 +213,7 @@ function genValues(u, y) {
   const gW = GEN.walk5[u.sex], gB = GEN.bal[u.sex], gG = GEN.grip[u.sex], gT = GEN.tug[u.sex];
   const d = (p, sign) => sign * u.theta * p[2] * 0.82 + gauss() * p[2] * 0.17;
   const walk5 = r1(clamp(gW[0] + gW[1] * (age - 75) - d(gW, 1), GEN.walk5.lo, GEN.walk5.hi));
+  const walk5max = r1(clamp(walk5 * clamp(0.85 - u.theta * 0.02, 0.72, 0.92), 0.4, GEN.walk5.hi));
   const balR = r1(clamp(gB[0] + gB[1] * (age - 75) + d(gB, 1), 0, 60));
   const balL = r1(clamp(balR + gauss() * 5, 0, 60));
   const gripR = r05(clamp(gG[0] + gG[1] * (age - 75) + d(gG, 1), GEN.grip.lo, GEN.grip.hi));
@@ -214,9 +221,10 @@ function genValues(u, y) {
   const tug = r1(clamp(gT[0] + gT[1] * (age - 75) - d(gT, 1), GEN.tug.lo, GEN.tug.hi));
   const height = r1((u.sex === 'M' ? GEN.height.M : GEN.height.F) + gauss() * GEN.height.sd - (age - 75) * 0.12);
   const weight = r1(GEN.weight[u.sex][0] + gauss() * GEN.weight[u.sex][1]);
-  return { walk5, balR, balL, gripR, gripL, tug, height, weight, bmi: r1(weight / Math.pow(height / 100, 2)) };
+  return { walk5, walk5max, balR, balL, gripR, gripL, tug, height, weight, bmi: r1(weight / Math.pow(height / 100, 2)) };
 }
-export const SHEET_COLS = ['walk5', 'balR', 'balL', 'gripR', 'gripL', 'tug', 'height', 'weight'];
+// 記録用紙の掲載順(様式 R7-02)
+export const SHEET_COLS = ['height', 'weight', 'gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL'];
 export const sheets = batchUsers.map((u, i) => {
   const values = genValues(u, CUR);
   const fields = {};

@@ -24,7 +24,8 @@ export default function Mobile() {
   const sheet = all.length ? all[(state.mShots + state.mSent) % all.length] : null
   const sheetName = sheet ? (D.users.find(x => x.id === sheet.userId) || { name: sheet.ocrName }).name : '田中ミツヱ'
   const sheetRows = sheet ? [
-    { label: '５ｍ通常歩行', val: sheet.fields.walk5.raw, unit: '秒/m' },
+    { label: '５ｍ通常歩行', val: sheet.fields.walk5.raw, unit: '秒' },
+    { label: '５ｍ最大歩行', val: sheet.fields.walk5max.raw, unit: '秒' },
     { label: '開眼片足立ち 右', val: sheet.fields.balR.raw, unit: '秒' },
     { label: '開眼片足立ち 左', val: sheet.fields.balL.raw, unit: '秒' },
     { label: '握力 右 / 左', val: sheet.fields.gripR.raw + ' / ' + sheet.fields.gripL.raw, unit: 'kg' },

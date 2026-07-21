@@ -8,7 +8,7 @@ let CONFIG = null
 try { CONFIG = import.meta.env.VITE_FIREBASE_CONFIG ? JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG) : null } catch { CONFIG = null }
 export const dbEnabled = () => !!CONFIG
 
-const SHEET_COLS = ['walk5', 'balR', 'balL', 'gripR', 'gripL', 'tug', 'height', 'weight']
+const SHEET_COLS = ['height', 'weight', 'gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
 
 // firebase SDK を 1 回だけ初期化して使い回す
 let _app, _sdk
