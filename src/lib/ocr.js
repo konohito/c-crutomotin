@@ -7,7 +7,7 @@ export const OCR_ENDPOINT = import.meta.env.VITE_OCR_ENDPOINT || ''
 export const OCR_API_KEY = import.meta.env.VITE_OCR_API_KEY || ''
 export const ocrEnabled = () => !!OCR_ENDPOINT
 
-const SHEET_COLS = ['walk5', 'balR', 'balL', 'gripR', 'gripL', 'tug', 'height', 'weight']
+const SHEET_COLS = ['height', 'weight', 'gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {

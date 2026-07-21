@@ -5,7 +5,9 @@ import { RadioCard, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 const BASE = import.meta.env.BASE_URL
-const SHEET_BOXES = { walk5: [1, 1], balR: [2, 1], balL: [2, 1], gripR: [2, 1], gripL: [2, 1], tug: [2, 1], height: [3, 1], weight: [3, 1] }
+const SHEET_BOXES = { walk5: [1, 1], walk5max: [1, 1], balR: [2, 1], balL: [2, 1], gripR: [2, 1], gripL: [2, 1], tug: [2, 1], height: [3, 1], weight: [3, 1] }
+// 2 回測定する項目は下書きスペース(①②)を設ける
+const DRAFT_COLS = ['gripR', 'gripL', 'walk5', 'walk5max']
 
 function sheetRowsFor(u) {
   const last = u ? Object.keys(u.meas).map(Number).sort((a, b) => b - a)[0] : null
@@ -17,7 +19,7 @@ function sheetRowsFor(u) {
     boxes.push({ dot: true })
     for (let i = 0; i < def[1]; i++) boxes.push({ d: true })
     const pv = last && u.meas[last].values[cid] !== null && u.meas[last].values[cid] !== undefined ? D.fmt(u.meas[last].values[cid], col.dec) : null
-    return { id: cid, label: col.label, unit: col.unit, boxes, prev: pv ? '前回 ' + pv : '初回' }
+    return { id: cid, label: col.label, unit: col.unit, boxes, prev: pv ? '前回 ' + pv : '初回', draft: DRAFT_COLS.includes(cid) }
   })
 }
 
@@ -32,120 +34,166 @@ const CELL_LABEL = { padding: '4px 10px', background: 'var(--slate-50)', borderB
 
 function SheetPage({ p }) {
   return (
-    <div className="pdf-page" style={{ padding: '48px 52px' }}>
+    <div className="pdf-page" style={{ padding: '44px 52px 40px' }}>
       {/* 四隅の位置合わせマーカー */}
       <div style={{ position: 'absolute', left: 22, top: 22, width: 17, height: 17, background: 'var(--slate-900)' }} />
       <div style={{ position: 'absolute', right: 22, top: 22, width: 17, height: 17, background: 'var(--slate-900)' }} />
       <div style={{ position: 'absolute', left: 22, bottom: 22, width: 17, height: 17, background: 'var(--slate-900)' }} />
       <div style={{ position: 'absolute', right: 22, bottom: 22, width: 17, height: 17, background: 'var(--slate-900)', borderRadius: '50%' }} />
 
+      {/* ヘッダー(右はスタッフ記入欄。利用者が記載しないよう明記) */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 26, display: 'block' }} />
             <span className="t-display" style={{ fontSize: 13, letterSpacing: '0.05em', color: 'var(--slate-800)' }}>motion</span>
             <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 R7-02</div>
-            <div style={{ fontSize: 10.5, color: 'var(--slate-500)' }}>読み取り対応</div>
+            <div style={{ fontSize: 9.5, color: 'var(--slate-500)', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
-          <div style={{ fontSize: 27, fontWeight: 700, letterSpacing: '0.04em', marginTop: 8 }}>令和7年度 体力測定 記録用紙</div>
-          <div style={{ fontSize: 14, color: 'var(--slate-600)', marginTop: 3 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
+          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.04em', marginTop: 7 }}>令和7年度 体力測定 記録用紙</div>
+          <div style={{ fontSize: 13.5, color: 'var(--slate-600)', marginTop: 2 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 9.5, letterSpacing: '0.1em', color: 'var(--slate-600)', marginBottom: 4 }}>参加者 ID</div>
-          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-            {p.uidDigits.map((dg, i) => (
-              <div key={i} className="t-num" style={{ width: 30, height: 36, border: '2px solid var(--slate-900)', display: 'grid', placeItems: 'center', fontSize: 20, fontWeight: 700 }}>{dg}</div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 1, justifyContent: 'flex-end', marginTop: 5 }}>
-            {p.strip.map((bg, i) => (
-              <div key={i} style={{ width: 7, height: 9, border: '0.5px solid var(--slate-300)', background: bg }} />
+        <div style={{ color: 'var(--danger-500)', paddingTop: 2, flexShrink: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '0.04em', textAlign: 'right' }}>【スタッフ記入用】</div>
+          <div style={{ marginTop: 9, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+            {[['ペースメーカー', '（ 有 ・ 無 ）'], ['人工骨 等', '（ 有 ・ 無 ）'], ['InBody', '（ 済 ・ 不可 ）']].map(([lb, opts]) => (
+              <div key={lb} style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+                <span style={{ width: 104 }}>・{lb}</span>
+                <span style={{ letterSpacing: '0.02em' }}>{opts}</span>
+                <span style={{ width: 54, borderBottom: '1px solid var(--danger-500)' }} />
+              </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* 基本情報 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1.1fr 0.6fr 0.6fr', border: '2px solid var(--slate-900)', marginTop: 14 }}>
-        <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>氏名（ふりがな）</div>
-        <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>生年月日</div>
-        <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>年齢</div>
-        <div style={CELL_LABEL}>性別</div>
-        <div style={{ padding: '7px 10px 9px', borderRight: '1px solid var(--slate-300)', minHeight: 34 }}>
-          <span style={{ fontSize: 13, color: 'var(--slate-500)' }}>{p.kana}</span><br />
-          <span style={{ fontSize: 24, fontWeight: 700 }}>{p.name}</span>
-        </div>
-        <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.birth}</div>
-        <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.age}</div>
-        <div style={{ padding: '8px 10px', alignSelf: 'center', fontSize: 17 }}>{p.sex}</div>
-      </div>
-
-      {/* 記入例 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12, padding: '8px 12px', background: 'var(--slate-50)', border: '1px solid var(--slate-200)' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--slate-700)', flexShrink: 0 }}>記入例</div>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end' }}>
-          {['2', '4'].map((d, i) => (
-            <div key={i} style={{ width: 30, height: 38, border: '2px solid var(--slate-800)', borderRadius: 2, display: 'grid', placeItems: 'center' }}>
-              <span className="t-hand" style={{ fontSize: 23, color: 'var(--slate-800)' }}>{d}</span>
+      {/* 基本情報(ID・氏名は左にまとめる) */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', border: '2px solid var(--slate-900)', marginTop: 11 }}>
+        <div style={{ borderRight: '1px solid var(--slate-900)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr', borderBottom: '1px solid var(--slate-300)' }}>
+            <div style={{ padding: '6px 10px', background: 'var(--slate-50)', borderRight: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)', display: 'flex', alignItems: 'center' }}>参加者 ID</div>
+            <div style={{ padding: '6px 10px 5px' }}>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {p.uidDigits.map((dg, i) => (
+                  <div key={i} className="t-num" style={{ width: 28, height: 34, border: '2px solid var(--slate-900)', display: 'grid', placeItems: 'center', fontSize: 19, fontWeight: 700 }}>{dg}</div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', gap: 1, marginTop: 4 }}>
+                {p.strip.map((bg, i) => (
+                  <div key={i} style={{ width: 7, height: 9, border: '0.5px solid var(--slate-300)', background: bg }} />
+                ))}
+              </div>
             </div>
-          ))}
-          <div style={{ fontSize: 16, fontWeight: 900, paddingBottom: 1 }}>.</div>
-          <div style={{ width: 30, height: 38, border: '2px solid var(--slate-800)', borderRadius: 2, display: 'grid', placeItems: 'center' }}>
-            <span className="t-hand" style={{ fontSize: 23, color: 'var(--slate-800)' }}>5</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '96px 1fr' }}>
+            <div style={{ padding: '6px 8px', background: 'var(--slate-50)', borderRight: '1px solid var(--slate-300)', color: 'var(--slate-600)', display: 'flex', flexDirection: 'column', justifyContent: 'center', lineHeight: 1.5, whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 12.5, letterSpacing: '0.06em' }}>氏名</span>
+              <span style={{ fontSize: 10.5 }}>（ふりがな）</span>
+            </div>
+            <div style={{ padding: '4px 10px 7px' }}>
+              <span style={{ fontSize: 12.5, color: 'var(--slate-500)' }}>{p.kana ? '（' + p.kana + '）' : ''}</span><br />
+              <span style={{ fontSize: 23, fontWeight: 700 }}>{p.name}</span>
+            </div>
           </div>
         </div>
-        <div style={{ fontSize: 13.5, color: 'var(--slate-600)', lineHeight: 1.7 }}>
-          太枠の中に <b>1 マス 1 桁</b> ではっきりと記入してください。小数点は印字済みです。訂正は二重線を引き、枠の右の余白に書き直してください。未実施の項目は空欄のままにしてください。
+        <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.7fr 0.6fr', gridTemplateRows: 'auto 1fr' }}>
+          <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>生年月日</div>
+          <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>年齢</div>
+          <div style={CELL_LABEL}>性別</div>
+          <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.birth}</div>
+          <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.age}</div>
+          <div style={{ padding: '8px 10px', alignSelf: 'center', fontSize: 17 }}>{p.sex}</div>
         </div>
       </div>
 
-      {/* 記入欄 */}
-      <div style={{ marginTop: 14, borderTop: '2px solid var(--slate-900)', paddingTop: 2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 92px auto 64px', gap: 10, padding: '5px 0 3px', borderBottom: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)', alignItems: 'end' }}>
+      {/* 記入欄(書き直し用に右余白を広めに設ける) */}
+      <div style={{ marginTop: 11, borderTop: '2px solid var(--slate-900)', paddingTop: 2 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '164px 1fr 80px auto 44px 58px', gap: 10, padding: '4px 0 3px', borderBottom: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)', alignItems: 'end' }}>
           <div>測定項目</div>
-          <div style={{ whiteSpace: "nowrap" }}>前回値</div>
+          <div />
+          <div style={{ whiteSpace: 'nowrap' }}>前回値</div>
           <div style={{ textAlign: 'right' }}>記入枠</div>
           <div>単位</div>
+          <div />
         </div>
         {p.rows.map(r => (
-          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1fr 88px auto 64px', gap: 10, padding: '5px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
-            <div style={{ fontSize: 22, fontWeight: 600 }}>{r.label}</div>
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '164px 1fr 80px auto 44px 58px', gap: 10, padding: '4px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.label}</div>
+            {/* 2 回測定の項目は下書きスペース(①②) */}
+            {r.draft ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, paddingRight: 14, alignSelf: 'center' }}>
+                {['①', '②'].map(n => (
+                  <div key={n} style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+                    <span style={{ fontSize: 11, color: 'var(--slate-500)', lineHeight: 1 }}>{n}</span>
+                    <span style={{ flex: 1, borderBottom: '1px solid var(--slate-300)' }} />
+                  </div>
+                ))}
+              </div>
+            ) : <div />}
             <div className="t-num" style={{ fontSize: 14, color: 'var(--slate-500)' }}>{r.prev}</div>
             <div style={{ display: 'flex', gap: 5, alignItems: 'flex-end', justifyContent: 'flex-end' }}>
               {r.boxes.map((bx, i) => bx.d
-                ? <div key={i} style={{ width: 40, height: 48, border: '2px solid var(--slate-800)', borderRadius: 2, background: '#fff' }} />
+                ? (
+                  <div key={i} style={{ width: 38, height: 46, border: '2px solid var(--slate-800)', borderRadius: 2, background: '#fff', display: 'grid', placeItems: 'center' }}>
+                    {/* 文字サイズのガイド(薄いグレー) */}
+                    <span className="t-num" style={{ fontSize: 27, fontWeight: 700, color: 'var(--slate-200)', lineHeight: 1 }}>8</span>
+                  </div>
+                )
                 : <div key={i} style={{ fontSize: 22, fontWeight: 900, paddingBottom: 2, width: 10, textAlign: 'center' }}>.</div>
               )}
             </div>
-            <div style={{ fontSize: 16, color: 'var(--slate-600)' }}>{r.unit}</div>
+            <div style={{ fontSize: 15, color: 'var(--slate-600)' }}>{r.unit}</div>
+            {/* 書き直し用の右余白 */}
+            <div />
           </div>
         ))}
       </div>
 
       <div style={{ flex: 1 }} />
 
-      {/* 特記事項 */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 12, marginTop: 14, alignItems: 'stretch' }}>
-        <div style={{ border: '1px solid var(--slate-300)' }}>
-          <div style={{ padding: '4px 10px', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-200)', fontSize: 12.5, letterSpacing: '0.08em', color: 'var(--slate-600)' }}>特記事項（体調・中止項目など）</div>
-          <div style={{ padding: '4px 12px 8px' }}>
-            <div style={{ height: 30, borderBottom: '1px dotted var(--slate-300)' }} />
-            <div style={{ height: 30, borderBottom: '1px dotted var(--slate-300)' }} />
+      {/* スタッフ向け注意事項(注意事項は全て下にまとめる) */}
+      <div style={{ marginTop: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, borderBottom: '2.5px solid var(--brand-500)', paddingBottom: 3 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--danger-500)' }}>スタッフ向け注意事項</span>
+          <span style={{ flex: 1 }} />
+          <span className="t-num" style={{ fontSize: 10, color: 'var(--slate-500)' }}>{p.pageNo} / {p.total}</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.05fr 1fr', gap: 26, marginTop: 9 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+              <span style={{ fontSize: 13.5, fontWeight: 700 }}>【記入について】</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--danger-500)' }}>※必ず<span style={{ textDecoration: 'underline' }}>マッキー</span>を使用</span>
+            </div>
+            {/* 訂正例: 二重線で消して右の余白に書き直す */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 7 }}>
+              <div style={{ position: 'relative', display: 'flex', gap: 3, alignItems: 'flex-end' }}>
+                {['2', '4'].map((d, i) => (
+                  <div key={i} style={{ width: 25, height: 31, border: '1.5px solid var(--slate-800)', borderRadius: 2, display: 'grid', placeItems: 'center' }}>
+                    <span className="t-hand" style={{ fontSize: 18, color: 'var(--slate-800)' }}>{d}</span>
+                  </div>
+                ))}
+                <div style={{ fontSize: 13, fontWeight: 900, paddingBottom: 1 }}>.</div>
+                <div style={{ width: 25, height: 31, border: '1.5px solid var(--slate-800)', borderRadius: 2, display: 'grid', placeItems: 'center' }}>
+                  <span className="t-hand" style={{ fontSize: 18, color: 'var(--slate-800)' }}>5</span>
+                </div>
+                <div style={{ position: 'absolute', left: -4, right: -4, top: '44%', height: 5, borderTop: '1.5px solid var(--slate-800)', borderBottom: '1.5px solid var(--slate-800)' }} />
+              </div>
+              <span className="t-hand" style={{ fontSize: 22, fontWeight: 700, color: 'var(--slate-900)' }}>25.0</span>
+            </div>
+            <div style={{ fontSize: 11.5, lineHeight: 1.7, marginTop: 7, color: 'var(--slate-800)' }}>
+              ①太枠の中に 1 マス 1 桁ではっきりと記入。<br />
+              ②訂正時は二重線を引き、枠の右の余白に書き直す。<br />
+              ③未実施の項目は空欄のままに。
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>【InBody について】</div>
+            <div style={{ fontSize: 11, lineHeight: 1.65, color: 'var(--danger-600)', marginTop: 7 }}>
+              ペースメーカー・心電計・人工肺などの医療用電子機器を装着していると測定が出来ません。<br />
+              また、体内に人工骨や金属プレートが入っている場合は、金属は電気を通しやすいため、実際の体水分量や筋肉量と異なる結果（誤差）が出ることがあります。
+            </div>
           </div>
         </div>
-        <div style={{ border: '1px solid var(--slate-300)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '4px 10px', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-200)', fontSize: 12.5, letterSpacing: '0.08em', color: 'var(--slate-600)', textAlign: 'center' }}>測定者名</div>
-          <div style={{ flex: 1, minHeight: 40 }} />
-        </div>
-      </div>
-
-      {/* フッター */}
-      <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10, borderTop: '3px solid var(--brand-500)', paddingTop: 7 }}>
-        <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 18, display: 'block' }} />
-        <span className="t-display" style={{ fontSize: 11, letterSpacing: '0.05em', color: 'var(--slate-700)' }}>motion</span>
-        <span style={{ fontSize: 9, color: 'var(--slate-500)' }}>スキャン読み取り対応様式 · 用紙は折らずにお持ちください</span>
-        <span style={{ flex: 1 }} />
-        <span className="t-num" style={{ fontSize: 9.5, color: 'var(--slate-500)' }}>{p.pageNo} / {p.total}</span>
       </div>
     </div>
   )

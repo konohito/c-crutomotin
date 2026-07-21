@@ -122,7 +122,7 @@ export function parseBirthYear(sv) {
 // 測定値から判定できる 5 項目。3 項目以上該当でフレイル相当、1〜2 項目でプレフレイル相当。
 // 問診（疲労感・活動量）を含む正式なフレイル診断ではない点に注意。
 export const FRAIL_ITEMS = [
-  { id: 'walk',   label: '歩行速度の低下', short: '歩行',    desc: '５ｍ通常歩行 1.0 秒/m 以上' },
+  { id: 'walk',   label: '歩行速度の低下', short: '歩行',    desc: '５ｍ通常歩行 1.0 秒 以上' },
   { id: 'grip',   label: '筋力の低下',    short: '筋力',    desc: '握力 男性 28kg / 女性 18kg 未満' },
   { id: 'bal',    label: 'バランスの低下', short: 'バランス', desc: '開眼片足立ち 5 秒未満' },
   { id: 'tug',    label: '複合動作の低下', short: '複合動作', desc: 'TUG 13.5 秒以上' },

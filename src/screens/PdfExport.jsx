@@ -30,7 +30,8 @@ function buildPage(state, u, y, i) {
   const prev = prevY ? u.meas[prevY] : null
   const muniAgg = D.agg(x => x.muni === u.muni, y)
   const avgHead = u.muniName + '平均'
-  const colsBmi = colsPlus()
+  const all = colsPlus()
+  const colsBmi = PDF_ORDER.map(id => all.find(c => c.id === id)).filter(Boolean)
   const rows = colsBmi.map(c => {
     const d = deltaOf(m.values[c.id], prev ? prev.values[c.id] : null, c.dec, c.better)
     const avg = c.id === 'bmi' ? muniBmiAvg(u.muni, y) : muniAgg.cols[c.id]
@@ -46,7 +47,7 @@ function buildPage(state, u, y, i) {
   const inbodyPrev = ibPrevY ? u.inbody[ibPrevY] : null
   return {
     era: eraOf(y), uid: u.id, date: m.date, issued: D.TODAY,
-    name: u.name, kana: u.kana, birth: u.birthDate, age: y - u.birth, sex: u.sexLabel, sexKey: u.sex,
+    name: u.name, kana: u.kana, birth: u.birthDate, age: y - u.birth, sex: u.sexLabel, sexKey: u.sex, care: u.careLevel || '—',
     muniVenue: u.muniName + ' · ' + u.venueName, avgHead, rows,
     total: m.total, prevDelta: pd.txt, prevDeltaFg: pd.fg,
     polyCur: PG.poly(m.axes), polyPrev: prev ? PG.poly(prev.axes) : '', polyAvg: muniAgg.count ? PG.poly(muniAgg.axes) : '',
@@ -58,18 +59,11 @@ function buildPage(state, u, y, i) {
   }
 }
 
-const PDF_LABELS = { walk5: '５ｍ歩行', balR: '片足立ち 右', balL: '片足立ち 左', gripR: '握力 右', gripL: '握力 左', tug: 'TUG', height: '身長', weight: '体重', bmi: 'BMI' }
+// 結果票の掲載順と表示ラベル
+const PDF_ORDER = ['height', 'weight', 'bmi', 'gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
+const PDF_LABELS = { walk5: '５ｍ通常歩行', walk5max: '５ｍ最大歩行', balR: '片足立ち 右', balL: '片足立ち 左', gripR: '握力 右', gripL: '握力 左', tug: 'TUG', height: '身長', weight: '体重', bmi: 'BMI' }
 
 const CELL_LABEL = { padding: '4px 10px', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-200)', fontSize: 12, letterSpacing: '0.06em', color: 'var(--slate-600)' }
-
-function ScoreBox({ label, children, border = 'var(--slate-300)', flex = 1 }) {
-  return (
-    <div style={{ flex, border: `1px solid ${border}`, padding: '6px 14px 8px', minWidth: 0 }}>
-      <div style={{ fontSize: 13, letterSpacing: '0.08em', color: 'var(--slate-600)' }}>{label}</div>
-      {children}
-    </div>
-  )
-}
 
 function PdfPage({ p, state, count }) {
   const fl = p.frail ? FRAIL_LEVELS[p.frail.level] : null
@@ -104,8 +98,9 @@ function PdfPage({ p, state, count }) {
       </div>
 
       {/* 基本情報 — 本人が読む行は大きく */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1.05fr 0.62fr 0.55fr', border: '1px solid var(--slate-300)', marginTop: 9 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.9fr 0.72fr 1.0fr 0.56fr 0.5fr', border: '1px solid var(--slate-300)', marginTop: 9 }}>
         <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-200)' }}>氏名</div>
+        <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-200)' }}>介護度</div>
         <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-200)' }}>生年月日</div>
         <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-200)' }}>年齢</div>
         <div style={CELL_LABEL}>性別</div>
@@ -113,19 +108,20 @@ function PdfPage({ p, state, count }) {
           <span style={{ fontSize: 25, fontWeight: 700 }}>{p.name}</span>
           <span style={{ fontSize: 13, color: 'var(--slate-500)', marginLeft: 10 }}>{p.kana}</span>
         </div>
+        <div style={{ padding: '7px 12px', borderRight: '1px solid var(--slate-200)', alignSelf: 'center', fontSize: 17, fontWeight: 700, whiteSpace: 'nowrap' }}>{p.care}</div>
         <div className="t-num" style={{ padding: '7px 12px', borderRight: '1px solid var(--slate-200)', alignSelf: 'center', fontSize: 17 }}>{p.birth}</div>
         <div className="t-num" style={{ padding: '7px 12px', borderRight: '1px solid var(--slate-200)', alignSelf: 'center', fontSize: 17 }}>{p.age} 歳</div>
         <div style={{ padding: '7px 12px', alignSelf: 'center', fontSize: 17 }}>{p.sex}</div>
       </div>
 
-      {/* 測定結果 + レーダー */}
-      <div style={{ display: 'grid', gridTemplateColumns: state.incRadar ? '1fr 238px' : '1fr', gap: 12, marginTop: 9, alignItems: 'start' }}>
+      {/* 測定結果 + 総合スコア / レーダー */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 238px', gap: 12, marginTop: 9, alignItems: 'start' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, borderBottom: '2px solid var(--slate-900)', paddingBottom: 4 }}>
             <span style={{ fontSize: 16, fontWeight: 700 }}>測定結果</span>
             <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>実測値</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: state.incAvg ? '1.1fr 0.78fr 0.68fr 0.74fr 0.74fr' : '1.3fr 0.85fr 0.75fr 0.8fr', borderBottom: '1px solid var(--slate-200)', padding: '4px 0 3px', color: 'var(--slate-600)', fontSize: 12.5, fontWeight: 600 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: state.incAvg ? '1.35fr 0.72fr 0.62fr 0.68fr 0.68fr' : '1.5fr 0.8fr 0.7fr 0.75fr', borderBottom: '1px solid var(--slate-200)', padding: '4px 0 3px', color: 'var(--slate-600)', fontSize: 12.5, fontWeight: 600 }}>
             <div>項目</div>
             <div style={{ textAlign: 'right' }}>今回</div>
             <div style={{ textAlign: 'right' }}>前回</div>
@@ -133,80 +129,88 @@ function PdfPage({ p, state, count }) {
             {state.incAvg && <div style={{ textAlign: 'right' }}>{p.avgHead}</div>}
           </div>
           {p.rows.map(r => (
-            <div key={r.id} style={{ display: 'grid', gridTemplateColumns: state.incAvg ? '1.1fr 0.78fr 0.68fr 0.74fr 0.74fr' : '1.3fr 0.85fr 0.75fr 0.8fr', borderBottom: '1px solid var(--slate-100)', padding: '3px 0', alignItems: 'baseline' }}>
-              <div style={{ fontSize: 21, fontWeight: 500, whiteSpace: 'nowrap' }}>{PDF_LABELS[r.id] || r.label} <span style={{ fontSize: 12, color: 'var(--slate-400)' }}>{r.unit}</span></div>
-              <div className="t-num" style={{ textAlign: 'right', fontWeight: 700, fontSize: 21 }}>{r.cur}</div>
-              <div className="t-num" style={{ textAlign: 'right', color: 'var(--slate-500)', fontSize: 17 }}>{r.prev}</div>
-              <div className="t-num" style={{ textAlign: 'right', fontWeight: 700, fontSize: 17.5, color: r.deltaFg }}>{r.delta}</div>
-              {state.incAvg && <div className="t-num" style={{ textAlign: 'right', color: 'var(--slate-500)', fontSize: 16 }}>{r.avg}</div>}
+            <div key={r.id} style={{ display: 'grid', gridTemplateColumns: state.incAvg ? '1.35fr 0.72fr 0.62fr 0.68fr 0.68fr' : '1.5fr 0.8fr 0.7fr 0.75fr', borderBottom: '1px solid var(--slate-100)', padding: '3px 0', alignItems: 'baseline' }}>
+              <div style={{ fontSize: 19, fontWeight: 500, whiteSpace: 'nowrap' }}>{PDF_LABELS[r.id] || r.label} <span style={{ fontSize: 12, color: 'var(--slate-400)' }}>{r.unit}</span></div>
+              <div className="t-num" style={{ textAlign: 'right', fontWeight: 700, fontSize: 20 }}>{r.cur}</div>
+              <div className="t-num" style={{ textAlign: 'right', color: 'var(--slate-500)', fontSize: 16 }}>{r.prev}</div>
+              <div className="t-num" style={{ textAlign: 'right', fontWeight: 700, fontSize: 16.5, color: r.deltaFg }}>{r.delta}</div>
+              {state.incAvg && <div className="t-num" style={{ textAlign: 'right', color: 'var(--slate-500)', fontSize: 15 }}>{r.avg}</div>}
             </div>
           ))}
         </div>
-        {state.incRadar && (
-          <div style={{ border: '1px solid var(--slate-200)', padding: '10px 8px 6px' }}>
-            <div style={{ fontSize: 13, letterSpacing: '0.08em', color: 'var(--slate-600)', textAlign: 'center' }}>5領域評価（5点満点）</div>
-            <svg width="100%" viewBox="0 0 320 252" style={{ display: 'block' }}>
-              {PG.rings.map((rg, i) => <polygon key={i} points={rg} fill="none" stroke="var(--slate-100)" strokeWidth="1" />)}
-              {PG.axesGeo.map((ax, i) => (
-                <g key={i}>
-                  <line x1="160" y1="122" x2={ax.x2} y2={ax.y2} stroke="var(--slate-200)" strokeWidth="1" />
-                  <text x={ax.lx} y={ax.ly} textAnchor="middle" fontSize="17" fontWeight="600" fill="var(--slate-700)">{ax.label}</text>
-                </g>
-              ))}
-              {p.polyAvg && <polygon points={p.polyAvg} fill="none" stroke="var(--info-500)" strokeWidth="1.3" strokeDasharray="3 3" />}
-              {p.polyPrev && <polygon points={p.polyPrev} fill="none" stroke="var(--slate-400)" strokeWidth="1.3" strokeDasharray="5 3" />}
-              <polygon points={p.polyCur} fill="rgba(242,106,31,0.14)" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinejoin="round" />
-            </svg>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 2 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--slate-600)' }}><span style={{ width: 13, height: 3, background: 'var(--brand-500)' }} />今回</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--slate-600)' }}><span style={{ width: 13, height: 0, borderTop: '2px dashed var(--slate-400)' }} />前回</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--slate-600)' }}><span style={{ width: 13, height: 0, borderTop: '2px dotted var(--info-500)' }} />{p.avgHead}</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* 総合スコア */}
+          <div style={{ border: '1px solid var(--slate-300)', padding: '7px 14px 9px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, letterSpacing: '0.08em', color: 'var(--slate-600)' }}>総合スコア</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
+                <span className="t-display" style={{ fontSize: 40, lineHeight: 1.1, color: 'var(--brand-600)' }}>{p.total}</span>
+                <span style={{ fontSize: 13, color: 'var(--slate-500)' }}>/100</span>
+              </div>
             </div>
+            {state.incPrev && (
+              <div>
+                <div style={{ fontSize: 12, letterSpacing: '0.06em', color: 'var(--slate-600)' }}>前回比</div>
+                <div className="t-num" style={{ fontSize: 25, fontWeight: 700, color: p.prevDeltaFg, marginTop: 5 }}>{p.prevDelta}</div>
+              </div>
+            )}
           </div>
-        )}
+          {state.incRadar && (
+            <div style={{ border: '1px solid var(--slate-200)', padding: '8px 8px 5px' }}>
+              <div style={{ fontSize: 13, letterSpacing: '0.08em', color: 'var(--slate-600)', textAlign: 'center' }}>5領域評価（5点満点）</div>
+              <svg width="100%" viewBox="0 0 320 252" style={{ display: 'block' }}>
+                {PG.rings.map((rg, i) => <polygon key={i} points={rg} fill="none" stroke="var(--slate-100)" strokeWidth="1" />)}
+                {PG.axesGeo.map((ax, i) => (
+                  <g key={i}>
+                    <line x1="160" y1="122" x2={ax.x2} y2={ax.y2} stroke="var(--slate-200)" strokeWidth="1" />
+                    <text x={ax.lx} y={ax.ly} textAnchor="middle" fontSize="17" fontWeight="600" fill="var(--slate-700)">{ax.label}</text>
+                  </g>
+                ))}
+                {p.polyAvg && <polygon points={p.polyAvg} fill="none" stroke="var(--info-500)" strokeWidth="1.3" strokeDasharray="3 3" />}
+                {p.polyPrev && <polygon points={p.polyPrev} fill="none" stroke="var(--pink-500)" strokeWidth="1.4" strokeDasharray="5 3" />}
+                <polygon points={p.polyCur} fill="rgba(242,106,31,0.14)" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinejoin="round" />
+              </svg>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginTop: 2 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--slate-600)' }}><span style={{ width: 13, height: 3, background: 'var(--brand-500)' }} />今回</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--slate-600)' }}><span style={{ width: 13, height: 0, borderTop: '2px dashed var(--pink-500)' }} />前回</span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--slate-600)' }}><span style={{ width: 13, height: 0, borderTop: '2px dotted var(--info-500)' }} />{p.avgHead}</span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* 総合スコア / 前回比 / フレイル簡易評価 */}
-      <div style={{ display: 'flex', gap: 10, marginTop: 8, alignItems: 'stretch' }}>
-        <ScoreBox label="総合スコア" flex={0.85}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-            <span className="t-display" style={{ fontSize: 42, lineHeight: 1.1, color: 'var(--brand-600)' }}>{p.total}</span>
-            <span style={{ fontSize: 14, color: 'var(--slate-500)' }}>/100</span>
-          </div>
-        </ScoreBox>
-        {state.incPrev && (
-          <ScoreBox label="前回比" border="var(--slate-200)" flex={0.6}>
-            <div className="t-num" style={{ fontSize: 28, fontWeight: 700, color: p.prevDeltaFg, marginTop: 6 }}>{p.prevDelta}</div>
-          </ScoreBox>
-        )}
-        {state.incFrail && p.frail && (
-          <ScoreBox label="フレイル簡易評価（測定値による簡易判定）" flex={2}>
-            {/* 1 行固定（折り返すとページが A4 に収まらなくなるため省略記号で切る） */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'nowrap', marginTop: 3, minWidth: 0 }}>
-              <span className="t-num" style={{ fontSize: 26, fontWeight: 700, lineHeight: 1.15, flexShrink: 0 }}>
-                該当 {p.frail.n}<span style={{ fontSize: 15, fontWeight: 600, color: 'var(--slate-500)' }}> / 5 項目</span>
-              </span>
-              <span style={{ fontSize: 16, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: fl.bg, color: fl.fg, whiteSpace: 'nowrap', flexShrink: 0 }}>{fl.label}</span>
-              <span style={{ fontSize: 13.5, color: 'var(--slate-600)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.frail.n > 0 ? p.frail.hitShorts.join('・') : '該当なし'}</span>
+      {/* フレイル簡易評価 / 基本チェックリスト（問診） */}
+      {((state.incFrail && p.frail) || (state.incKcl && p.kcl)) && (
+        <div style={{ display: 'grid', gridTemplateColumns: (state.incFrail && p.frail) && (state.incKcl && p.kcl) ? '1fr 1fr' : '1fr', gap: 10, marginTop: 8 }}>
+          {state.incFrail && p.frail && (
+            <div style={{ border: '1px solid var(--slate-300)', padding: '5px 14px 7px', minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, letterSpacing: '0.04em', color: 'var(--slate-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>フレイル簡易評価（測定値による簡易判定）</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 3, minWidth: 0 }}>
+                <span style={{ fontSize: 15, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: fl.bg, color: fl.fg, whiteSpace: 'nowrap', flexShrink: 0 }}>{fl.label}</span>
+                <span className="t-num" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.15, flexShrink: 0 }}>
+                  {p.frail.n}<span style={{ fontSize: 14, fontWeight: 600, color: 'var(--slate-500)' }}> /5 該当</span>
+                </span>
+                <span style={{ fontSize: 12.5, color: 'var(--slate-600)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>該当項目: {p.frail.n > 0 ? p.frail.hitShorts.join('・') : 'なし'}</span>
+              </div>
             </div>
-          </ScoreBox>
-        )}
-      </div>
-
-      {/* 基本チェックリスト（問診） */}
-      {state.incKcl && p.kcl && (
-        <div style={{ marginTop: 8, border: `1px solid ${p.kcl.target ? 'var(--danger-500)' : 'var(--slate-200)'}`, background: p.kcl.target ? 'var(--danger-50)' : 'transparent', display: 'flex', alignItems: 'center', gap: 12, padding: '4px 12px', flexWrap: 'nowrap', minWidth: 0 }}>
-          <div style={{ fontSize: 13, letterSpacing: '0.06em', color: 'var(--slate-600)', flexShrink: 0 }}>基本チェックリスト（問診）</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-            <span className="t-num" style={{ fontSize: 21, fontWeight: 700, color: KCL_LEVELS[kclLevel(p.kcl.total)].fg }}>{p.kcl.total}</span>
-            <span style={{ fontSize: 13, color: 'var(--slate-500)' }}>/ 25 点</span>
-          </div>
-          <span style={{ fontSize: 15, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: p.kcl.target ? 'var(--danger-500)' : 'var(--success-50)', color: p.kcl.target ? '#fff' : 'var(--success-700)', whiteSpace: 'nowrap' }}>
-            {p.kcl.target ? '事業対象者 該当' : '非該当'}
-          </span>
-          <span style={{ fontSize: 13, color: 'var(--slate-600)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {p.kcl.target ? '該当理由: ' + p.kcl.reasons.map(r => r.label).join(' / ') : '事業対象者の該当基準には当てはまりません'}
-          </span>
+          )}
+          {state.incKcl && p.kcl && (
+            <div style={{ border: `1px solid ${p.kcl.target ? 'var(--danger-500)' : 'var(--slate-300)'}`, background: p.kcl.target ? 'var(--danger-50)' : 'transparent', padding: '5px 14px 7px', minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, letterSpacing: '0.04em', color: 'var(--slate-600)' }}>基本チェックリスト（問診）</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 3, minWidth: 0 }}>
+                <span style={{ fontSize: 15, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: p.kcl.target ? 'var(--danger-500)' : 'var(--success-50)', color: p.kcl.target ? '#fff' : 'var(--success-700)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {p.kcl.target ? '事業対象者 該当' : '非該当'}
+                </span>
+                <span className="t-num" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.15, color: KCL_LEVELS[kclLevel(p.kcl.total)].fg, flexShrink: 0 }}>
+                  {p.kcl.total}<span style={{ fontSize: 14, fontWeight: 600, color: 'var(--slate-500)' }}> / 25 点</span>
+                </span>
+                <span style={{ fontSize: 12.5, color: 'var(--slate-600)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.kcl.target ? '該当理由: ' + p.kcl.reasons.map(r => r.label).join(' / ') : '事業対象者の該当基準には当てはまりません'}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -223,11 +227,14 @@ function PdfPage({ p, state, count }) {
               const d = deltaOf(v, pv ?? null, 1, label === '体脂肪率' ? 'none' : 'high')
               return (
                 <div key={label} style={{ flex: 1, border: `1px solid ${low ? 'var(--danger-500)' : 'var(--slate-200)'}`, padding: '5px 12px 6px', background: low ? 'var(--danger-50)' : 'transparent' }}>
-                  <div style={{ fontSize: 12, color: 'var(--slate-600)', whiteSpace: 'nowrap' }}>{label}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 12, color: 'var(--slate-600)', whiteSpace: 'nowrap' }}>{label}</span>
+                    <span style={{ fontSize: 10.5, color: 'var(--danger-600)', whiteSpace: 'nowrap' }}>前回比</span>
+                  </div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
                     <span className="t-num" style={{ fontSize: 23, fontWeight: 700, color: low ? 'var(--danger-700)' : 'var(--slate-900)' }}>{v === null ? '—' : fmtD(v, label === 'InBody 点数' ? 0 : 1)}</span>
                     <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>{unit}</span>
-                    <span className="t-num" style={{ fontSize: 13, fontWeight: 600, color: d.fg, marginLeft: 'auto' }}>{d.txt}</span>
+                    <span className="t-num" style={{ fontSize: 14, fontWeight: 700, color: d.fg, marginLeft: 'auto' }}>{d.txt}</span>
                   </div>
                   {low && <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--danger-700)' }}>基準値未満</div>}
                 </div>
@@ -251,7 +258,8 @@ function PdfPage({ p, state, count }) {
                 <text x="25" y={+yy + 5} textAnchor="end" fontSize="13" fill="var(--slate-400)" fontFamily="Inter">{lb}</text>
               </g>
             ))}
-            <path d={p.muniPath} fill="none" stroke="var(--slate-300)" strokeWidth="1.5" strokeDasharray="5 4" />
+            {/* 平均は青色(レーダーの市町村平均と揃える) */}
+            <path d={p.muniPath} fill="none" stroke="var(--info-500)" strokeWidth="1.5" strokeDasharray="5 4" />
             <path d={p.trendPath} fill="none" stroke="var(--brand-500)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
             {p.trendDots.map((d, i) => (
               <g key={i}>
