@@ -38,8 +38,8 @@ function buildPage(state, u, y, i) {
     return { id: c.id, label: c.label, unit: c.unit, cur: fmtD(m.values[c.id], c.dec), prev: prev ? fmtD(prev.values[c.id], c.dec) : '—', delta: d.txt, deltaFg: d.fg, avg: avg === null || avg === undefined ? '—' : fmtD(avg, c.dec) }
   })
   const pd = deltaOf(m.total, prev ? prev.total : null, 0, 'high')
-  const pts = linePts(D.YEARS.map(yy => ({ year: yy, v: u.meas[yy] && yy <= y ? u.meas[yy].total : null })), D.YEARS, 56, 630, 100, 0, 16, 108)
-  const mpts = linePts(D.YEARS.map(yy => ({ year: yy, v: yy <= y ? (D.agg(x => x.muni === u.muni, yy).total || null) : null })), D.YEARS, 56, 630, 100, 0, 16, 108)
+  const pts = linePts(D.YEARS.map(yy => ({ year: yy, v: u.meas[yy] && yy <= y ? u.meas[yy].total : null })), D.YEARS, 56, 630, 100, 0, 14, 78)
+  const mpts = linePts(D.YEARS.map(yy => ({ year: yy, v: yy <= y ? (D.agg(x => x.muni === u.muni, yy).total || null) : null })), D.YEARS, 56, 630, 100, 0, 14, 78)
   const frail = frailtyOf(u, y)
   const kcl = kclScore(u, y)
   const inbody = u.inbody && u.inbody[y] ? u.inbody[y] : null
@@ -52,7 +52,7 @@ function buildPage(state, u, y, i) {
     total: m.total, prevDelta: pd.txt, prevDeltaFg: pd.fg,
     polyCur: PG.poly(m.axes), polyPrev: prev ? PG.poly(prev.axes) : '', polyAvg: muniAgg.count ? PG.poly(muniAgg.axes) : '',
     trendPath: pathOf(pts), muniPath: pathOf(mpts),
-    trendDots: dotsOf(pts).map(d => ({ x: d.x, y: d.y, ly: d.y < 34 ? d.y + 22 : d.y - 11, v: d.v, year: eraOf(d.year) })),
+    trendDots: dotsOf(pts).map(d => ({ x: d.x, y: d.y, ly: d.y < 30 ? d.y + 19 : d.y - 9, v: d.v, year: eraOf(d.year) })),
     pageNo: i + 1,
     commentText: commentFor(u, m, prev),
     frail, kcl, inbody, inbodyPrev,
@@ -119,7 +119,7 @@ function PdfPage({ p, state, count }) {
       </div>
 
       {/* 測定結果 + 総合スコア / レーダー */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 238px', gap: 12, marginTop: 9, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 268px', gap: 12, marginTop: 9, alignItems: 'start' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, borderBottom: '2px solid var(--slate-900)', paddingBottom: 4 }}>
             <span style={{ fontSize: 16, fontWeight: 700 }}>測定結果</span>
@@ -143,19 +143,19 @@ function PdfPage({ p, state, count }) {
           ))}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {/* 総合スコア */}
-          <div style={{ border: '1px solid var(--slate-300)', padding: '7px 14px 9px', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+          {/* 総合スコア(本人が最初に見る数字なので大きく) */}
+          <div style={{ border: '1px solid var(--slate-300)', padding: '8px 16px 10px', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, letterSpacing: '0.08em', color: 'var(--slate-600)' }}>総合スコア</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-                <span className="t-display" style={{ fontSize: 40, lineHeight: 1.1, color: 'var(--brand-600)' }}>{p.total}</span>
-                <span style={{ fontSize: 13, color: 'var(--slate-500)' }}>/100</span>
+              <div style={{ fontSize: 13.5, letterSpacing: '0.08em', color: 'var(--slate-600)' }}>総合スコア</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span className="t-display" style={{ fontSize: 56, lineHeight: 1.05, color: 'var(--brand-600)' }}>{p.total}</span>
+                <span style={{ fontSize: 15, color: 'var(--slate-500)' }}>/100</span>
               </div>
             </div>
             {state.incPrev && (
               <div>
-                <div style={{ fontSize: 12, letterSpacing: '0.06em', color: 'var(--slate-600)' }}>前回比</div>
-                <div className="t-num" style={{ fontSize: 25, fontWeight: 700, color: p.prevDeltaFg, marginTop: 5 }}>{p.prevDelta}</div>
+                <div style={{ fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)' }}>前回比</div>
+                <div className="t-num" style={{ fontSize: 31, fontWeight: 700, color: p.prevDeltaFg, marginTop: 9 }}>{p.prevDelta}</div>
               </div>
             )}
           </div>
@@ -188,15 +188,16 @@ function PdfPage({ p, state, count }) {
       {((state.incFrail && p.frail) || (state.incKcl && p.kcl)) && (
         <div style={{ display: 'grid', gridTemplateColumns: (state.incFrail && p.frail) && (state.incKcl && p.kcl) ? '1fr 1fr' : '1fr', gap: 10, marginTop: 8 }}>
           {state.incFrail && p.frail && (
-            <div style={{ border: '1px solid var(--slate-300)', padding: '5px 14px 7px', minWidth: 0 }}>
+            <div style={{ border: '1px solid var(--slate-300)', padding: '5px 14px 6px', minWidth: 0 }}>
               <div style={{ fontSize: 12.5, letterSpacing: '0.04em', color: 'var(--slate-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>フレイル簡易評価（測定値による簡易判定）</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 3, minWidth: 0 }}>
                 <span style={{ fontSize: 15, fontWeight: 700, padding: '1px 12px 2px', borderRadius: 999, background: fl.bg, color: fl.fg, whiteSpace: 'nowrap', flexShrink: 0 }}>{fl.label}</span>
                 <span className="t-num" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.15, flexShrink: 0 }}>
                   {p.frail.n}<span style={{ fontSize: 14, fontWeight: 600, color: 'var(--slate-500)' }}> /5 該当</span>
                 </span>
-                <span style={{ fontSize: 12.5, color: 'var(--slate-600)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>該当項目: {p.frail.n > 0 ? p.frail.hitShorts.join('・') : 'なし'}</span>
               </div>
+              {/* 該当項目が多くても収まるよう独立した行にする */}
+              <div style={{ fontSize: 12.5, color: 'var(--slate-600)', marginTop: 2 }}>該当項目: {p.frail.n > 0 ? p.frail.hitShorts.join('・') : 'なし'}</div>
             </div>
           )}
           {state.incKcl && p.kcl && (() => {
@@ -205,7 +206,7 @@ function PdfPage({ p, state, count }) {
             const lv = KCL_LEVELS[kclLevel(p.kcl.total)]
             const areas = p.kcl.reasons.map(r => r.id === 'overall' ? '生活機能全般' : (KCL_DOMAIN_BY_ID[r.id] ? KCL_DOMAIN_BY_ID[r.id].label : r.label))
             return (
-              <div style={{ border: '1px solid var(--slate-300)', padding: '5px 14px 7px', minWidth: 0 }}>
+              <div style={{ border: '1px solid var(--slate-300)', padding: '5px 14px 6px', minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, letterSpacing: '0.04em', color: 'var(--slate-600)' }}>
                   <span>基本チェックリスト（問診）</span>
                   {p.kcl.target && <span style={{ color: 'var(--brand-600)', fontSize: 10 }}>◆</span>}
@@ -215,9 +216,10 @@ function PdfPage({ p, state, count }) {
                   <span className="t-num" style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.15, color: lv.fg, flexShrink: 0 }}>
                     {p.kcl.total}<span style={{ fontSize: 14, fontWeight: 600, color: 'var(--slate-500)' }}> / 25 点</span>
                   </span>
-                  <span style={{ fontSize: 12.5, color: 'var(--slate-600)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {areas.length ? '気になる領域: ' + areas.join('・') : '大きな低下はみられません'}
-                  </span>
+                </div>
+                {/* 領域が多くても収まるよう独立した行にする */}
+                <div style={{ fontSize: 12.5, color: 'var(--slate-600)', marginTop: 2 }}>
+                  {areas.length ? '気になる領域: ' + areas.join('・') : '大きな低下はみられません'}
                 </div>
               </div>
             )
@@ -262,21 +264,22 @@ function PdfPage({ p, state, count }) {
             <span style={{ fontSize: 16, fontWeight: 700 }}>総合スコアの推移</span>
             <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>実線 = 本人 / 破線 = {p.avgHead}</span>
           </div>
-          <svg width="100%" height="78" viewBox="0 0 660 148" preserveAspectRatio="none" style={{ display: 'block', marginTop: 4 }}>
-            {[['100', 16], ['75', 47], ['50', 78], ['25', 108]].map(([lb, yy]) => (
+          {/* 等倍スケールで描画する(preserveAspectRatio: none だと文字と線が横に引き伸ばされるため) */}
+          <svg width="100%" viewBox="0 0 660 100" style={{ display: 'block', marginTop: 4 }}>
+            {[['100', 14], ['75', 30], ['50', 46], ['25', 62]].map(([lb, yy]) => (
               <g key={lb}>
-                <line x1="30" y1={yy} x2="650" y2={yy} stroke={yy === 108 ? 'var(--slate-200)' : 'var(--slate-100)'} strokeWidth="1" />
-                <text x="25" y={+yy + 5} textAnchor="end" fontSize="13" fill="var(--slate-400)" fontFamily="Inter">{lb}</text>
+                <line x1="30" y1={yy} x2="650" y2={yy} stroke={yy === 62 ? 'var(--slate-200)' : 'var(--slate-100)'} strokeWidth="1" />
+                <text x="25" y={+yy + 4} textAnchor="end" fontSize="11" fill="var(--slate-400)" fontFamily="Inter">{lb}</text>
               </g>
             ))}
             {/* 平均は青色(レーダーの市町村平均と揃える) */}
             <path d={p.muniPath} fill="none" stroke="var(--info-500)" strokeWidth="1.5" strokeDasharray="5 4" />
-            <path d={p.trendPath} fill="none" stroke="var(--brand-500)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={p.trendPath} fill="none" stroke="var(--brand-500)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
             {p.trendDots.map((d, i) => (
               <g key={i}>
-                <circle cx={d.x} cy={d.y} r="4" fill="#fff" stroke="var(--brand-500)" strokeWidth="2" />
-                <text x={d.x} y={d.ly} textAnchor="middle" fontSize="14" fontWeight="700" fill="var(--slate-700)" fontFamily="Inter">{d.v}</text>
-                <text x={d.x} y="142" textAnchor="middle" fontSize="13" fill="var(--slate-500)">{d.year}</text>
+                <circle cx={d.x} cy={d.y} r="3.5" fill="#fff" stroke="var(--brand-500)" strokeWidth="2" />
+                <text x={d.x} y={d.ly} textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--slate-700)" fontFamily="Inter">{d.v}</text>
+                <text x={d.x} y="95" textAnchor="middle" fontSize="11" fill="var(--slate-500)">{d.year}</text>
               </g>
             ))}
           </svg>
@@ -287,26 +290,12 @@ function PdfPage({ p, state, count }) {
 
       {/* コメント */}
       {state.incComment && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 148px', gap: 12, marginTop: 12, alignItems: 'stretch' }}>
-          <div style={{ border: '1px solid var(--slate-300)' }}>
-            <div style={{ ...CELL_LABEL, letterSpacing: '0.08em' }}>総合コメント</div>
-            <div style={{ padding: '2px 14px 5px', position: 'relative', minHeight: 74, maxHeight: 74, overflow: 'hidden' }}>
-              {[34, 63].map(t => <div key={t} style={{ position: 'absolute', left: 14, right: 14, top: t, borderBottom: '1px dotted var(--slate-300)' }} />)}
-              {/* 罫線 2 行分に収める（3 行目に溢れると A4 からはみ出すため） */}
-              <div className="t-hand" style={{ position: 'relative', fontSize: 18, lineHeight: '30px', color: 'var(--slate-800)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.commentText}</div>
-            </div>
-          </div>
-          <div style={{ border: '1px solid var(--slate-300)', display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
-            <div style={{ borderRight: '1px solid var(--slate-200)', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '4px 0', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-200)', fontSize: 11, letterSpacing: '0.1em', color: 'var(--slate-600)', textAlign: 'center' }}>記入者</div>
-              <div className="t-hand" style={{ flex: 1, display: 'grid', placeItems: 'center', minHeight: 44, fontSize: 16, color: 'var(--slate-800)' }}>相馬</div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '4px 0', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-200)', fontSize: 11, letterSpacing: '0.1em', color: 'var(--slate-600)', textAlign: 'center' }}>確認印</div>
-              <div style={{ flex: 1, display: 'grid', placeItems: 'center', minHeight: 44 }}>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid var(--danger-500)', color: 'var(--danger-500)', display: 'grid', placeItems: 'center', fontSize: 14, transform: 'rotate(-6deg)', opacity: 0.8, fontFamily: 'serif' }}>相馬</div>
-              </div>
-            </div>
+        <div style={{ border: '1px solid var(--slate-300)', marginTop: 12 }}>
+          <div style={{ ...CELL_LABEL, letterSpacing: '0.08em' }}>総合コメント</div>
+          <div style={{ padding: '2px 14px 5px', position: 'relative', minHeight: 74, maxHeight: 74, overflow: 'hidden' }}>
+            {[34, 63].map(t => <div key={t} style={{ position: 'absolute', left: 14, right: 14, top: t, borderBottom: '1px dotted var(--slate-300)' }} />)}
+            {/* 罫線 2 行分に収める（3 行目に溢れると A4 からはみ出すため） */}
+            <div className="t-hand" style={{ position: 'relative', fontSize: 18, lineHeight: '30px', color: 'var(--slate-800)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.commentText}</div>
           </div>
         </div>
       )}

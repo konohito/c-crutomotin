@@ -54,8 +54,8 @@ function SheetPage({ p }) {
           <div style={{ fontSize: 13.5, color: 'var(--slate-600)', marginTop: 2 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
         </div>
         <div style={{ color: 'var(--danger-500)', paddingTop: 2, flexShrink: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: '0.04em', textAlign: 'right' }}>【スタッフ記入用】</div>
-          <div style={{ marginTop: 9, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 900, letterSpacing: '0.04em', textAlign: 'right' }}>【スタッフ記入用】</div>
+          <div style={{ marginTop: 9, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, fontWeight: 600 }}>
             {[['ペースメーカー', '（ 有 ・ 無 ）'], ['人工骨 等', '（ 有 ・ 無 ）'], ['InBody', '（ 済 ・ 不可 ）']].map(([lb, opts]) => (
               <div key={lb} style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
                 <span style={{ width: 104 }}>・{lb}</span>
@@ -117,17 +117,19 @@ function SheetPage({ p }) {
           <div />
         </div>
         {p.rows.map(r => (
-          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '164px 1fr 80px auto 44px 58px', gap: 10, padding: '4px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '164px 1fr 80px auto 44px 58px', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.label}</div>
-            {/* 2 回測定の項目は下書きスペース(①②) */}
+            {/* 2 回測定の項目は下書きスペース(①は線の上・②は線の下に書く。線は 1 本だけ) */}
             {r.draft ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, paddingRight: 14, alignSelf: 'center' }}>
-                {['①', '②'].map(n => (
-                  <div key={n} style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
-                    <span style={{ fontSize: 11, color: 'var(--slate-500)', lineHeight: 1 }}>{n}</span>
-                    <span style={{ flex: 1, borderBottom: '1px solid var(--slate-300)' }} />
-                  </div>
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', paddingRight: 14, alignSelf: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--slate-300)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--slate-500)', lineHeight: 1, padding: '0 0 2px 2px' }}>①</span>
+                  <span style={{ flex: 1, height: 16 }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                  <span style={{ fontSize: 11, color: 'var(--slate-500)', lineHeight: 1, padding: '3px 0 0 2px' }}>②</span>
+                  <span style={{ flex: 1, height: 16 }} />
+                </div>
               </div>
             ) : <div />}
             <div className="t-num" style={{ fontSize: 14, color: 'var(--slate-500)' }}>{r.prev}</div>
@@ -135,8 +137,8 @@ function SheetPage({ p }) {
               {r.boxes.map((bx, i) => bx.d
                 ? (
                   <div key={i} style={{ width: 38, height: 46, border: '2px solid var(--slate-800)', borderRadius: 2, background: '#fff', display: 'grid', placeItems: 'center' }}>
-                    {/* 文字サイズのガイド(薄いグレー) */}
-                    <span className="t-num" style={{ fontSize: 27, fontWeight: 700, color: 'var(--slate-200)', lineHeight: 1 }}>8</span>
+                    {/* 文字サイズのガイド(薄いグレー・枠いっぱいに) */}
+                    <span className="t-num" style={{ fontSize: 36, fontWeight: 700, color: 'var(--slate-200)', lineHeight: 1 }}>8</span>
                   </div>
                 )
                 : <div key={i} style={{ fontSize: 22, fontWeight: 900, paddingBottom: 2, width: 10, textAlign: 'center' }}>.</div>
@@ -164,21 +166,21 @@ function SheetPage({ p }) {
               <span style={{ fontSize: 13.5, fontWeight: 700 }}>【記入について】</span>
               <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--danger-500)' }}>※必ず<span style={{ textDecoration: 'underline' }}>マッキー</span>を使用</span>
             </div>
-            {/* 訂正例: 二重線で消して右の余白に書き直す */}
+            {/* 訂正例: 二重線で消して右の余白に書き直す。数字は皆が真似して書くため太字ゴシックで */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 7 }}>
               <div style={{ position: 'relative', display: 'flex', gap: 3, alignItems: 'flex-end' }}>
                 {['2', '4'].map((d, i) => (
                   <div key={i} style={{ width: 25, height: 31, border: '1.5px solid var(--slate-800)', borderRadius: 2, display: 'grid', placeItems: 'center' }}>
-                    <span className="t-hand" style={{ fontSize: 18, color: 'var(--slate-800)' }}>{d}</span>
+                    <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--slate-800)' }}>{d}</span>
                   </div>
                 ))}
                 <div style={{ fontSize: 13, fontWeight: 900, paddingBottom: 1 }}>.</div>
                 <div style={{ width: 25, height: 31, border: '1.5px solid var(--slate-800)', borderRadius: 2, display: 'grid', placeItems: 'center' }}>
-                  <span className="t-hand" style={{ fontSize: 18, color: 'var(--slate-800)' }}>5</span>
+                  <span style={{ fontSize: 17, fontWeight: 900, color: 'var(--slate-800)' }}>5</span>
                 </div>
                 <div style={{ position: 'absolute', left: -4, right: -4, top: '44%', height: 5, borderTop: '1.5px solid var(--slate-800)', borderBottom: '1.5px solid var(--slate-800)' }} />
               </div>
-              <span className="t-hand" style={{ fontSize: 22, fontWeight: 700, color: 'var(--slate-900)' }}>25.0</span>
+              <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--slate-900)' }}>25.0</span>
             </div>
             <div style={{ fontSize: 11.5, lineHeight: 1.7, marginTop: 7, color: 'var(--slate-800)' }}>
               ①太枠の中に 1 マス 1 桁ではっきりと記入。<br />
