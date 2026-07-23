@@ -10,17 +10,22 @@ export const dbEnabled = () => !!CONFIG
 
 const SHEET_COLS = ['height', 'weight', 'gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
 
-// firebase SDK を 1 回だけ初期化して使い回す
+// firebase アプリを 1 回だけ初期化して使い回す（Firestore/Storage と Auth で共有する）
 let _app, _sdk
+export async function firebaseApp() {
+  if (_app) return _app
+  const { initializeApp, getApps } = await import('firebase/app')
+  _app = getApps().length ? getApps()[0] : initializeApp(CONFIG)
+  return _app
+}
 async function sdk() {
   if (_sdk) return _sdk
-  const [{ initializeApp }, firestore, storage] = await Promise.all([
-    import('firebase/app'),
+  const [app, firestore, storage] = await Promise.all([
+    firebaseApp(),
     import('firebase/firestore'),
     import('firebase/storage'),
   ])
-  _app = initializeApp(CONFIG)
-  _sdk = { firestore, storage, db: firestore.getFirestore(_app), bucket: storage.getStorage(_app) }
+  _sdk = { firestore, storage, db: firestore.getFirestore(app), bucket: storage.getStorage(app) }
   return _sdk
 }
 

@@ -4,6 +4,7 @@ import { useStore, pendingSheets, allEvents, StoreProvider } from './store.jsx'
 import { mdw } from './lib/helpers.js'
 import { Icon } from './ui/icons.jsx'
 import { Toast } from './ui/kit.jsx'
+import AuthGate, { useAuth } from './ui/AuthGate.jsx'
 import Dashboard from './screens/Dashboard.jsx'
 import ImportScreen from './screens/Import.jsx'
 import CsvImport from './screens/CsvImport.jsx'
@@ -92,14 +93,31 @@ function Sidebar() {
           <div className="t-num" style={{ fontSize: 11, color: 'var(--warning-700)', marginTop: 6 }}>要確認の用紙 {pending.length} 件</div>
         )}
       </button>
-      <div className="sidebar-user">
-        <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, var(--slate-200), var(--slate-300))', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 600, color: 'var(--fg-2)', flexShrink: 0 }}>相</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600 }}>相馬 直樹</div>
-          <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>事務局 · 管理者権限</div>
-        </div>
-      </div>
+      <SidebarUser />
     </aside>
+  )
+}
+
+// ログイン中の職員（Firebase 認証時）。未設定のデモではダミーの職員名を表示する。
+function SidebarUser() {
+  const { user, enabled, signOut } = useAuth()
+  const email = user && (user.email || '')
+  const name = enabled ? (user && user.displayName) || (email ? email.split('@')[0] : '職員') : '相馬 直樹'
+  const sub = enabled ? email : '事務局 · 管理者権限'
+  const initial = (name || '職').trim().charAt(0)
+  return (
+    <div className="sidebar-user">
+      <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg, var(--slate-200), var(--slate-300))', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 600, color: 'var(--fg-2)', flexShrink: 0 }}>{initial}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</div>
+        <div style={{ fontSize: 11, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>
+      </div>
+      {enabled && (
+        <button className="icon-btn" title="ログアウト" aria-label="ログアウト" onClick={() => signOut()} style={{ flexShrink: 0 }}>
+          <Icon name="logout" size={17} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -180,7 +198,9 @@ function AppInner() {
 export default function App() {
   return (
     <StoreProvider>
-      <AppInner />
+      <AuthGate>
+        <AppInner />
+      </AuthGate>
     </StoreProvider>
   )
 }

@@ -69,6 +69,32 @@ firebase deploy --only firestore:rules,firestore:indexes,storage,functions
 VITE_FIREBASE_CONFIG={"apiKey":"…","authDomain":"…","projectId":"…","storageBucket":"…","appId":"…"}
 ```
 
+### 職員ログイン（Firebase Auth）
+
+`VITE_FIREBASE_CONFIG` を設定すると、アプリ起動時に**職員ログイン画面**が出る（`src/screens/Login.jsx`）。
+未設定の公開デモではログインは一切要求されない（`authEnabled()=false`）。ルールが `request.auth` を
+必須にしているため、本番では必ずこの構成で運用する。
+
+1. Firebase コンソール → Authentication → ログイン方法 → **メール/パスワード** を有効化
+2. Users → **ユーザーを追加** で職員アカウント（例: テスト用 `test@cruto.jp`）を作成
+3. `VITE_FIREBASE_CONFIG` を設定してビルド → ログイン画面から上記アカウントでログイン
+
+**ローカル検証（実プロジェクト不要・Auth エミュレータ）**:
+
+```bash
+# エミュレータ起動（別ターミナル）
+cd functions && npx firebase emulators:start --only auth --project demo-cruto
+# テストアカウントを作成
+curl -s -X POST 'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=fake-api-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"test@cruto.jp","password":"cruto1234","returnSecureToken":true}'
+# フロントを Auth エミュレータに向けてビルド/起動
+VITE_FIREBASE_CONFIG='{"apiKey":"fake-api-key","authDomain":"demo-cruto.firebaseapp.com","projectId":"demo-cruto","appId":"1:1:web:demo"}' \
+VITE_AUTH_EMULATOR_URL='http://127.0.0.1:9099' npm run dev
+```
+
+> `VITE_AUTH_EMULATOR_URL` はローカル検証専用。本番/公開デモでは未設定にする（実 Firebase Auth を使う）。
+
 ---
 
 ## セットアップ手順
@@ -245,4 +271,8 @@ firebase.json              # functions のデプロイ設定（predeploy に tes
   deploy.yml               # フロント（GitHub Pages）自動デプロイ
   deploy-functions.yml     # バックエンド（Firebase Functions/ルール）自動デプロイ ← 追加
 src/lib/ocr.js             # フロントの継ぎ目（モック↔実API 切替＋台帳照合）
+src/lib/db.js              # Firestore/Storage の継ぎ目（firebaseApp を Auth と共有）
+src/lib/auth.js            # Firebase Auth の継ぎ目（職員ログイン。未設定時は無効）
+src/ui/AuthGate.jsx        # 認証ゲート（未設定=素通し / 設定あり=未ログインならログイン画面）
+src/screens/Login.jsx      # 職員ログイン画面
 ```
