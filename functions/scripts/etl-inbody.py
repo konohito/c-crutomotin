@@ -108,18 +108,31 @@ def fetch_from_drive(folder_id, creds):
 
 
 # ---- xlsx / csv 解析 --------------------------------------------------------
+def _has_numbered_header(rows):
+    for row in rows[:10]:
+        if sum(1 for c in row if re.match(r'^\s*\d+\.', str(c or ''))) >= 8:
+            return True
+    return False
+
+
 def read_rows(path):
-    """xlsx でも csv でも行(list of list)を返す。"""
+    """xlsx でも csv でも行(list of list)を返す。xlsx は番号ヘッダーのあるシートを選ぶ。"""
     if path.lower().endswith('.csv'):
         import csv as _csv
         with open(path, newline='', encoding='utf-8-sig') as fp:
             return [list(r) for r in _csv.reader(fp)]
     from openpyxl import load_workbook
     wb = load_workbook(path, read_only=True, data_only=True)
-    ws = wb.worksheets[0]
-    rows = [list(r) for r in ws.iter_rows(values_only=True)]
+    best = []
+    for ws in wb.worksheets:
+        rows = [list(r) for r in ws.iter_rows(values_only=True)]
+        if _has_numbered_header(rows):
+            wb.close()
+            return rows
+        if len(rows) > len(best):
+            best = rows
     wb.close()
-    return rows
+    return best
 
 
 def parse_rows(rows):
@@ -183,7 +196,7 @@ def load_firestore(db):
             continue
         vals = m.get('values') or {}
         meas_by_year.setdefault(int(year), []).append({
-            'ref': d.reference, 'userId': uid,
+            'ref': d.reference, 'userId': uid, 'date': m.get('date'),
             'height': to_float(vals.get('height')), 'weight': to_float(vals.get('weight')),
         })
     return users, meas_by_year
@@ -199,16 +212,23 @@ def match(ib, users, meas_by_year):
             continue
         if abs(m['height'] - ib['height']) <= HEIGHT_TOL and abs(m['weight'] - ib['weight']) <= WEIGHT_TOL:
             cands.append(m)
-    if len(cands) == 1:
-        return cands[0], 'unique'
     if not cands:
         return None, 'none'
-    if ib['district']:
-        byd = [m for m in cands if users[m['userId']]['ward'] == ib['district']]
+    if len(cands) == 1:
+        return cands[0], 'unique'
+    # 測定日が一致すれば最優先で確定
+    if ib['testDate']:
+        byd = [m for m in cands if m.get('date') == ib['testDate']]
         if len(byd) == 1:
-            return byd[0], 'district'
+            return byd[0], 'date'
         if byd:
             cands = byd
+    if ib['district']:
+        bw = [m for m in cands if users[m['userId']]['ward'] == ib['district']]
+        if len(bw) == 1:
+            return bw[0], 'district'
+        if bw:
+            cands = bw
     if ib['age']:
         bya = [m for m in cands if users[m['userId']]['birth'] and abs((ib['year'] - users[m['userId']]['birth']) - ib['age']) <= 1]
         if len(bya) == 1:
@@ -269,12 +289,30 @@ def main():
     users, meas_by_year = load_firestore(db)
     print(f'台帳: 利用者 {len(users)} 名 / 測定 {sum(len(v) for v in meas_by_year.values())} 件')
 
-    stats = {'unique': 0, 'district': 0, 'age': 0, 'narrowed': 0, 'ambiguous': 0, 'none': 0}
+    # 年度別 availability（InBody行 / 台帳測定 / うち身長体重あり）— 突合率の当たりをつける
+    from collections import Counter
+    ib_year = Counter(ib['year'] for ib in rows)
+    print('\n年度別  InBody行 / 台帳測定 / うち身長体重あり:')
+    for y in sorted(set(list(ib_year.keys()) + list(meas_by_year.keys()))):
+        mm = meas_by_year.get(y, [])
+        hw = sum(1 for m in mm if m['height'] is not None and m['weight'] is not None)
+        print(f'  {y}: {ib_year.get(y, 0)} / {len(mm)} / {hw}')
+
+    stats = {'unique': 0, 'date': 0, 'district': 0, 'age': 0, 'narrowed': 0, 'ambiguous': 0, 'none': 0}
+    none_tol = none_missing = 0  # 未一致の内訳: 許容差外 / その年の身長体重データ無し
     unmatched, writes = [], 0
     batch, n_in_batch = db.batch(), 0
     for ib in rows:
         m, how = match(ib, users, meas_by_year)
         stats[how] += 1
+        if how == 'none':
+            same = [x for x in meas_by_year.get(ib['year'], [])
+                    if x['height'] is not None and x['weight'] is not None
+                    and (not ib['sex'] or users.get(x['userId'], {}).get('sex') != ('M' if ib['sex'] == 'F' else 'F'))]
+            if same:
+                none_tol += 1
+            else:
+                none_missing += 1
         if m and how != 'ambiguous':
             payload = {'inbody': {k: ib[k] for k in ('smm', 'smi', 'fatPct', 'score', 'height', 'weight', 'ibId', 'district', 'testDate')}}
             payload['inbody']['source'] = 'lookinbody'
@@ -289,14 +327,15 @@ def main():
     if args.commit and n_in_batch:
         batch.commit()
 
-    matched = stats['unique'] + stats['district'] + stats['age'] + stats['narrowed']
+    matched = stats['unique'] + stats['date'] + stats['district'] + stats['age'] + stats['narrowed']
     print('\n=== 突合結果 ===')
     print(f'  一意       : {stats["unique"]}')
+    print(f'  測定日で確定: {stats["date"]}')
     print(f'  地区で確定 : {stats["district"]}')
     print(f'  年齢で確定 : {stats["age"]}')
     print(f'  絞込で確定 : {stats["narrowed"]}')
     print(f'  曖昧(保留) : {stats["ambiguous"]}')
-    print(f'  未一致     : {stats["none"]}')
+    print(f'  未一致     : {stats["none"]}（うち 許容差外 {none_tol} / その年に身長体重データ無し {none_missing}）')
     print(f'  → 突合 {matched} / {len(rows)} 件' + (f'（{writes} 件書き込み）' if args.commit else '（ドライラン・未書込）'))
 
     if unmatched:
