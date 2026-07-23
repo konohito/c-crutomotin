@@ -16,6 +16,8 @@ const initialState = {
   rosRegion: 'all', rosMuni: 'all', rosStatus: 'all', rosSort: 'id', rosPage: 0,
   // 個人詳細
   detId: null, detMetric: 'total',
+  // 編集（実データ）
+  editUser: null, editMeas: null, editBusy: false,
   // 分析
   anaYear: 2025, anaRegion: 'all', anaUnit: 'region',
   dashItem: 'gripR', exItem: 'gripR', exSex: 'all', exAge: 'all', exCohort: 'all', exFrom: 2020,

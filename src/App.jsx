@@ -19,6 +19,7 @@ import Mobile from './screens/Mobile.jsx'
 import ReviewModal from './modals/ReviewModal.jsx'
 import RegisterModal from './modals/RegisterModal.jsx'
 import EventModal from './modals/EventModal.jsx'
+import { EditUserModal, EditMeasModal } from './modals/EditModals.jsx'
 
 const BASE = import.meta.env.BASE_URL
 
@@ -190,6 +191,8 @@ function AppInner() {
       {state.mdNo !== null && <ReviewModal />}
       {state.regOpen && <RegisterModal />}
       {state.evOpen && <EventModal />}
+      {state.editUser && <EditUserModal />}
+      {state.editMeas && <EditMeasModal />}
       <Toast msg={state.toast} />
     </div>
   )

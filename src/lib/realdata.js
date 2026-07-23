@@ -49,6 +49,49 @@ function toEngineUser(u, measList) {
   }
 }
 
+// ---- 編集（Phase③）: メモリ即時反映 + Firestore 保存 --------------------------
+// 利用者の基本情報を更新（氏名・かな・性別・生年月日・市町村/行政区・介護度・電話）
+export async function saveUserFields(id, patch) {
+  const u = D.users.find(x => x.id === id)
+  if (u) {
+    Object.assign(u, patch)
+    if (patch.sex) u.sexLabel = patch.sex === 'M' ? '男' : '女'
+    if (patch.birthDate !== undefined) {
+      const y = parseInt(String(patch.birthDate).slice(0, 4), 10)
+      if (y) { u.birth = y; u.age = D.CUR - y }
+    }
+    if (patch.muni !== undefined) { const m = D.MUNIS.find(x => x.id === patch.muni); if (m) u.muniName = m.name }
+  }
+  if (dbEnabled()) {
+    const { fs, db } = await getFs()
+    const doc = {}
+    for (const k of ['name', 'kana', 'sex', 'birthDate', 'careLevel', 'phone']) {
+      if (patch[k] !== undefined) doc[k] = patch[k]
+    }
+    if (patch.muni !== undefined) { doc.muni = patch.muni; const m = D.MUNIS.find(x => x.id === patch.muni); doc.muniName = m ? m.name : '' }
+    if (patch.venueName !== undefined) doc.ward = patch.venueName
+    if (u && u.birth != null) doc.birth = u.birth
+    await fs.setDoc(fs.doc(db, 'users', id), doc, { merge: true })
+  }
+}
+
+// 年度の測定値を更新（5領域・総合スコアを再計算 + Firestore 保存）
+export async function saveMeasurement(id, year, values) {
+  const u = D.users.find(x => x.id === id)
+  const s = scoreOf(u ? u.sex : 'F', values)
+  if (u) {
+    const prev = u.meas[year] || {}
+    u.meas[year] = { ...prev, values: s.values, axes: s.axes, total: s.total }
+    if (!u.meas[year].date) u.meas[year].date = null
+  }
+  if (dbEnabled()) {
+    const { fs, db } = await getFs()
+    await fs.setDoc(fs.doc(db, 'measurements', `${id}_${year}`),
+      { userId: id, year: Number(year), values: s.values }, { merge: true })
+  }
+  return s
+}
+
 // Firestore から全利用者・全測定を読み込み、エンジンへ適用する。読み込めたら true。
 export async function loadRealData() {
   if (!dbEnabled()) return false
