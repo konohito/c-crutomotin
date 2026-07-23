@@ -7,6 +7,7 @@ import D from '../data/engine.js'
 let CONFIG = null
 try { CONFIG = import.meta.env.VITE_FIREBASE_CONFIG ? JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG) : null } catch { CONFIG = null }
 export const dbEnabled = () => !!CONFIG
+export const firebaseConfig = () => CONFIG
 
 const SHEET_COLS = ['height', 'weight', 'gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
 

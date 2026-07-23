@@ -26,12 +26,13 @@ export function EditUserModal() {
   const u = D.users.find(x => x.id === state.editUser)
   const [f, setF] = useState(() => ({
     name: u?.name || '', kana: u?.kana || '', sex: u?.sex || 'F',
-    birthDate: u?.birthDate || '', muni: u?.muni || (D.MUNIS[0] && D.MUNIS[0].id) || '',
+    birthDate: u?.birthDate || '', muniName: u?.muniName || '',
     venueName: u?.venueName || '', careLevel: u?.careLevel || '', phone: u?.phone || '',
   }))
   const [busy, setBusy] = useState(false)
   if (!u) return null
   const upd = (k) => (e) => setF(s => ({ ...s, [k]: e.target.value }))
+  const munis = [...new Set(D.users.map(x => x.muniName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
   const wards = [...new Set(D.users.map(x => x.venueName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
   const close = () => set({ editUser: null })
   const save = async () => {
@@ -52,11 +53,12 @@ export function EditUserModal() {
           <Select value={f.sex} onChange={upd('sex')} options={[{ v: 'F', l: '女' }, { v: 'M', l: '男' }]} style={{ width: '100%' }} />
         </Field>
         <Field label="生年月日" hint="例: 1947/07/30"><input className="field t-num" value={f.birthDate} onChange={upd('birthDate')} placeholder="YYYY/MM/DD" /></Field>
-        <Field label="市町村">
-          <Select value={f.muni} onChange={upd('muni')} options={D.MUNIS.map(m => ({ v: m.id, l: m.name }))} style={{ width: '100%' }} />
+        <Field label="市町村" hint="新しい市町村名も入力できます">
+          <input className="field" list="muni-list" value={f.muniName} onChange={upd('muniName')} placeholder="例: 嘉島町" />
+          <datalist id="muni-list">{munis.map(m => <option key={m} value={m} />)}</datalist>
         </Field>
-        <Field label="行政区" hint="地区名（自由入力）">
-          <input className="field" list="ward-list" value={f.venueName} onChange={upd('venueName')} />
+        <Field label="行政区" hint="新しい地区名も入力できます">
+          <input className="field" list="ward-list" value={f.venueName} onChange={upd('venueName')} placeholder="例: 上島" />
           <datalist id="ward-list">{wards.map(w => <option key={w} value={w} />)}</datalist>
         </Field>
         <Field label="介護度">

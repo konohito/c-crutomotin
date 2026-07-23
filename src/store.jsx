@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import D from './data/engine.js'
 import { csvSplit, parseBirthYear } from './lib/helpers.js'
+import { dbEnabled } from './lib/db.js'
 
 // 読み取り設定（プロトタイプの props 相当）
 export const CONF_THRESHOLD = 80  // 信頼度しきい値(%)
@@ -13,7 +14,7 @@ const initialState = {
   // OCR 取り込み
   imp: 'idle', impCount: 0, resolved: {}, mdNo: null, mdVals: {}, mdUser: null,
   // 台帳
-  rosRegion: 'all', rosMuni: 'all', rosStatus: 'all', rosSort: 'id', rosPage: 0,
+  rosRegion: 'all', rosMuni: 'all', rosWard: 'all', rosStatus: 'all', rosSort: 'id', rosPage: 0,
   // 個人詳細
   detId: null, detMetric: 'total',
   // 編集（実データ）
@@ -32,7 +33,8 @@ const initialState = {
   calY: 2025, calM: 9,
   evOpen: false, evDate: '', evKind: 'meas', evTitle: '', evVenue: '', evMuni: 'sakuragawa', evTime: '',
   customMunis: [], evNewMuni: '', evNewRegion: '', evStaff: [],
-  customEvents: [
+  // 本番(実データ)ではダミーのサンプル予定は出さない
+  customEvents: dbEnabled() ? [] : [
     { date: '2025/09/26', kind: 'class', title: 'いきいき百歳体操 教室', venue: '第一地区公民館', time: '10:00〜11:30' },
     { date: '2025/09/30', kind: 'meet', title: '圏域連絡会議', venue: '県庁 3F 会議室', time: '14:00〜' },
   ],
@@ -119,7 +121,8 @@ export function pendingSheets(state) {
 
 export const allMunis = (state) => D.MUNIS.concat(state.customMunis)
 export const muniByName = (state, name) => allMunis(state).find(x => x.name === name)
-export const allEvents = (state) => VENUE_EVENTS.concat(state.customEvents)
+// 本番(実データ)では会場マスタ由来のダミー測定会イベントは出さない（イベントは未移行のため）
+export const allEvents = (state) => (dbEnabled() ? [] : VENUE_EVENTS).concat(state.customEvents)
 export const staffNames = (ids) => (ids || []).map(id => { const st = D.STAFF.find(x => x.id === id); return st ? st.name : null }).filter(Boolean)
 
 // ============ メモ ============

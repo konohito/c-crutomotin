@@ -7,11 +7,19 @@ import { Icon } from '../ui/icons.jsx'
 const GRID = '72px 1.5fr 92px 1.2fr 116px 96px 170px 30px'
 const PER = 12
 
+// フィルタ選択肢は実データ（D.users）から動的に作る。編集で市町村・行政区を追加すれば自動で増える。
+const distinct = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
+export const muniOptions = (region) =>
+  distinct(D.users.filter(u => region === 'all' || u.region === region).map(u => u.muniName))
+export const wardOptions = (muniName) =>
+  distinct(D.users.filter(u => muniName === 'all' || u.muniName === muniName).map(u => u.venueName))
+
 export function filteredUsers(state) {
   const q = state.q.trim().toLowerCase()
   let list = D.users.filter(u => {
     if (state.rosRegion !== 'all' && u.region !== state.rosRegion) return false
-    if (state.rosMuni !== 'all' && u.muni !== state.rosMuni) return false
+    if (state.rosMuni !== 'all' && u.muniName !== state.rosMuni) return false
+    if (state.rosWard !== 'all' && u.venueName !== state.rosWard) return false
     if (state.rosStatus === 'measured' && !u.meas[D.CUR]) return false
     if (state.rosStatus === 'unmeasured' && u.meas[D.CUR]) return false
     if (state.rosStatus === 'new' && u.joined !== D.CUR) return false
@@ -39,10 +47,10 @@ export default function Roster() {
     <div className="screen">
       {/* フィルタバー */}
       <Card style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <Select value={state.rosRegion} onChange={(e) => set({ rosRegion: e.target.value, rosMuni: 'all', rosPage: 0 })}
-          options={[opt('all', 'すべての圏域')].concat(D.REGIONS.map(r => opt(r, r)))} />
-        <Select value={state.rosMuni} onChange={(e) => set({ rosMuni: e.target.value, rosPage: 0 })}
-          options={[opt('all', 'すべての市町村')].concat(D.MUNIS.filter(m => state.rosRegion === 'all' || m.region === state.rosRegion).map(m => opt(m.id, m.name)))} />
+        <Select value={state.rosMuni} onChange={(e) => set({ rosMuni: e.target.value, rosWard: 'all', rosPage: 0 })}
+          options={[opt('all', 'すべての市町村')].concat(muniOptions(state.rosRegion).map(m => opt(m, m)))} />
+        <Select value={state.rosWard} onChange={(e) => set({ rosWard: e.target.value, rosPage: 0 })}
+          options={[opt('all', 'すべての行政区')].concat(wardOptions(state.rosMuni).map(w => opt(w, w)))} />
         <Select value={state.rosStatus} onChange={(e) => set({ rosStatus: e.target.value, rosPage: 0 })}
           options={[opt('all', 'すべての状態'), opt('measured', '令和7年度 測定済'), opt('unmeasured', '令和7年度 未測定'), opt('new', '今年度の新規')]} />
         <Select value={state.rosSort} onChange={(e) => set({ rosSort: e.target.value, rosPage: 0 })}
