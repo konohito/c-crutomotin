@@ -7,3 +7,5 @@ dist
 normalized.json
 *.xlsx
 contradictions.txt
+inbody/
+inbody-unmatched.csv
