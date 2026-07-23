@@ -32,7 +32,17 @@ function toEngineUser(u, measList) {
   for (const m of measList) {
     const s = scoreOf(u.sex, m.values || {})
     meas[m.year] = { ...s, date: m.date || null, review: !!m.review }
-    if (m.inbodySmi != null) inbody[m.year] = { smi: m.inbodySmi, smm: null, fatPct: null, score: null }
+    // InBody(体組成): ETL(etl-inbody.py)が突合して測定に付与した inbody を読む。旧 inbodySmi も後方互換。
+    if (m.inbody) {
+      const ib = m.inbody
+      inbody[m.year] = {
+        smm: ib.smm ?? null, smi: ib.smi ?? null, fatPct: ib.fatPct ?? null,
+        score: ib.score ?? null, weight: ib.weight ?? (m.values ? m.values.weight : null) ?? null,
+        date: ib.testDate || m.date || null,
+      }
+    } else if (m.inbodySmi != null) {
+      inbody[m.year] = { smi: m.inbodySmi, smm: null, fatPct: null, score: null }
+    }
   }
   const years = Object.keys(meas).map(Number)
   return {
