@@ -119,9 +119,10 @@ for r in rows('2025inbody'):
 
 out=[u for u in users.values() if u.get('name') and u['meas']]
 out.sort(key=lambda u:u['id'])
-json.dump(out, open('normalized.json','w'), ensure_ascii=False, indent=1)
 
-# ---- 矛盾値の抽出（最新年=2024/2025 を正として、±6cm超 乖離する旧年度を「要確認」）----
+# ---- 矛盾値の処理（最新年=2024/2025 を正として、±6cm超 乖離する旧年度）----
+# 担当者確認までの暫定対応: 該当年度の身長・BMI を空白化し、要確認フラグを付ける。
+# 歩行・握力・TUG 等の他項目は残す（後で担当者回答に応じて調整可能）。
 contra=[]; suspect_meas=0
 for u in out:
     hs=[(y,m['height']) for y,m in sorted(u['meas'].items()) if m.get('height')]
@@ -129,11 +130,16 @@ for u in out:
     ref=hs[-1][1]  # 最新年の身長を基準
     bad=[(y,h) for y,h in hs if abs(h-ref)>6]
     if bad:
-        for y,h in bad:
-            u['meas'][y]['review']=True   # 該当年度の測定に要確認フラグ
-            suspect_meas+=1
         ws=[(y,m['weight']) for y,m in sorted(u['meas'].items()) if m.get('weight')]
-        contra.append((u,hs,ws,[y for y,_ in bad]))
+        contra.append((u,list(hs),ws,[y for y,_ in bad]))
+        for y,h in bad:
+            u['meas'][y]['review']=True   # 要確認フラグ
+            u['meas'][y]['height']=None   # 矛盾する身長は空白化
+            u['meas'][y]['bmi']=None       # 身長依存の BMI も空白化
+            suspect_meas+=1
+
+# 正規化データを書き出す（要確認フラグ・空白化を反映した後）
+json.dump(out, open('normalized.json','w'), ensure_ascii=False, indent=1)
 
 years={}
 for u in out:
