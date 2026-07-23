@@ -45,10 +45,49 @@ SCOPES = ['https://www.googleapis.com/auth/cloud-platform',
 HEIGHT_TOL = 2.0   # cm
 WEIGHT_TOL = 1.5   # kg
 
-# InBody ヘッダーの通し番号 → 取り出したい項目
-COL = {1: 'id', 2: 'height', 3: 'gender', 4: 'age', 5: 'testDate', 6: 'weight',
-       27: 'smm', 30: 'bmi', 33: 'fatPct', 46: 'score', 80: 'smi'}
 XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+# テスト用の見本データ行（機器の動作確認）は取り込まない
+SKIP_IDS = {'cruto1', 'otamesi', '0000000888', '00001'}
+SKIP_NAMES = {'otamesi', 'test', 'テスト', 'サンプル'}
+
+
+def _norm_header(cell):
+    return re.sub(r'^\s*\d+\.\s*', '', str(cell or '')).strip()
+
+
+def find_cols(header):
+    """ヘッダー行(番号付き)から、列名キーワードで各項目の列位置を特定する。
+       LookinBody の書式ごとに列番号が違う（旧: 6.体重/27.骨格筋量、新: 15.体重/36.骨格筋量）ため
+       番号ではなく名前で拾う。"""
+    cols = {}
+    for ci, cell in enumerate(header):
+        h = _norm_header(cell)
+        hl = h.lower()
+        def put(k):
+            cols.setdefault(k, ci)
+        if hl == 'name' or h in ('氏名', '名前'):
+            put('name')
+        elif hl == 'id':
+            put('id')
+        elif ('height' in hl or '身長' in h) and 'limit' not in hl and 'range' not in hl and '標準' not in h:
+            put('height')
+        elif 'gender' in hl or '性別' in h:
+            put('gender')
+        elif hl == 'age' or h == '年齢':
+            put('age')
+        elif 'test date' in hl or '測定日' in h:
+            put('testDate')
+        elif hl == 'weight' or h == '体重':
+            put('weight')
+        elif ('skeletal muscle mass' in hl or '骨格筋量' in h) and 'limit' not in hl and 'range' not in hl and '/wt' not in hl:
+            put('smm')
+        elif 'skeletal muscle index' in hl or '骨格筋指数' in h or hl == 'smi':
+            put('smi')
+        elif ('percent body fat' in hl or '体脂肪率' in h or hl == 'pbf') and 'limit' not in hl and 'range' not in hl:
+            put('fatPct')
+        elif 'inbody score' in hl or 'inbody 点数' in h or h == '点数':
+            put('score')
+    return cols
 
 
 def to_float(v):
@@ -136,46 +175,58 @@ def read_rows(path):
 
 
 def parse_rows(rows):
-    header_i, num2col = -1, {}
-    for i, row in enumerate(rows[:8]):
-        m = {}
-        for ci, cell in enumerate(row):
-            mm = re.match(r'^\s*(\d+)\.', str(cell or ''))
-            if mm:
-                m[int(mm.group(1))] = ci
-        if len(m) >= 8:
-            header_i, num2col = i, m
-            break
+    """番号付きヘッダー行を探し、列名キーワードで列位置を特定してデータ行を取り出す。
+       旧書式(令和4/5: 地区+機械ID)と新書式(2024/2025: 氏名+台帳ID)の両方に対応。"""
+    header_i, cols = -1, {}
+    for i, row in enumerate(rows[:10]):
+        n_numbered = sum(1 for c in row if re.match(r'^\s*\d+\.', str(c or '')))
+        if n_numbered >= 8:
+            c = find_cols(row)
+            # 必須列が揃うヘッダーのみ採用（血圧など別表のヘッダーを除外）
+            if all(k in c for k in ('height', 'weight', 'testDate')):
+                header_i, cols = i, c
+                break
     if header_i < 0:
         return []
 
-    district_col = 0
-    if 1 in num2col and num2col[1] > 0:
-        district_col = num2col[1] - 1
+    # 旧書式は "1. ID" の左隣の無名列が地区(行政区)
+    district_col = None
+    if 'name' not in cols and cols.get('id', 0) > 0:
+        district_col = cols['id'] - 1
 
     out = []
     for row in rows[header_i + 1:]:
-        idc = num2col.get(1)
-        idv = str(row[idc]).strip() if idc is not None and idc < len(row) and row[idc] is not None else ''
-        if not idv or re.match(r'^\s*\d+\.', idv) or idv in ('ID', '1. ID'):
+        def val(k):
+            ci = cols.get(k)
+            return row[ci] if (ci is not None and ci < len(row)) else None
+        idv = str(val('id') or '').strip()
+        name = re.sub(r'[\s　]+', '', str(val('name') or '').strip())
+        if not idv and not name:
             continue
-        rec = {'district': (str(row[district_col]).strip() if district_col < len(row) and row[district_col] else '')}
-        for num, key in COL.items():
-            ci = num2col.get(num)
-            rec[key] = row[ci] if (ci is not None and ci < len(row)) else None
-        h, w = to_float(rec['height']), to_float(rec['weight'])
+        if re.match(r'^\s*\d+\.', idv):  # 2段目(日本語)ヘッダー行
+            continue
+        # 機器テスト用の見本行は除外
+        if idv in SKIP_IDS or name.lower() in SKIP_NAMES:
+            continue
+        h, w = to_float(val('height')), to_float(val('weight'))
         if h is None or w is None:
             continue
-        year, date = parse_year_date(rec['testDate'])
+        year, date = parse_year_date(val('testDate'))
         if not year:
             continue
+        district = ''
+        if district_col is not None and district_col < len(row) and row[district_col]:
+            district = str(row[district_col]).strip()
+        # 台帳の参加者ID形式(5桁数字)なら rosterId として直接突合に使う
+        digits = re.sub(r'\D', '', idv)
+        roster_id = digits.zfill(5) if idv and 4 <= len(digits) <= 5 and not idv.startswith('<') else None
         out.append({
-            'ibId': str(rec['id']).strip(), 'district': rec['district'],
-            'sex': (str(rec['gender']).strip().upper()[:1] or ''),
-            'age': to_float(rec['age']), 'height': h, 'weight': w,
+            'ibId': idv, 'rosterId': roster_id, 'name': name, 'district': district,
+            'sex': (str(val('gender') or '').strip().upper()[:1] or ''),
+            'age': to_float(val('age')), 'height': h, 'weight': w,
             'year': year, 'testDate': date,
-            'smm': to_float(rec['smm']), 'smi': to_float(rec['smi']),
-            'fatPct': to_float(rec['fatPct']), 'score': to_float(rec['score']),
+            'smm': to_float(val('smm')), 'smi': to_float(val('smi')),
+            'fatPct': to_float(val('fatPct')), 'score': to_float(val('score')),
         })
     return out
 
@@ -187,7 +238,8 @@ def load_firestore(db):
         u = d.to_dict()
         users[d.id] = {'sex': (u.get('sex') or 'F'),
                        'ward': (u.get('ward') or u.get('venueName') or ''),
-                       'birth': u.get('birth')}
+                       'birth': u.get('birth'),
+                       'name': re.sub(r'[\s　]+', '', str(u.get('name') or ''))}
     meas_by_year = {}
     for d in db.collection('measurements').stream():
         m = d.to_dict()
@@ -202,9 +254,22 @@ def load_firestore(db):
     return users, meas_by_year
 
 
-def match(ib, users, meas_by_year):
+def match(ib, users, meas_by_year, name_index):
+    year_meas = meas_by_year.get(ib['year'], [])
+    # 1) 台帳ID直結（2024/2025 書式は InBody 側に参加者IDがある）
+    if ib.get('rosterId') and ib['rosterId'] in users:
+        bym = [m for m in year_meas if m['userId'] == ib['rosterId']]
+        if len(bym) == 1:
+            return bym[0], 'id'
+    # 2) 氏名一致（空白除去済み）。同姓同名がいなければ確定
+    if ib.get('name') and name_index.get(ib['name']) and len(name_index[ib['name']]) == 1:
+        uid = name_index[ib['name']][0]
+        bym = [m for m in year_meas if m['userId'] == uid]
+        if len(bym) == 1:
+            return bym[0], 'name'
+    # 3) 身体属性（旧書式: 性別+身長+体重）
     cands = []
-    for m in meas_by_year.get(ib['year'], []):
+    for m in year_meas:
         u = users.get(m['userId'])
         if not u or m['height'] is None or m['weight'] is None:
             continue
@@ -274,10 +339,11 @@ def main():
             continue
         print(f'  {os.path.basename(f)}: {len(r)} 行')
         rows += r
-    # 同じ測定が xlsx/csv 重複で入るのを除く（機械ID優先、無ければ年+地区+身長+体重+性別）
+    # 同じ測定が xlsx/csv 重複で入るのを除く。同一人物でも年度が違えば別測定なので年を含める。
     seen, uniq = set(), []
     for ib in rows:
-        key = ib['ibId'] or f"{ib['year']}|{ib['district']}|{round(ib['height'])}|{round(ib['weight'])}|{ib['sex']}"
+        key = (f"{ib['ibId']}|{ib['year']}" if ib['ibId']
+               else f"{ib['year']}|{ib['district']}|{round(ib['height'])}|{round(ib['weight'])}|{ib['sex']}")
         if key in seen:
             continue
         seen.add(key)
@@ -288,6 +354,11 @@ def main():
     db = firestore.Client(project=args.project, credentials=creds)
     users, meas_by_year = load_firestore(db)
     print(f'台帳: 利用者 {len(users)} 名 / 測定 {sum(len(v) for v in meas_by_year.values())} 件')
+    # 氏名（空白除去）→ userId 一覧。同姓同名は一意にならないため一覧で持つ
+    name_index = {}
+    for uid, u in users.items():
+        if u['name']:
+            name_index.setdefault(u['name'], []).append(uid)
 
     # 年度別 availability（InBody行 / 台帳測定 / うち身長体重あり）— 突合率の当たりをつける
     from collections import Counter
@@ -298,21 +369,17 @@ def main():
         hw = sum(1 for m in mm if m['height'] is not None and m['weight'] is not None)
         print(f'  {y}: {ib_year.get(y, 0)} / {len(mm)} / {hw}')
 
-    stats = {'unique': 0, 'date': 0, 'district': 0, 'age': 0, 'narrowed': 0, 'ambiguous': 0, 'none': 0}
-    none_tol = none_missing = 0  # 未一致の内訳: 許容差外 / その年の身長体重データ無し
+    stats = {'id': 0, 'name': 0, 'unique': 0, 'date': 0, 'district': 0, 'age': 0, 'narrowed': 0, 'ambiguous': 0, 'none': 0}
+    no_meas = 0  # ID/氏名で本人特定できたが、その年の測定ドキュメントが無い
     unmatched, writes = [], 0
     batch, n_in_batch = db.batch(), 0
     for ib in rows:
-        m, how = match(ib, users, meas_by_year)
+        m, how = match(ib, users, meas_by_year, name_index)
         stats[how] += 1
         if how == 'none':
-            same = [x for x in meas_by_year.get(ib['year'], [])
-                    if x['height'] is not None and x['weight'] is not None
-                    and (not ib['sex'] or users.get(x['userId'], {}).get('sex') != ('M' if ib['sex'] == 'F' else 'F'))]
-            if same:
-                none_tol += 1
-            else:
-                none_missing += 1
+            known = (ib.get('rosterId') in users) or (ib.get('name') and len(name_index.get(ib['name'], [])) == 1)
+            if known:
+                no_meas += 1
         if m and how != 'ambiguous':
             payload = {'inbody': {k: ib[k] for k in ('smm', 'smi', 'fatPct', 'score', 'height', 'weight', 'ibId', 'district', 'testDate')}}
             payload['inbody']['source'] = 'lookinbody'
@@ -327,24 +394,27 @@ def main():
     if args.commit and n_in_batch:
         batch.commit()
 
-    matched = stats['unique'] + stats['date'] + stats['district'] + stats['age'] + stats['narrowed']
+    matched = stats['id'] + stats['name'] + stats['unique'] + stats['date'] + stats['district'] + stats['age'] + stats['narrowed']
     print('\n=== 突合結果 ===')
-    print(f'  一意       : {stats["unique"]}')
+    print(f'  台帳IDで確定: {stats["id"]}')
+    print(f'  氏名で確定  : {stats["name"]}')
+    print(f'  一意        : {stats["unique"]}')
     print(f'  測定日で確定: {stats["date"]}')
-    print(f'  地区で確定 : {stats["district"]}')
-    print(f'  年齢で確定 : {stats["age"]}')
-    print(f'  絞込で確定 : {stats["narrowed"]}')
-    print(f'  曖昧(保留) : {stats["ambiguous"]}')
-    print(f'  未一致     : {stats["none"]}（うち 許容差外 {none_tol} / その年に身長体重データ無し {none_missing}）')
+    print(f'  地区で確定  : {stats["district"]}')
+    print(f'  年齢で確定  : {stats["age"]}')
+    print(f'  絞込で確定  : {stats["narrowed"]}')
+    print(f'  曖昧(保留)  : {stats["ambiguous"]}')
+    print(f'  未一致      : {stats["none"]}（うち 本人特定済だが該当年の測定なし {no_meas}）')
     print(f'  → 突合 {matched} / {len(rows)} 件' + (f'（{writes} 件書き込み）' if args.commit else '（ドライラン・未書込）'))
 
     if unmatched:
         out = os.path.join(args.dir or '.', 'inbody-unmatched.csv')
         with open(out, 'w', newline='', encoding='utf-8-sig') as fp:
             w = csv.writer(fp)
-            w.writerow(['ibId', 'district', 'sex', 'age', 'height', 'weight', 'year', 'testDate'])
+            w.writerow(['ibId', 'rosterId', 'name', 'district', 'sex', 'age', 'height', 'weight', 'year', 'testDate'])
             for ib in unmatched:
-                w.writerow([ib['ibId'], ib['district'], ib['sex'], ib['age'], ib['height'], ib['weight'], ib['year'], ib['testDate']])
+                w.writerow([ib['ibId'], ib.get('rosterId') or '', ib.get('name') or '', ib['district'],
+                            ib['sex'], ib['age'], ib['height'], ib['weight'], ib['year'], ib['testDate']])
         print(f'  未突合/曖昧 {len(unmatched)} 行 → {out}')
     if not args.commit:
         print('\n※ ドライランです。結果を確認し、問題なければ --commit を付けて再実行してください。')
