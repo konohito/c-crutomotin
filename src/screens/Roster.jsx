@@ -1,6 +1,7 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { deltaOf } from '../lib/helpers.js'
+import { wardLabel } from '../lib/db.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -50,7 +51,7 @@ export default function Roster() {
         <Select value={state.rosMuni} onChange={(e) => set({ rosMuni: e.target.value, rosWard: 'all', rosPage: 0 })}
           options={[opt('all', 'すべての市町村')].concat(muniOptions(state.rosRegion).map(m => opt(m, m)))} />
         <Select value={state.rosWard} onChange={(e) => set({ rosWard: e.target.value, rosPage: 0 })}
-          options={[opt('all', 'すべての行政区')].concat(wardOptions(state.rosMuni).map(w => opt(w, w)))} />
+          options={[opt('all', 'すべての' + wardLabel())].concat(wardOptions(state.rosMuni).map(w => opt(w, w)))} />
         <Select value={state.rosStatus} onChange={(e) => set({ rosStatus: e.target.value, rosPage: 0 })}
           options={[opt('all', 'すべての状態'), opt('measured', '令和7年度 測定済'), opt('unmeasured', '令和7年度 未測定'), opt('new', '今年度の新規')]} />
         <Select value={state.rosSort} onChange={(e) => set({ rosSort: e.target.value, rosPage: 0 })}
@@ -68,7 +69,7 @@ export default function Roster() {
             <div className="t-overline">ID</div>
             <div className="t-overline">氏名</div>
             <div className="t-overline">年齢・性別</div>
-            <div className="t-overline">市町村・会場</div>
+            <div className="t-overline">市町村・{wardLabel()}</div>
             <div className="t-overline">電話番号</div>
             <div className="t-overline">最新測定</div>
             <div className="t-overline">総合スコア・推移</div>

@@ -1,6 +1,7 @@
 import D from '../data/engine.js'
 import { useStore, pendingSheets, allEvents, staffNames, flagsFor, batchN, openSheetVals } from '../store.jsx'
 import { mdw, addDays, eraOf, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
+import { dbEnabled } from '../lib/db.js'
 import { Card, Pill, Overline, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -19,6 +20,8 @@ function StatCard({ label, labelColor, value, valueColor, unit, foot, onClick })
 
 export default function Dashboard() {
   const { state, set, setState, showToast } = useStore()
+  // 本番(実データ)では OCR キュー・直近の取り込み等のダミーは出さない
+  const demo = !dbEnabled()
   const cur = D.CUR
   const done = D.users.filter(u => u.meas[cur]).length
   const newN = D.users.filter(u => u.joined === cur).length
@@ -72,13 +75,16 @@ export default function Dashboard() {
 
   // ---- 今日のやること（作業キュー） ----
   const tasks = []
-  if (state.imp === 'idle') {
-    tasks.push({ icon: 'imp', bg: 'var(--brand-50)', fg: 'var(--brand-600)', title: `記録用紙 ${batchN()} 枚が読み取り待ち`, sub: `${D.batchMeta.venue} · モバイル撮影から受信済み`, go: () => set({ screen: 'imp' }) })
-  } else if (state.imp === 'run') {
-    tasks.push({ icon: 'imp', bg: 'var(--brand-50)', fg: 'var(--brand-600)', title: '手書き数値を読み取り中…', sub: `${state.impCount} / ${batchN()} 枚`, go: () => set({ screen: 'imp' }) })
-  } else if (state.imp === 'scanned') {
-    if (pend.length > 0) tasks.push({ icon: 'warn', bg: 'var(--warning-50)', fg: 'var(--warning-700)', title: `要確認の用紙 ${pend.length} 件`, sub: '読み取り結果の確認が必要です', go: () => openFlagged(pend[0].no) })
-    else tasks.push({ icon: 'check', bg: 'var(--success-50)', fg: 'var(--success-700)', title: `${batchN()} 枚の本登録待ち`, sub: '確認が完了しました。本登録できます', go: () => set({ screen: 'imp' }) })
+  // OCR 取り込みキューはデモのダミー。本番（実データ）では表示しない。
+  if (demo) {
+    if (state.imp === 'idle') {
+      tasks.push({ icon: 'imp', bg: 'var(--brand-50)', fg: 'var(--brand-600)', title: `記録用紙 ${batchN()} 枚が読み取り待ち`, sub: `${D.batchMeta.venue} · モバイル撮影から受信済み`, go: () => set({ screen: 'imp' }) })
+    } else if (state.imp === 'run') {
+      tasks.push({ icon: 'imp', bg: 'var(--brand-50)', fg: 'var(--brand-600)', title: '手書き数値を読み取り中…', sub: `${state.impCount} / ${batchN()} 枚`, go: () => set({ screen: 'imp' }) })
+    } else if (state.imp === 'scanned') {
+      if (pend.length > 0) tasks.push({ icon: 'warn', bg: 'var(--warning-50)', fg: 'var(--warning-700)', title: `要確認の用紙 ${pend.length} 件`, sub: '読み取り結果の確認が必要です', go: () => openFlagged(pend[0].no) })
+      else tasks.push({ icon: 'check', bg: 'var(--success-50)', fg: 'var(--success-700)', title: `${batchN()} 枚の本登録待ち`, sub: '確認が完了しました。本登録できます', go: () => set({ screen: 'imp' }) })
+    }
   }
   const tomorrowMeas = evsAll.filter(e => e.date === addDays(D.TODAY, 1) && e.kind === 'meas')
   if (tomorrowMeas.length > 0) {
@@ -87,13 +93,14 @@ export default function Dashboard() {
   const [, tm, td] = D.TODAY.split('/').map(Number)
   const tw = '日月火水木金土'[new Date(D.TODAY).getDay()]
   const greet = loginGreeting()
-  const staffFamily = (D.STAFF[0].name.split(' ')[0]) || '担当'
+  // 本番ではダミーの職員名（相馬…）を出さず、掛け声のみにする
+  const staffFamily = demo ? ((D.STAFF[0].name.split(' ')[0]) || '担当') : ''
 
   return (
     <div className="screen">
       {/* ログイン時刻と季節でひとことが変わる、さりげない掛け声 */}
       <div className="cm-greeting" style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '0 2px 2px', flexWrap: 'wrap', fontSize: 12.5, color: 'var(--fg-3)', lineHeight: 1.5, animation: 'rowIn 320ms var(--ease-standard)' }}>
-        <span style={{ color: 'var(--fg-2)', fontWeight: 500 }}>{staffFamily}さん、{greet.hello}。</span>
+        <span style={{ color: 'var(--fg-2)', fontWeight: 500 }}>{staffFamily ? staffFamily + 'さん、' : ''}{greet.hello}。</span>
         <span>{greet.aside}</span>
       </div>
 
@@ -235,8 +242,9 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* 直近の取り込み + 推移 */}
-      <div className="duo" style={{ display: 'grid', gridTemplateColumns: '1fr 1.25fr', gap: 16, alignItems: 'start' }}>
+      {/* 直近の取り込み + 推移（直近の取り込みはデモのダミーのため本番では非表示） */}
+      <div className="duo" style={{ display: 'grid', gridTemplateColumns: demo ? '1fr 1.25fr' : '1fr', gap: 16, alignItems: 'start' }}>
+        {demo && (
         <Card pad>
           <div className="t-h4">直近の取り込み</div>
           <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
@@ -250,6 +258,7 @@ export default function Dashboard() {
             ))}
           </div>
         </Card>
+        )}
         <Card pad>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <div className="t-h4">運動機能の推移（全体平均）</div>

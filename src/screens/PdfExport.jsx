@@ -2,10 +2,12 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_LEVELS, commentFor } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAIN_BY_ID } from '../data/kihon.js'
+import { wardLabel } from '../lib/db.js'
 import { RadioCard, CheckRow, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 const BASE = import.meta.env.BASE_URL
+const distinctSort = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
 
 // PDF 専用のレーダー（ラベルを大きく描くため広めの viewBox を使う）
 function pdfRadarGeo() {
@@ -95,7 +97,7 @@ function PdfPage({ p, state, count }) {
             </div>
             <div style={{ ...CELL_LABEL }}>測定日</div>
             <div className="t-num" style={{ padding: '4px 10px', borderBottom: '1px solid var(--slate-200)' }}>{p.date}</div>
-            <div style={{ ...CELL_LABEL, borderBottom: 'none' }}>会場</div>
+            <div style={{ ...CELL_LABEL, borderBottom: 'none' }}>市町村・{wardLabel()}</div>
             <div style={{ padding: '4px 10px', fontSize: 11.5 }}>{p.muniVenue}</div>
           </div>
         </div>
@@ -319,9 +321,13 @@ export default function PdfExport() {
   // 選択中の利用者に選択年度の測定がない場合は、その年度の測定済み先頭者に自動フォールバック
   const chosen = state.pdfUser ? D.users.find(x => x.id === state.pdfUser && x.meas[y]) : null
   const pdfUser = (chosen || D.users.find(u => u.meas[y]) || {}).id
+  // 実データでは市町村マスタが置き換わるので、初期値が見つからなければ先頭にフォールバック
+  const pdfMuniId = (D.MUNIS.find(m => m.id === state.pdfMuni) || D.MUNIS[0] || { id: state.pdfMuni }).id
+  const pdfWardOpts = distinctSort(D.users.filter(u => u.muni === pdfMuniId).map(u => u.venueName))
+  const pdfWard = state.pdfWard || 'all'
   let scope
   if (state.pdfMode === 'single') { const u = D.users.find(x => x.id === pdfUser && x.meas[y]); scope = u ? [u] : [] }
-  else if (state.pdfMode === 'muni') scope = D.users.filter(u => u.muni === state.pdfMuni && u.meas[y])
+  else if (state.pdfMode === 'muni') scope = D.users.filter(u => u.muni === pdfMuniId && (pdfWard === 'all' || u.venueName === pdfWard) && u.meas[y])
   else scope = D.users.filter(u => u.meas[y])
   const pages = scope.slice(0, 30).map((u, i) => buildPage(state, u, y, i))
   const q = state.pdfQ.trim().toLowerCase()
@@ -370,7 +376,14 @@ export default function PdfExport() {
         {state.pdfMode === 'muni' && (
           <div>
             <Overline style={{ marginBottom: 8 }}>市町村</Overline>
-            <Select value={state.pdfMuni} onChange={(e) => set({ pdfMuni: e.target.value })} options={D.MUNIS.map(m => opt(m.id, m.name))} style={{ width: '100%' }} />
+            <Select value={pdfMuniId} onChange={(e) => set({ pdfMuni: e.target.value, pdfWard: 'all' })} options={D.MUNIS.map(m => opt(m.id, m.name))} style={{ width: '100%' }} />
+            {pdfWardOpts.length > 0 && (
+              <>
+                <Overline style={{ margin: '12px 0 8px' }}>{wardLabel()}</Overline>
+                <Select value={pdfWard} onChange={(e) => set({ pdfWard: e.target.value })}
+                  options={[opt('all', 'すべての' + wardLabel())].concat(pdfWardOpts.map(w => opt(w, w)))} style={{ width: '100%' }} />
+              </>
+            )}
             <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>
               {eraOf(y)}年度 測定済 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{scope.length}</span> 名が対象です（プレビューは先頭 30 名）
             </div>

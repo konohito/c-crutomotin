@@ -9,6 +9,9 @@ try { CONFIG = import.meta.env.VITE_FIREBASE_CONFIG ? JSON.parse(import.meta.env
 export const dbEnabled = () => !!CONFIG
 export const firebaseConfig = () => CONFIG
 
+// 会場＝行政区。実データ(本番)では「行政区」、公開デモ(シードの会場名)では「会場」と表示する。
+export const wardLabel = () => (CONFIG ? '行政区' : '会場')
+
 const SHEET_COLS = ['height', 'weight', 'gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
 
 // firebase アプリを 1 回だけ初期化して使い回す（Firestore/Storage と Auth で共有する）

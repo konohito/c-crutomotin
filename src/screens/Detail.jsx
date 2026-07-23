@@ -3,6 +3,7 @@ import { useStore, memosFor } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAvg, frailtyOf, FRAIL_LEVELS } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAINS } from '../data/kihon.js'
 import { realDataEnabled } from '../lib/realdata.js'
+import { wardLabel } from '../lib/db.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -87,7 +88,7 @@ export default function Detail() {
 
   const profile = [
     { k: '参加者 ID', v: u.id }, { k: '生年月日', v: u.birthDate }, { k: '電話番号', v: u.phone || '—' },
-    { k: '会場', v: u.venueName }, { k: '参加開始', v: eraOf(u.joined) + '年度' }, { k: '備考', v: u.note || '—' },
+    { k: wardLabel(), v: u.venueName }, { k: '参加開始', v: eraOf(u.joined) + '年度' }, { k: '備考', v: u.note || '—' },
   ]
 
   return (

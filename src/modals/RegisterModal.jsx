@@ -1,6 +1,10 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
+import { createUserDoc } from '../lib/realdata.js'
+import { wardLabel } from '../lib/db.js'
 import { Modal, ModalHead, Select } from '../ui/kit.jsx'
+
+const distinct = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
 
 function Field({ label, hint, children }) {
   return (
@@ -15,23 +19,31 @@ export default function RegisterModal() {
   const { state, set, showToast } = useStore()
   const close = () => set({ regOpen: false })
 
-  const save = () => {
+  // 実データでは市町村マスタが 1 件（嘉島町）に置き換わるため、初期値が見つからなくても先頭にフォールバック
+  const mu = D.MUNIS.find(x => x.id === state.regMuni) || D.MUNIS[0]
+  const wards = distinct(D.users.filter(u => u.muni === mu.id).map(u => u.venueName))
+
+  const save = async () => {
     if (!state.regName.trim() || !state.regKana.trim()) { set({ regError: '氏名（漢字・かな）を入力してください' }); return }
-    const mu = D.MUNIS.find(x => x.id === state.regMuni)
-    const code = mu.venues[0][0]
+    const ward = (state.regWard || '').trim()
+    const matched = ward ? (mu.venues || []).find(v => v[1] === ward) : null
+    const code = matched ? matched[0] : (mu.venues && mu.venues[0] ? mu.venues[0][0] : 900)
+    const venueName = ward || (mu.venues && mu.venues[0] ? mu.venues[0][1] : '')
     const by = parseInt(state.regBirth, 10)
     const birth = isNaN(by) ? 1950 : by
-    D.users.push({
+    const u = {
       id: D.newUserId(code), name: state.regName.trim(), kana: state.regKana.trim(),
       sex: state.regSex, sexLabel: state.regSex === 'M' ? '男' : '女', birth,
       birthDate: state.regBirth.trim() || '—', age: D.CUR - birth,
       muni: mu.id, muniName: mu.name, region: mu.region,
-      venueCode: code, venueName: mu.venues[0][1], phone: state.regPhone.trim(),
+      venueCode: code, venueName, phone: state.regPhone.trim(),
       joined: D.CUR, isNew: true, theta: 0, meas: {},
-    })
+    }
+    D.users.push(u)
+    try { await createUserDoc(u) } catch (e) { showToast('保存に失敗しました: ' + (e.message || '')) }
     set(s => ({
-      regOpen: false, regName: '', regKana: '', regBirth: '', regPhone: '',
-      screen: 'ros', rosMuni: 'all', rosRegion: 'all', rosStatus: 'new', rosSort: 'id', rosPage: 0,
+      regOpen: false, regName: '', regKana: '', regBirth: '', regPhone: '', regWard: '',
+      screen: 'ros', rosMuni: 'all', rosRegion: 'all', rosWard: 'all', rosStatus: 'new', rosSort: 'id', rosPage: 0,
       rev: s.rev + 1,
     }))
     showToast('利用者を登録しました')
@@ -48,7 +60,7 @@ export default function RegisterModal() {
 
   return (
     <Modal onClose={close} width="min(520px, 94vw)">
-      <ModalHead title="利用者の新規登録" sub="参加者 ID は会場に応じて自動で採番されます" onClose={close} />
+      <ModalHead title="利用者の新規登録" sub={`参加者 ID は${wardLabel()}に応じて自動で採番されます`} onClose={close} />
       <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div className="form-duo" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <Field label="氏名（漢字）">
@@ -71,8 +83,14 @@ export default function RegisterModal() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <Field label="市町村">
-            <Select value={state.regMuni} onChange={(e) => set({ regMuni: e.target.value })} options={D.MUNIS.map(mu => ({ v: mu.id, l: mu.name }))} style={{ height: 40, fontSize: 13.5 }} />
+            <Select value={mu.id} onChange={(e) => set({ regMuni: e.target.value, regWard: '' })} options={D.MUNIS.map(m => ({ v: m.id, l: m.name }))} style={{ height: 40, fontSize: 13.5 }} />
           </Field>
+          <Field label={wardLabel()} hint="(optional)">
+            <input className="field" list="reg-ward-list" value={state.regWard} onChange={(e) => set({ regWard: e.target.value })} placeholder="例: 上島" />
+            <datalist id="reg-ward-list">{wards.map(w => <option key={w} value={w} />)}</datalist>
+          </Field>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <Field label="電話番号" hint="(optional)">
             <input className="field t-num" value={state.regPhone} onChange={(e) => set({ regPhone: e.target.value })} placeholder="例: 096-237-0000" />
           </Field>

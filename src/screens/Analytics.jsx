@@ -2,7 +2,10 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, itemAvg, autoLines, betterNote, frailtyOf, FRAIL_ITEMS, FRAIL_LEVELS } from '../lib/helpers.js'
 import { kclScore, KCL_DOMAINS, KCL_CRITERIA_NOTE } from '../data/kihon.js'
+import { wardLabel } from '../lib/db.js'
 import { Card, Select, Segmented } from '../ui/kit.jsx'
+
+const distinctSort = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
 
 function heatBg(v) {
   if (v === null || v === undefined || !v) return 'var(--slate-50)'
@@ -12,12 +15,19 @@ function heatBg(v) {
 export default function Analytics() {
   const { state, set } = useStore()
   const y = state.anaYear
-  const inScope = (u) => state.anaRegion === 'all' || u.region === state.anaRegion
+  const wardOk = (u) => state.anaWard === 'all' || u.venueName === state.anaWard
+  const inRegion = (u) => state.anaRegion === 'all' || u.region === state.anaRegion
+  const inScope = (u) => inRegion(u) && wardOk(u)
   const scopeAgg = D.agg(inScope, y)
   const munis = D.MUNIS.filter(m => state.anaRegion === 'all' || m.region === state.anaRegion)
+  // 圏域スコープ内の行政区（会場）一覧。フィルタと「行政区別」集計に使う。
+  const wardChoices = distinctSort(D.users.filter(inRegion).map(u => u.venueName))
+  const groupWards = state.anaWard === 'all' ? wardChoices : [state.anaWard]
   const groups = state.anaUnit === 'region'
-    ? D.REGIONS.filter(r => state.anaRegion === 'all' || r === state.anaRegion).map(r => ({ name: r, sub: '', filter: (u) => u.region === r }))
-    : munis.map(m => ({ name: m.name, sub: m.region, filter: (u) => u.muni === m.id }))
+    ? D.REGIONS.filter(r => state.anaRegion === 'all' || r === state.anaRegion).map(r => ({ name: r, sub: '', filter: (u) => u.region === r && wardOk(u) }))
+    : state.anaUnit === 'ward'
+      ? groupWards.map(w => ({ name: w, sub: '', filter: (u) => u.venueName === w }))
+      : munis.map(m => ({ name: m.name, sub: m.region, filter: (u) => u.muni === m.id && wardOk(u) }))
 
   const barsRaw = groups.map(g => {
     const a = D.agg(g.filter, y)
@@ -34,7 +44,7 @@ export default function Analytics() {
   const ageOk = (u) => state.exAge === 'all' || (state.exAge === 'u75' ? u.age < 75 : state.exAge === 'a75' ? (u.age >= 75 && u.age < 85) : u.age >= 85)
   let cohortN = 0
   const seriesList = exRegions.map((r) => {
-    let pool = D.users.filter(u => u.region === r && sexOk(u) && ageOk(u))
+    let pool = D.users.filter(u => u.region === r && wardOk(u) && sexOk(u) && ageOk(u))
     if (state.exCohort === 'cohort') {
       pool = pool.filter(u => exYears.every(yy => u.meas[yy] && u.meas[yy].values[exCol.id] !== null && u.meas[yy].values[exCol.id] !== undefined))
       cohortN += pool.length
@@ -82,6 +92,7 @@ export default function Analytics() {
   const kclAvg = kclScopeC.total ? (kclScopeC.sum / kclScopeC.total).toFixed(1) : '—'
 
   const opt = (v, l) => ({ v, l })
+  const unitLabel = state.anaUnit === 'region' ? '圏域' : state.anaUnit === 'ward' ? wardLabel() : '市町村'
 
   const cohortNote = state.exCohort === 'cohort'
     ? '【同一集団で比較中】' + eraOf(state.exFrom) + '〜令和7年度のすべての年度に「' + exCol.label + '」の記録がある ' + cohortN + ' 名だけで平均した推移です。同じ方々の変化を純粋に追跡できます。ただし継続して参加できている比較的元気な方に偏りやすい点にご注意ください。' + (state.exAge !== 'all' ? '（年代は令和7年度時点の年齢で区分）' : '')
@@ -98,11 +109,16 @@ export default function Analytics() {
     <div className="screen">
       {/* フィルタバー */}
       <Card style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <Segmented value={state.anaUnit} onChange={(v) => set({ anaUnit: v })} options={[{ v: 'region', l: '圏域別' }, { v: 'muni', l: '市町村別' }]} />
+        <Segmented value={state.anaUnit} onChange={(v) => set({ anaUnit: v })}
+          options={[{ v: 'region', l: '圏域別' }, { v: 'muni', l: '市町村別' }].concat(wardChoices.length ? [{ v: 'ward', l: wardLabel() + '別' }] : [])} />
         <Select value={state.anaYear} onChange={(e) => set({ anaYear: Number(e.target.value) })}
           options={D.YEARS.slice().reverse().map(yy => opt(yy, eraOf(yy) + '年度（' + yy + '）'))} />
-        <Select value={state.anaRegion} onChange={(e) => set({ anaRegion: e.target.value })}
+        <Select value={state.anaRegion} onChange={(e) => set({ anaRegion: e.target.value, anaWard: 'all' })}
           options={[opt('all', '全圏域')].concat(D.REGIONS.map(r => opt(r, r)))} />
+        {wardChoices.length > 0 && (
+          <Select value={state.anaWard} onChange={(e) => set({ anaWard: e.target.value })}
+            options={[opt('all', 'すべての' + wardLabel())].concat(wardChoices.map(w => opt(w, w)))} />
+        )}
         <div style={{ flex: 1 }} />
         <div style={{ fontSize: 12.5, color: 'var(--fg-3)' }}>
           対象 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{scopeAgg.count}</span> 名（{eraOf(y)}年度 測定済）
@@ -160,7 +176,7 @@ export default function Analytics() {
       <div className="duo" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 16, alignItems: 'start' }}>
         <Card pad>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-            <div className="t-h4">{state.anaUnit === 'region' ? '圏域別 平均総合スコア' : '市町村別 平均総合スコア'}</div>
+            <div className="t-h4">{unitLabel}別 平均総合スコア</div>
             <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>前年差</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
@@ -203,7 +219,7 @@ export default function Analytics() {
 
       {/* ヒートマップ */}
       <Card pad style={{ overflowX: 'auto' }}>
-        <div className="t-h4">{state.anaUnit === 'region' ? '評価領域 × 圏域（平均スコア）' : '評価領域 × 市町村（平均スコア）'}</div>
+        <div className="t-h4">評価領域 × {unitLabel}（平均スコア）</div>
         <div style={{ display: 'grid', gridTemplateColumns: '86px repeat(5, 1fr)', gap: 4, marginTop: 14, minWidth: 460 }}>
           <div />
           {['歩行速度', 'バランス', '筋力', '複合動作', '体格'].map(h => (

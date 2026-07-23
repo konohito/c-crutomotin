@@ -76,6 +76,21 @@ export async function saveUserFields(id, patch) {
   }
 }
 
+// 新規利用者を Firestore に保存（メモリへの追加は呼び出し側で実施済み）。
+// venueName＝行政区。muni はメモリの id と一致させる（再読込後もフィルタが揃うように）。
+export async function createUserDoc(u) {
+  if (!dbEnabled()) return
+  const { fs, db } = await getFs()
+  const doc = {
+    name: u.name || '', kana: u.kana || '', sex: u.sex || 'F',
+    birth: u.birth ?? null, birthDate: u.birthDate || '',
+    muni: u.muni || '', muniName: u.muniName || '', region: u.region || '',
+    ward: u.venueName || '', venueCode: u.venueCode ?? null,
+    phone: u.phone || '', careLevel: u.careLevel || '',
+  }
+  await fs.setDoc(fs.doc(db, 'users', u.id), doc, { merge: true })
+}
+
 // 年度の測定値を更新（5領域・総合スコアを再計算 + Firestore 保存）
 export async function saveMeasurement(id, year, values) {
   const u = D.users.find(x => x.id === id)
