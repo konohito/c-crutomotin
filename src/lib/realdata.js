@@ -92,13 +92,14 @@ export async function saveMeasurement(id, year, values) {
   return s
 }
 
-// Firestore から全利用者・全測定を読み込み、エンジンへ適用する。読み込めたら true。
+// Firestore から全利用者・全測定を読み込み、エンジンへ適用する。
+// 戻り値: { loaded: 実データを適用したか, denied: 権限なし(未承認の職員) }
 export async function loadRealData() {
-  if (!dbEnabled()) return false
+  if (!dbEnabled()) return { loaded: false }
   try {
     const { fs, db } = await getFs()
     const usnap = await fs.getDocs(fs.collection(db, 'users'))
-    if (usnap.empty) return false
+    if (usnap.empty) return { loaded: false }
     const msnap = await fs.getDocs(fs.collection(db, 'measurements'))
     const byUser = {}
     msnap.forEach(d => { const m = d.data(); (byUser[m.userId] ||= []).push(m) })
@@ -111,9 +112,10 @@ export async function loadRealData() {
     const region = list[0]?.region || '嘉島町圏域'
     replaceMunis([{ id: muniId, name: muniName, region, tel: '', venues: wards.map((w, i) => [900 + i, w]) }])
     setUsers(list)
-    return true
+    return { loaded: true }
   } catch (e) {
+    if (e && e.code === 'permission-denied') return { loaded: false, denied: true }
     console.error('loadRealData failed:', e)
-    return false
+    return { loaded: false }
   }
 }
