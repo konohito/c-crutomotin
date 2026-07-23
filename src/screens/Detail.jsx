@@ -2,6 +2,7 @@ import D from '../data/engine.js'
 import { useStore, memosFor } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAvg, frailtyOf, FRAIL_LEVELS } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAINS } from '../data/kihon.js'
+import { realDataEnabled } from '../lib/realdata.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -51,11 +52,12 @@ export default function Detail() {
     return { id: c.id, label: c.label, unit: c.unit, val: last ? fmtD(last.values[c.id], c.dec) : '—', delta: d.txt, deltaFg: d.fg, spark }
   })
 
+  const canEdit = realDataEnabled()
   const hist = D.YEARS.map(y => {
     const m = u.meas[y]
     const pre = y < u.joined
     const st = m ? ['測定', 'var(--success-50)', 'var(--success-700)'] : (pre ? ['登録前', 'transparent', 'var(--fg-4)'] : (y === D.CUR ? ['未測定', 'var(--warning-50)', 'var(--warning-700)'] : ['欠席', 'var(--slate-100)', 'var(--slate-600)']))
-    return { era: eraOf(y), date: m ? m.date : '—', total: m ? m.total : '—', suffix: m ? '/100' : '', st }
+    return { era: eraOf(y), year: y, measured: !!m, review: !!(m && m.review), date: m ? m.date : '—', total: m ? m.total : '—', suffix: m ? '/100' : '', st }
   })
 
   const frail = last ? frailtyOf(u, lastY) : null
@@ -131,6 +133,12 @@ export default function Detail() {
               <span className="t-num" style={{ fontSize: 12.5, fontWeight: 600, color: td.fg }}>{td.txt}</span>
             </div>
           </div>
+          {canEdit && (
+            <button className="btn btn-outline" onClick={() => set({ editUser: u.id })} title="基本情報を編集">
+              <Icon name="ros" size={16} strokeWidth={1.8} />
+              編集
+            </button>
+          )}
           <button className="btn btn-primary" onClick={() => set({ screen: 'pdf', pdfMode: 'single', pdfUser: u.id, pdfYear: lastY, pdfQ: '' })}>
             <Icon name="download" size={16} strokeWidth={1.8} />
             結果票 PDF
@@ -184,29 +192,45 @@ export default function Detail() {
           <Card pad>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
               <div className="t-h4">参加履歴</div>
-              <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>年 1 回測定</div>
+              <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{canEdit ? '測定した年をクリックで編集' : '年 1 回測定'}</div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
-              {hist.map(h => (
-                <div key={h.era} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 56px 74px', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600 }}>{h.era}</div>
-                  <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{h.date}</div>
-                  <div style={{ textAlign: 'right' }}>
-                    <span className="t-num" style={{ fontSize: 13, fontWeight: 600 }}>{h.total}</span>
-                    <span style={{ fontSize: 10, color: 'var(--fg-4)' }}> {h.suffix}</span>
+              {hist.map(h => {
+                const editable = canEdit && h.measured
+                return (
+                  <div key={h.era} onClick={editable ? () => set({ editMeas: { id: u.id, year: h.year } }) : undefined}
+                    title={editable ? `${h.era}年度の測定値を編集` : undefined}
+                    style={{ display: 'grid', gridTemplateColumns: '58px 1fr 56px 74px 18px', gap: 8, padding: '7px 4px', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center', cursor: editable ? 'pointer' : 'default', borderRadius: 6 }}
+                    onMouseEnter={editable ? (e) => e.currentTarget.style.background = 'var(--bg-hover)' : undefined}
+                    onMouseLeave={editable ? (e) => e.currentTarget.style.background = 'transparent' : undefined}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600 }}>{h.era}</div>
+                    <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                      {h.date}
+                      {h.review && <span title="要確認（年度間で値が食い違います）" style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--warning-700)', background: 'var(--warning-50)', borderRadius: 999, padding: '0 6px' }}>要確認</span>}
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span className="t-num" style={{ fontSize: 13, fontWeight: 600 }}>{h.total}</span>
+                      <span style={{ fontSize: 10, color: 'var(--fg-4)' }}> {h.suffix}</span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 600, background: h.st[1], color: h.st[2] }}>{h.st[0]}</span>
+                    </div>
+                    <div style={{ textAlign: 'right', color: 'var(--fg-4)' }}>{editable && <Icon name="chevR" size={13} />}</div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 600, background: h.st[1], color: h.st[2] }}>{h.st[0]}</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </Card>
 
           <Card pad>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
               <div className="t-h4">最新の測定値</div>
-              <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{last ? last.date : '—'}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                {canEdit && last && (
+                  <button className="btn btn-ghost btn-sm" style={{ height: 22, padding: '0 6px', fontSize: 11.5 }} onClick={() => set({ editMeas: { id: u.id, year: lastY } })}>編集</button>
+                )}
+                <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{last ? last.date : '—'}</div>
+              </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 64px 70px 60px', gap: 6, alignItems: 'center', marginTop: 12, paddingBottom: 6, borderBottom: '1px solid var(--border-default)' }}>
               <div className="t-overline">項目</div>
