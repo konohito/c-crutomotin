@@ -9,3 +9,7 @@ normalized.json
 contradictions.txt
 inbody/
 inbody-unmatched.csv
+
+# Python バイトコードキャッシュ
+__pycache__/
+*.pyc
