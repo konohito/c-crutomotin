@@ -123,9 +123,23 @@ cd functions && npm install
 
 ### 5. ローカルで確認（エミュレータ）
 
+**GCP 資格情報が無くても**、取り込みパイプライン全体をエミュレータで通しで検証できる。
+`FUNCTIONS_EMULATOR=true` かつ `DOCAI_PROCESSOR_ID` 未設定のとき、Document AI の呼び出しは
+**モック認識**（`src/mockdoc.js`）に自動で切り替わる（本番では絶対に使われない）。
+
 ```bash
 cd functions
-npm test                        # mapping.js の単体テスト（GCP 不要）
+npm test          # 単体テスト（mapping / recognition / mockdoc）— GCP 不要
+npm run test:e2e  # E2E: Storage 保存→トリガ→OCR(モック)→Firestore まで通しで検証（GCP 不要）
+```
+
+`npm run test:e2e` は Firestore / Storage / Functions エミュレータを立て、記録用紙画像を
+Storage に保存 → `onSheetImageUpload` 発火 → 読み取りキュー（`batches/{id}/recognitions`）に
+結果が入るまでを実際に動かして検証する（要 Java。エミュレータ jar は初回のみ自動DL）。
+
+実 Document AI で確認する場合（要 `functions/.env` の `DOCAI_*` と ADC）:
+
+```bash
 npm run serve                   # emulators:start（要 ADC: gcloud auth application-default login）
 ```
 
@@ -139,11 +153,47 @@ curl -X POST http://localhost:5001/YOUR_PROJECT/asia-northeast1/recognizeSheet \
 
 ### 6. デプロイ
 
+手動で 1 回:
+
 ```bash
 firebase deploy --only functions   # predeploy で npm test が走る
 ```
 
 出力される関数 URL（例 `https://asia-northeast1-YOUR_PROJECT.cloudfunctions.net/recognizeSheet`）を控える。
+
+以降は下記の GitHub Actions で **main へのマージ＝自動デプロイ** にできる。
+
+#### GitHub Actions によるバックエンド自動デプロイ
+
+フロントの Pages デプロイ（`deploy.yml`）と同様に、バックエンドも `deploy-functions.yml` で
+マージ時に自動デプロイされる（`functions/**` やルール変更時のみ発火）。**Secrets/Variables を
+設定するまではデプロイ手順をスキップするだけで、ジョブは失敗しない**（安全側）。
+
+1. **デプロイ用サービスアカウントを作成**し、JSON 鍵を発行
+
+   ```bash
+   gcloud iam service-accounts create gh-deployer --project YOUR_PROJECT
+   # デプロイに必要なロール（最小構成の目安。組織ポリシーに応じて調整）
+   for R in roles/cloudfunctions.admin roles/firebasehosting.admin roles/datastore.owner \
+            roles/firebaserules.admin roles/iam.serviceAccountUser roles/serviceusage.serviceUsageConsumer; do
+     gcloud projects add-iam-policy-binding YOUR_PROJECT \
+       --member "serviceAccount:gh-deployer@YOUR_PROJECT.iam.gserviceaccount.com" --role "$R"
+   done
+   gcloud iam service-accounts keys create key.json \
+     --iam-account gh-deployer@YOUR_PROJECT.iam.gserviceaccount.com
+   ```
+
+2. **GitHub リポジトリに登録**（Settings → Secrets and variables → Actions）
+   - Secrets: `FIREBASE_SERVICE_ACCOUNT` = `key.json` の中身（JSON 全体）
+   - Variables: `FIREBASE_PROJECT_ID` = `YOUR_PROJECT`
+   - 登録後は `key.json` をローカルから削除する
+
+3. 以降 `functions/**`・`*.rules`・`firestore.indexes.json` を含む変更が main にマージされると
+   自動で `firebase deploy --only functions,firestore:rules,firestore:indexes,storage` が走る。
+   手動実行は Actions タブの「Deploy OCR backend」→ Run workflow から。
+
+> より安全にするなら、JSON 鍵の代わりに **Workload Identity Federation（OIDC）** で
+> `google-github-actions/auth` を鍵レス連携にできる（鍵の保管が不要になる）。
 
 ### 7. フロントを接続
 
@@ -178,13 +228,21 @@ firebase deploy --only functions   # predeploy で npm test が走る
 
 ```
 functions/
-  index.js              # HTTPS 関数 recognizeSheet（CORS・APIキー・エラー処理）
-  src/config.js         # 環境変数
-  src/documentai.js     # Document AI クライアント
-  src/mapping.js        # レスポンス → 記録用紙スキーマ（純粋関数・テスト対象）
-  test/mapping.test.cjs # 単体テスト（npm不要で実行可）
+  index.js                 # HTTPS 関数 recognizeSheet + Storage トリガ onSheetImageUpload
+  src/config.js            # 環境変数
+  src/documentai.js        # Document AI クライアント（エミュレータ/CI ではモックに自動切替）
+  src/mockdoc.js           # 合成 Document AI レスポンス（GCP 不要の検証・デモ用）
+  src/mapping.js           # レスポンス → 記録用紙スキーマ（純粋関数・テスト対象）
+  src/recognition.js       # Storage パス解析・recognition ドキュメント組み立て
+  test/mapping.test.cjs    # 単体テスト（マッピング）
+  test/recognition.test.cjs# 単体テスト（recognition 組み立て）
+  test/mockdoc.test.cjs    # 単体テスト（モック認識）
+  test/e2e-pipeline.cjs    # E2E（エミュレータで Storage→トリガ→OCR→Firestore を通し検証）
   .env.example
-firebase.json           # functions のデプロイ設定（predeploy に test）
+firebase.json              # functions のデプロイ設定（predeploy に test）
 .firebaserc.example
-src/lib/ocr.js          # フロントの継ぎ目（モック↔実API 切替＋台帳照合）
+.github/workflows/
+  deploy.yml               # フロント（GitHub Pages）自動デプロイ
+  deploy-functions.yml     # バックエンド（Firebase Functions/ルール）自動デプロイ ← 追加
+src/lib/ocr.js             # フロントの継ぎ目（モック↔実API 切替＋台帳照合）
 ```

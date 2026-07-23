@@ -7,6 +7,9 @@ const { onRequest } = require('firebase-functions/v2/https')
 const { onObjectFinalized } = require('firebase-functions/v2/storage')
 const { setGlobalOptions } = require('firebase-functions/v2')
 const admin = require('firebase-admin')
+// FieldValue はモジュラー import で取得する(admin.firestore.FieldValue はランタイム/バージョンにより
+// 未定義になることがあるため。firebase-functions v2 の推奨形)。
+const { FieldValue } = require('firebase-admin/firestore')
 const cfg = require('./src/config')
 const { processDocument } = require('./src/documentai')
 const { mapDocumentToSheet } = require('./src/mapping')
@@ -73,17 +76,17 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '512MiB', timeoutSecond
     const rec = buildRecognitionDoc(document, {
       no: parsed.no, storagePath: name, threshold: cfg.reviewThreshold,
     })
-    await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: admin.firestore.FieldValue.serverTimestamp() })
+    await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: FieldValue.serverTimestamp() })
     // バッチのメタ(件数)を更新
     await db.collection('batches').doc(parsed.batchId).set(
-      { updatedAt: admin.firestore.FieldValue.serverTimestamp(), sheetCount: admin.firestore.FieldValue.increment(1) },
+      { updatedAt: FieldValue.serverTimestamp(), sheetCount: FieldValue.increment(1) },
       { merge: true },
     )
   } catch (err) {
     console.error('onSheetImageUpload error:', name, err)
     await ref.set({
       no: parsed.no, storagePath: name, batchId: parsed.batchId, status: 'error',
-      error: err.message || 'OCR に失敗しました', recognizedAt: admin.firestore.FieldValue.serverTimestamp(),
+      error: err.message || 'OCR に失敗しました', recognizedAt: FieldValue.serverTimestamp(),
     })
   }
 })

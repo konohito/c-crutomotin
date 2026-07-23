@@ -1,0 +1,77 @@
+name: Deploy OCR backend (Firebase Functions)
+
+# バックエンド(functions / Firestore・Storage ルール)を main へのマージで自動デプロイする。
+# フロントの Pages デプロイ(deploy.yml)とは独立。functions 配下やルールの変更時のみ走る。
+#
+# 事前準備(未設定の間はデプロイ手順をスキップするだけで、ジョブは失敗しない):
+#   1. リポジトリ Variables に FIREBASE_PROJECT_ID を設定(GCP/Firebase プロジェクト ID)
+#   2. リポジトリ Secrets に FIREBASE_SERVICE_ACCOUNT を設定
+#      (デプロイ権限を持つサービスアカウントの JSON 鍵。Firebase Admin / Cloud Functions 管理者 等)
+#   詳細は docs/OCR-BACKEND.md「GitHub Actions によるバックエンド自動デプロイ」を参照。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'firestore.rules'
+      - 'firestore.indexes.json'
+      - 'storage.rules'
+      - 'firebase.json'
+      - '.github/workflows/deploy-functions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Secrets/Variables が揃っているかを確認(シークレットは展開せず存在だけ判定)
+      - id: guard
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          PID: ${{ vars.FIREBASE_PROJECT_ID }}
+        run: |
+          if [ -n "$SA" ] && [ -n "$PID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=バックエンド未設定::FIREBASE_SERVICE_ACCOUNT / FIREBASE_PROJECT_ID が未設定のためデプロイをスキップしました（docs/OCR-BACKEND.md 参照）。"
+          fi
+
+      - if: steps.guard.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      # 依存インストール＋テスト(単体のみ。E2E はエミュレータが要るため CI では実行しない)
+      - if: steps.guard.outputs.ready == 'true'
+        working-directory: functions
+        run: |
+          npm ci
+          npm test
+
+      # サービスアカウントで GCP 認証(ADC を設定)
+      - if: steps.guard.outputs.ready == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      # functions + Firestore/Storage ルール・インデックスをデプロイ
+      - if: steps.guard.outputs.ready == 'true'
+        working-directory: functions
+        run: >-
+          npx firebase-tools deploy
+          --only functions,firestore:rules,firestore:indexes,storage
+          --project "${{ vars.FIREBASE_PROJECT_ID }}"
+          --non-interactive
