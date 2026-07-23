@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { authEnabled, watchAuth, signOutUser } from '../lib/auth.js'
 import { loadRealData } from '../lib/realdata.js'
+import { getStaffProfile } from '../lib/staffAdmin.js'
 import Login from '../screens/Login.jsx'
 
 const BASE = import.meta.env.BASE_URL
 
-const AuthCtx = createContext({ user: null, enabled: false, signOut: () => {} })
+const AuthCtx = createContext({ user: null, enabled: false, profile: null, signOut: () => {}, refreshProfile: () => {} })
 export const useAuth = () => useContext(AuthCtx)
 
 // 認証確認中／実データ読込中のスプラッシュ
@@ -67,13 +68,23 @@ export default function AuthGate({ children }) {
     return () => { alive = false; unsub() }
   }, [enabled])
 
+  // 職員プロフィール（表示名など）。ログイン後に staff/{uid} を読み、氏名を表示に使う。
+  const [profile, setProfile] = useState(null)
+  const refreshProfile = () => { if (user) getStaffProfile(user.uid).then(setProfile).catch(() => {}) }
+  useEffect(() => {
+    if (!enabled || !user) { setProfile(null); return }
+    let alive = true
+    getStaffProfile(user.uid).then(p => { if (alive) setProfile(p) }).catch(() => {})
+    return () => { alive = false }
+  }, [enabled, user])
+
   if (!enabled) {
-    return <AuthCtx.Provider value={{ user: null, enabled: false, signOut: signOutUser }}>{children}</AuthCtx.Provider>
+    return <AuthCtx.Provider value={{ user: null, enabled: false, profile: null, signOut: signOutUser, refreshProfile: () => {} }}>{children}</AuthCtx.Provider>
   }
   if (!ready) return <AuthSplash />
   if (!user) return <Login />
   return (
-    <AuthCtx.Provider value={{ user, enabled: true, signOut: signOutUser }}>
+    <AuthCtx.Provider value={{ user, enabled: true, profile, signOut: signOutUser, refreshProfile }}>
       <RealDataBoot>{children}</RealDataBoot>
     </AuthCtx.Provider>
   )

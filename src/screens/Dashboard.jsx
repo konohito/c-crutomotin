@@ -2,6 +2,7 @@ import D from '../data/engine.js'
 import { useStore, pendingSheets, allEvents, staffNames, flagsFor, batchN, openSheetVals } from '../store.jsx'
 import { mdw, addDays, eraOf, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
 import { dbEnabled } from '../lib/db.js'
+import { useAuth } from '../ui/AuthGate.jsx'
 import { Card, Pill, Overline, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -20,6 +21,7 @@ function StatCard({ label, labelColor, value, valueColor, unit, foot, onClick })
 
 export default function Dashboard() {
   const { state, set, setState, showToast } = useStore()
+  const { profile } = useAuth()
   // 本番(実データ)では OCR キュー・直近の取り込み等のダミーは出さない
   const demo = !dbEnabled()
   const cur = D.CUR
@@ -90,11 +92,17 @@ export default function Dashboard() {
   if (tomorrowMeas.length > 0) {
     tasks.push({ icon: 'printer', bg: 'var(--info-50)', fg: 'var(--info-700)', title: `明日の測定会 ${tomorrowMeas.length} 件の用紙準備`, sub: tomorrowMeas.map(e => e.muni).join('・') + ' — 記録用紙を印刷', go: () => set({ screen: 'sheet' }) })
   }
-  const [, tm, td] = D.TODAY.split('/').map(Number)
-  const tw = '日月火水木金土'[new Date(D.TODAY).getDay()]
+  // 日めくりは本番では実際の「今日」を表示する（デモはシードの固定日 9/24）
+  const now = demo ? new Date(D.TODAY) : new Date()
+  const tm = now.getMonth() + 1
+  const td = now.getDate()
+  const tw = '日月火水木金土'[now.getDay()]
+  const eraTop = demo ? '令和7年度' : `令和${now.getFullYear() - 2018}年`
   const greet = loginGreeting()
-  // 本番ではダミーの職員名（相馬…）を出さず、掛け声のみにする
-  const staffFamily = demo ? ((D.STAFF[0].name.split(' ')[0]) || '担当') : ''
+  // 本番はログイン職員の氏名（姓）を使い、未設定なら掛け声のみにする
+  const staffFamily = demo
+    ? ((D.STAFF[0].name.split(' ')[0]) || '担当')
+    : ((profile && profile.name) ? profile.name.trim().split(/\s+/)[0] : '')
 
   return (
     <div className="screen">
@@ -113,7 +121,7 @@ export default function Dashboard() {
             <rect width="128" height="110" fill="url(#cmDots)" />
           </svg>
           <div className="today-date-inner" style={{ position: 'relative' }}>
-            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--brand-100)' }}>令和7年度</div>
+            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--brand-100)' }}>{eraTop}</div>
             <div className="t-display t-num" style={{ fontSize: 30, lineHeight: 1.2, marginTop: 2 }}>{tm}/{td}</div>
             <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--brand-100)', marginTop: 1 }}>{tw}曜日</div>
           </div>
@@ -159,10 +167,10 @@ export default function Dashboard() {
       </Card>
 
       {/* 統計カード */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${demo ? 4 : 3}, 1fr)`, gap: 16 }}>
         <StatCard label="登録利用者" value={D.users.length} unit="名" foot={<>うち今年度の新規 <span className="t-num">{newN}</span> 名</>} />
         <StatCard label="令和7年度 測定済" value={done} unit="名" foot={<>参加率 <span className="t-num">{Math.round((done / Math.max(1, D.users.length)) * 100)}</span>%</>} />
-        <StatCard label="要確認" labelColor="var(--warning-700)" value={pend.length} valueColor={pend.length ? 'var(--warning-700)' : 'var(--fg-1)'} unit="件" foot="読み取り結果の確認待ち" onClick={() => set({ screen: 'imp' })} />
+        {demo && <StatCard label="要確認" labelColor="var(--warning-700)" value={pend.length} valueColor={pend.length ? 'var(--warning-700)' : 'var(--fg-1)'} unit="件" foot="読み取り結果の確認待ち" onClick={() => set({ screen: 'imp' })} />}
         <StatCard label="参加者の平均年齢" value={statAge} unit="歳" foot={<>女性 <span className="t-num">{statFRate}</span>% · 85歳以上 <span className="t-num">{statOld}</span> 名</>} />
       </div>
 
@@ -187,8 +195,8 @@ export default function Dashboard() {
         </Card>
       ))}
 
-      {/* 区域別 + 要確認 */}
-      <div className="duo" style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 16, alignItems: 'start' }}>
+      {/* 区域別（+ 確認が必要な用紙。用紙確認はデモのみ） */}
+      <div className="duo" style={{ display: 'grid', gridTemplateColumns: demo ? '1.25fr 1fr' : '1fr', gap: 16, alignItems: 'start' }}>
         <Card pad>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <div className="t-h4">区域別の参加状況</div>
@@ -204,7 +212,7 @@ export default function Dashboard() {
             ))}
           </div>
         </Card>
-        <Card pad>
+        {demo && <Card pad>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <div className="t-h4">確認が必要な用紙</div>
             <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{pend.length} 件</div>
@@ -239,7 +247,7 @@ export default function Dashboard() {
               )
             })}
           </div>
-        </Card>
+        </Card>}
       </div>
 
       {/* 直近の取り込み + 推移（直近の取り込みはデモのダミーのため本番では非表示） */}

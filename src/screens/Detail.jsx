@@ -4,6 +4,7 @@ import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAv
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAINS } from '../data/kihon.js'
 import { realDataEnabled } from '../lib/realdata.js'
 import { wardLabel } from '../lib/db.js'
+import { useAuth } from '../ui/AuthGate.jsx'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -20,6 +21,7 @@ function LegendSwatch({ kind, color, label }) {
 
 export default function Detail() {
   const { state, set, setState, showToast } = useStore()
+  const { profile: staffProfile, enabled: authOn } = useAuth()
   const u = D.users.find(x => x.id === state.detId) || D.users[0]
   const ys = Object.keys(u.meas).map(Number)
   const last = ys.length ? u.meas[ys[ys.length - 1]] : null
@@ -81,7 +83,10 @@ export default function Detail() {
   const memoAdd = () => {
     const t = state.memoDraft.trim()
     if (!t) return
-    const arr = memos.concat([{ date: D.TODAY, text: t, by: '相馬' }])
+    // 投稿者名と日付は本番ではログイン職員・実際の今日を使う
+    const byName = authOn ? ((staffProfile && staffProfile.name) || '職員') : '相馬'
+    const today = authOn ? new Date().toLocaleDateString('sv-SE').replace(/-/g, '/') : D.TODAY
+    const arr = memos.concat([{ date: today, text: t, by: byName }])
     setState(s => ({ ...s, memos: { ...s.memos, [u.id]: arr }, memoDraft: '' }))
     showToast('気づきを登録しました')
   }

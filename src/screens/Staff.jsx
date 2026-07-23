@@ -1,20 +1,32 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store.jsx'
 import { useAuth } from '../ui/AuthGate.jsx'
-import { listStaff, addStaff, revokeStaff } from '../lib/staffAdmin.js'
+import { listStaff, addStaff, revokeStaff, updateStaffName } from '../lib/staffAdmin.js'
 import { Card } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 export default function Staff() {
   const { showToast } = useStore()
-  const { user } = useAuth()
+  const { user, refreshProfile } = useAuth()
   const [staff, setStaff] = useState(null)
   const [form, setForm] = useState({ email: '', password: '', name: '' })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [edit, setEdit] = useState({ uid: null, name: '' })
 
   const reload = () => listStaff().then(setStaff).catch(() => setStaff([]))
   useEffect(() => { reload() }, [])
+
+  const saveName = async () => {
+    const { uid, name } = edit
+    try {
+      await updateStaffName(uid, name.trim())
+      if (user && user.uid === uid) refreshProfile()
+      showToast('氏名を保存しました')
+      setEdit({ uid: null, name: '' })
+      await reload()
+    } catch { showToast('保存に失敗しました') }
+  }
 
   const add = async (e) => {
     e.preventDefault()
@@ -75,12 +87,25 @@ export default function Staff() {
           {staff && staff.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--fg-3)', padding: '10px 0' }}>まだ承認済みの職員がいません。</div>}
           {staff && staff.map(s => {
             const isMe = user && user.uid === s.uid
+            const editing = edit.uid === s.uid
             return (
               <div key={s.uid} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {s.name || s.email}{isMe && <span style={{ fontSize: 10.5, color: 'var(--brand-700)', background: 'var(--brand-50)', borderRadius: 999, padding: '1px 7px', marginLeft: 8 }}>自分</span>}
-                  </div>
+                  {editing ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input className="field" style={{ height: 32, fontSize: 13 }} value={edit.name} autoFocus placeholder="氏名（例: 山田 太郎）"
+                        onChange={(e) => setEdit(v => ({ ...v, name: e.target.value }))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEdit({ uid: null, name: '' }) }} />
+                      <button className="btn btn-primary btn-sm" onClick={saveName}>保存</button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => setEdit({ uid: null, name: '' })}>取消</button>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name || '（氏名未設定）'}</span>
+                      {isMe && <span style={{ fontSize: 10.5, color: 'var(--brand-700)', background: 'var(--brand-50)', borderRadius: 999, padding: '1px 7px', flexShrink: 0 }}>自分</span>}
+                      <button className="btn btn-ghost btn-sm" title="氏名を編集" onClick={() => setEdit({ uid: s.uid, name: s.name || '' })} style={{ flexShrink: 0, fontSize: 11.5, padding: '2px 8px' }}>編集</button>
+                    </div>
+                  )}
                   <div style={{ fontSize: 11.5, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.email}</div>
                 </div>
                 <button className="btn btn-outline btn-sm" onClick={() => revoke(s)} disabled={isMe} title={isMe ? '自分自身は解除できません' : '権限を解除'}>

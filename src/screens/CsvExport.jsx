@@ -2,7 +2,7 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { eraOf, frailtyOf, FRAIL_LEVELS, commentFor } from '../lib/helpers.js'
 import { kclScore, KCL_QUESTIONS, KCL_DOMAINS } from '../data/kihon.js'
-import { wardLabel } from '../lib/db.js'
+import { wardLabel, dbEnabled } from '../lib/db.js'
 import { Card, Select, CheckRow, Overline, Segmented } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -73,7 +73,10 @@ function esc(v) {
 const hira = (kana) => String(kana || '').replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60)).replace(/[\s　]/g, '')
 const regionCode = (u) => String((D.REGIONS.indexOf(u.region) + 1) * 10)
 const muniCode = (u) => String(D.MUNIS.findIndex(mu => mu.id === u.muni) + 1).padStart(2, '0')
-const careLevel = (u) => (u.theta < -1.7 ? '要支援2' : u.theta < -1.3 ? '要支援1' : 'なし')
+// 実データの介護度（careLevel）を優先。無ければ従来の推定にフォールバック。
+const careLevel = (u) => (u.careLevel && u.careLevel !== '自立')
+  ? u.careLevel
+  : (u.theta < -1.7 ? '要支援2' : u.theta < -1.3 ? '要支援1' : 'なし')
 const bestOf = (a, b) => (a === null || a === undefined ? b : (b === null || b === undefined ? a : Math.max(a, b)))
 function ageAt(u, y, m) {
   // 評価日時点の満年齢（誕生日前後を考慮。日付が読めない場合は年度差で代用）
@@ -124,7 +127,7 @@ GOV_COLS.push(
   }],
   ['評価日_開始時', (u, y, m) => m ? m.date : ''],
   ['評価日_終了時', () => ''],
-  ['測定者', (u, y, m) => m ? D.STAFF[u.venueCode % D.STAFF.length].name : ''],
+  ['測定者', (u, y, m) => (m && !dbEnabled()) ? D.STAFF[u.venueCode % D.STAFF.length].name : ''],
   ['訓練方法', (u, y, m) => m ? '集団' : ''],
   ['自己訓練有無', () => ''],
   ['補装具_開始時', (u, y, m) => m ? (u.note && u.note.includes('杖') ? '杖' : 'なし') : ''],

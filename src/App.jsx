@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import D from './data/engine.js'
 import { useStore, pendingSheets, allEvents, StoreProvider } from './store.jsx'
 import { mdw } from './lib/helpers.js'
+import { dbEnabled } from './lib/db.js'
 import { Icon } from './ui/icons.jsx'
 import { Toast } from './ui/kit.jsx'
 import AuthGate, { useAuth } from './ui/AuthGate.jsx'
@@ -79,7 +80,8 @@ function Sidebar() {
       </div>
       <nav className="sidebar-nav">
         <div className="t-overline" style={{ padding: '4px 12px 6px' }}>業務</div>
-        {NAV_MAIN.map(([id, label]) => (
+        {/* 本番(実データ)は OCR 連携が未完成のため 取り込み・モバイル撮影を隠す */}
+        {NAV_MAIN.filter(([id]) => !(dbEnabled() && (id === 'imp' || id === 'mob'))).map(([id, label]) => (
           <NavItem key={id} id={id} label={label} badge={id === 'imp' && pending.length > 0 ? pending.length : 0} />
         ))}
         <div className="t-overline" style={{ padding: '14px 12px 6px' }}>分析</div>
@@ -110,9 +112,9 @@ function Sidebar() {
 
 // ログイン中の職員（Firebase 認証時）。未設定のデモではダミーの職員名を表示する。
 function SidebarUser() {
-  const { user, enabled, signOut } = useAuth()
+  const { user, enabled, profile, signOut } = useAuth()
   const email = user && (user.email || '')
-  const name = enabled ? (user && user.displayName) || (email ? email.split('@')[0] : '職員') : '相馬 直樹'
+  const name = enabled ? ((profile && profile.name) || (user && user.displayName) || (email ? email.split('@')[0] : '職員')) : '相馬 直樹'
   const sub = enabled ? email : '事務局 · 管理者権限'
   const initial = (name || '職').trim().charAt(0)
   return (
@@ -163,12 +165,14 @@ function Header() {
         />
         <div className="search-icon"><Icon name="search" size={16} /></div>
       </div>
-      <button className="icon-btn" title="確認が必要な用紙" onClick={() => set({ screen: 'imp' })}>
-        <Icon name="bell" size={18} />
-        {pending.length > 0 && (
-          <span className="t-num" style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, borderRadius: 999, background: 'var(--danger-500)', border: '1.5px solid #fff', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center', padding: '0 4px' }}>{pending.length}</span>
-        )}
-      </button>
+      {!dbEnabled() && (
+        <button className="icon-btn" title="確認が必要な用紙" onClick={() => set({ screen: 'imp' })}>
+          <Icon name="bell" size={18} />
+          {pending.length > 0 && (
+            <span className="t-num" style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, borderRadius: 999, background: 'var(--danger-500)', border: '1.5px solid #fff', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center', padding: '0 4px' }}>{pending.length}</span>
+          )}
+        </button>
+      )}
       {state.screen === 'ros' && (
         <button className="btn btn-primary" onClick={() => set({ regOpen: true, regError: '' })}>
           <Icon name="plus" size={15} strokeWidth={2} />
