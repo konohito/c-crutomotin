@@ -18,14 +18,22 @@ export async function firebaseApp() {
   _app = getApps().length ? getApps()[0] : initializeApp(CONFIG)
   return _app
 }
+// Firestore を 1 回だけ用意（VITE_FIRESTORE_EMULATOR があればエミュレータに接続）。
+// realdata.js と共有し、接続の二重呼び出しを避ける。
+let _fs, _fsdb
+export async function getFs() {
+  if (_fsdb) return { fs: _fs, db: _fsdb }
+  const app = await firebaseApp()
+  _fs = await import('firebase/firestore')
+  _fsdb = _fs.getFirestore(app)
+  const emu = import.meta.env.VITE_FIRESTORE_EMULATOR
+  if (emu) { const [h, p] = emu.split(':'); try { _fs.connectFirestoreEmulator(_fsdb, h, +p || 8080) } catch { /* 接続済みは無視 */ } }
+  return { fs: _fs, db: _fsdb }
+}
 async function sdk() {
   if (_sdk) return _sdk
-  const [app, firestore, storage] = await Promise.all([
-    firebaseApp(),
-    import('firebase/firestore'),
-    import('firebase/storage'),
-  ])
-  _sdk = { firestore, storage, db: firestore.getFirestore(app), bucket: storage.getStorage(app) }
+  const [{ fs, db }, app, storage] = await Promise.all([getFs(), firebaseApp(), import('firebase/storage')])
+  _sdk = { firestore: fs, storage, db, bucket: storage.getStorage(app) }
   return _sdk
 }
 

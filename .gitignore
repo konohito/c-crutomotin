@@ -2,3 +2,8 @@ node_modules
 dist
 *.local
 .DS_Store
+
+# 個人情報を含む取り込み中間ファイル（コミット禁止）
+normalized.json
+*.xlsx
+contradictions.txt

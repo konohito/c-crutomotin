@@ -22,13 +22,19 @@ service cloud.firestore {
       }
     }
 
-    // 本登録された測定データ。職員が作成・閲覧可。上書き削除は不可(監査性のため)。
+    // 利用者台帳。職員が閲覧・編集可（氏名・市町村/行政区・介護度・電話 等）。削除は不可。
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if false;
+    }
+
+    // 測定データ。職員が閲覧・作成・編集可（実データ取り込み後の修正を含む）。削除は不可(監査性のため)。
     match /measurements/{measurementId} {
       allow read: if signedIn();
-      allow create: if signedIn()
-        && request.resource.data.keys().hasAll(['userId', 'year', 'values', 'source'])
-        && request.resource.data.source == 'ocr';
-      allow update, delete: if false;
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasAll(['userId', 'year']);
+      allow delete: if false;
     }
   }
 }
