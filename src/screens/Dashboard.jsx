@@ -1,3 +1,4 @@
+import { useRef, useState, useEffect } from 'react'
 import D from '../data/engine.js'
 import { useStore, pendingSheets, allEvents, staffNames, flagsFor, batchN, openSheetVals } from '../store.jsx'
 import { mdw, addDays, eraOf, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
@@ -33,9 +34,14 @@ export default function Dashboard() {
   const statFRate = Math.round((D.users.filter(u => u.sex === 'F').length / Math.max(1, D.users.length)) * 100)
   const statOld = D.users.filter(u => u.age >= 85).length
 
-  const muniProg = D.REGIONS.map(r => {
-    const total = D.users.filter(u => u.region === r).length
-    const d = D.users.filter(u => u.region === r && u.meas[cur]).length
+  // 本番(単一圏域)では圏域別ではなく行政区別に集計する
+  const progField = demo ? 'region' : 'venueName'
+  const progGroups = demo
+    ? D.REGIONS
+    : [...new Set(D.users.map(u => u.venueName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
+  const muniProg = progGroups.map(r => {
+    const total = D.users.filter(u => u[progField] === r).length
+    const d = D.users.filter(u => u[progField] === r && u.meas[cur]).length
     return { name: r, done: d, total, w: Math.round((d / Math.max(1, total)) * 100) + '%' }
   })
 
@@ -50,8 +56,21 @@ export default function Dashboard() {
 
   const cbm = colsPlus()
   const dcol = cbm.find(c => c.id === state.dashItem) || cbm[3]
-  const dSeries = D.YEARS.map(y => ({ year: y, v: itemAvg(D.users, y, dcol.id) }))
-  const dAuto = autoLines([{ pts: dSeries }], D.YEARS, 70, 520, 24, 132)
+  // グラフは実際に測定のある年度だけを等間隔で描く（空の年度で間延びさせない）
+  const dSeries = D.YEARS.map(y => ({ year: y, v: itemAvg(D.users, y, dcol.id) })).filter(p => p.v != null)
+  const dYears = dSeries.map(p => p.year)
+  // コンテナ幅を実測し、viewBox 幅と一致させて文字の引き伸ばし（潰れ）を防ぐ
+  const chartRef = useRef(null)
+  const [chartW, setChartW] = useState(560)
+  useEffect(() => {
+    const el = chartRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(([e]) => setChartW(Math.max(320, Math.round(e.contentRect.width))))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const CH = 176
+  const dAuto = autoLines([{ pts: dSeries }], dYears, 46, chartW - 24, 26, CH - 44)
   const dLine = dAuto.lines[0] || { path: '', pts: [] }
 
   const evsAll = allEvents(state)
@@ -199,13 +218,13 @@ export default function Dashboard() {
       <div className="duo" style={{ display: 'grid', gridTemplateColumns: demo ? '1.25fr 1fr' : '1fr', gap: 16, alignItems: 'start' }}>
         <Card pad>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-            <div className="t-h4">区域別の参加状況</div>
+            <div className="t-h4">{demo ? '区域別' : '行政区別'}の参加状況</div>
             <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>令和7年度 測定済 / 登録</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
             {muniProg.map(m => (
-              <div key={m.name} style={{ display: 'grid', gridTemplateColumns: '76px 1fr 84px', gap: 12, alignItems: 'center' }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</div>
+              <div key={m.name} style={{ display: 'grid', gridTemplateColumns: '104px 1fr 84px', gap: 12, alignItems: 'center' }}>
+                <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
                 <div className="meter"><div style={{ width: m.w }} /></div>
                 <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-2)', textAlign: 'right' }}>{m.done} / {m.total} 名</div>
               </div>
@@ -275,22 +294,28 @@ export default function Dashboard() {
               <button className="btn btn-outline btn-sm" onClick={() => set({ screen: 'ana' })}>詳しく分析</button>
             </div>
           </div>
-          <svg width="100%" height="170" viewBox="0 0 560 170" preserveAspectRatio="none" style={{ marginTop: 10, display: 'block' }}>
-            {dAuto.ticks.map((tk, i) => (
-              <g key={i}>
-                <line x1="36" y1={tk.y} x2="548" y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
-                <text x="30" y={tk.y + 3.5} textAnchor="end" fontSize="10" fill="var(--slate-400)" fontFamily="Inter">{fmtD(tk.v, dcol.dec)}</text>
-              </g>
-            ))}
-            <path d={dLine.path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            {dLine.pts.map((p, i) => (
-              <g key={i}>
-                <circle cx={p.x} cy={p.y} r="3.5" fill="var(--bg-surface)" stroke="var(--brand-500)" strokeWidth="2" />
-                <text x={p.x} y={p.y < 44 ? p.y + 17 : p.y - 9} textAnchor="middle" fontSize="10.5" fontWeight="600" fill="var(--slate-700)" fontFamily="Inter">{fmtD(Math.round(p.v * 10) / 10, dcol.dec)}</text>
-                <text x={p.x} y="162" textAnchor="middle" fontSize="10" fill="var(--slate-500)" fontFamily="Inter">{eraOf(p.year)}</text>
-              </g>
-            ))}
-          </svg>
+          <div ref={chartRef} style={{ marginTop: 10 }}>
+            {dLine.pts.length === 0 ? (
+              <div style={{ height: CH, display: 'grid', placeItems: 'center', fontSize: 12.5, color: 'var(--fg-3)' }}>この項目の測定データがありません</div>
+            ) : (
+              <svg width="100%" height={CH} viewBox={`0 0 ${chartW} ${CH}`} style={{ display: 'block' }}>
+                {dAuto.ticks.map((tk, i) => (
+                  <g key={i}>
+                    <line x1="40" y1={tk.y} x2={chartW - 12} y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
+                    <text x="34" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--slate-400)" fontFamily="Inter">{fmtD(tk.v, dcol.dec)}</text>
+                  </g>
+                ))}
+                <path d={dLine.path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                {dLine.pts.map((p, i) => (
+                  <g key={i}>
+                    <circle cx={p.x} cy={p.y} r="4" fill="var(--bg-surface)" stroke="var(--brand-500)" strokeWidth="2.5" />
+                    <text x={p.x} y={p.y < 46 ? p.y + 18 : p.y - 10} textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--slate-700)" fontFamily="Inter">{fmtD(Math.round(p.v * 10) / 10, dcol.dec)}</text>
+                    <text x={p.x} y={CH - 8} textAnchor="middle" fontSize="11" fill="var(--slate-500)" fontFamily="Inter">{eraOf(p.year)}</text>
+                  </g>
+                ))}
+              </svg>
+            )}
+          </div>
           <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 4 }}>
             各年度に測定したすべての方の平均{dcol.unit ? ' · 単位 ' + dcol.unit : ''}{betterNote(dcol) ? ' · ' + betterNote(dcol) : ''} — 集団の入れ替わりを含むため、詳しくは集計分析へ
           </div>

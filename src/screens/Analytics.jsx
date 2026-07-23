@@ -2,7 +2,7 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, itemAvg, autoLines, betterNote, frailtyOf, FRAIL_ITEMS, FRAIL_LEVELS } from '../lib/helpers.js'
 import { kclScore, KCL_DOMAINS, KCL_CRITERIA_NOTE } from '../data/kihon.js'
-import { wardLabel } from '../lib/db.js'
+import { wardLabel, dbEnabled } from '../lib/db.js'
 import { Card, Select, Segmented } from '../ui/kit.jsx'
 
 const distinctSort = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
@@ -50,7 +50,7 @@ export default function Analytics() {
       cohortN += pool.length
     }
     const n = state.exCohort === 'cohort' ? pool.length : pool.filter(u => u.meas[D.CUR]).length
-    return { pts: exYears.map(yy => ({ year: yy, v: itemAvg(pool, yy, exCol.id) })), color: colors[D.REGIONS.indexOf(r)] || colors[0], label: r, n }
+    return { pts: exYears.map(yy => ({ year: yy, v: itemAvg(pool, yy, exCol.id) })), color: colors[D.REGIONS.indexOf(r)] || colors[0], label: dbEnabled() ? '全体' : r, n }
   })
   const exAuto = autoLines(seriesList, exYears, 46, 820, 18, 190)
   const exXs = (i) => Math.round(46 + (exYears.length > 1 ? (i * (820 - 46)) / (exYears.length - 1) : 0))
@@ -110,11 +110,13 @@ export default function Analytics() {
       {/* フィルタバー */}
       <Card style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Segmented value={state.anaUnit} onChange={(v) => set({ anaUnit: v })}
-          options={[{ v: 'region', l: '圏域別' }, { v: 'muni', l: '市町村別' }].concat(wardChoices.length ? [{ v: 'ward', l: wardLabel() + '別' }] : [])} />
+          options={(dbEnabled() ? [{ v: 'muni', l: '市町村別' }] : [{ v: 'region', l: '圏域別' }, { v: 'muni', l: '市町村別' }]).concat(wardChoices.length ? [{ v: 'ward', l: wardLabel() + '別' }] : [])} />
         <Select value={state.anaYear} onChange={(e) => set({ anaYear: Number(e.target.value) })}
           options={D.YEARS.slice().reverse().map(yy => opt(yy, eraOf(yy) + '年度（' + yy + '）'))} />
-        <Select value={state.anaRegion} onChange={(e) => set({ anaRegion: e.target.value, anaWard: 'all' })}
-          options={[opt('all', '全圏域')].concat(D.REGIONS.map(r => opt(r, r)))} />
+        {!dbEnabled() && (
+          <Select value={state.anaRegion} onChange={(e) => set({ anaRegion: e.target.value, anaWard: 'all' })}
+            options={[opt('all', '全圏域')].concat(D.REGIONS.map(r => opt(r, r)))} />
+        )}
         {wardChoices.length > 0 && (
           <Select value={state.anaWard} onChange={(e) => set({ anaWard: e.target.value })}
             options={[opt('all', 'すべての' + wardLabel())].concat(wardChoices.map(w => opt(w, w)))} />
@@ -128,7 +130,7 @@ export default function Analytics() {
       {/* 年次推移チャート */}
       <Card pad>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <div className="t-h4" style={{ flex: 1, minWidth: 170 }}>運動機能の年次推移（区域別）</div>
+          <div className="t-h4" style={{ flex: 1, minWidth: 170 }}>運動機能の年次推移（{dbEnabled() ? '全体' : '区域別'}）</div>
           <Select sm value={state.exItem} onChange={(e) => set({ exItem: e.target.value })} options={cbm.map(c => ({ v: c.id, l: c.label }))} />
           <Select sm value={state.exSex} onChange={(e) => set({ exSex: e.target.value })} options={[opt('all', '男女計'), opt('F', '女性のみ'), opt('M', '男性のみ')]} />
           <Select sm value={state.exAge} onChange={(e) => set({ exAge: e.target.value })} options={[opt('all', '全年代'), opt('u75', '〜74歳'), opt('a75', '75〜84歳'), opt('a85', '85歳〜')]} />

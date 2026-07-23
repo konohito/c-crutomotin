@@ -20,7 +20,8 @@ const initialState = {
   // 編集（実データ）
   editUser: null, editMeas: null, editBusy: false,
   // 分析
-  anaYear: 2025, anaRegion: 'all', anaWard: 'all', anaUnit: 'region',
+  // 本番(単一圏域)は圏域別を出さず、行政区別を既定にする
+  anaYear: 2025, anaRegion: 'all', anaWard: 'all', anaUnit: dbEnabled() ? 'ward' : 'region',
   dashItem: 'gripR', exItem: 'gripR', exSex: 'all', exAge: 'all', exCohort: 'all', exFrom: 2020,
   // PDF
   pdfMode: 'single', pdfUser: null, pdfMuni: 'sakuragawa', pdfWard: 'all', pdfYear: 2025, pdfQ: '',
