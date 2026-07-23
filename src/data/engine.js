@@ -359,5 +359,22 @@ users.forEach(u => {
   });
 });
 
-const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, COLS, AXES, SHEET_COLS, STAFF, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf, ensureKcl, newUserId };
+// ---- 実データ差し込みフック --------------------------------------------------
+// Firestore 等から読み込んだ利用者で、シードの users を丸ごと置き換える。
+// 既存画面は D.users / D.MUNIS を読むだけなので、中身を差し替えれば実データ表示になる。
+export function setUsers(list) {
+  users.length = 0;
+  list.forEach(u => users.push(u));
+}
+// 実データの市町村（例: 嘉島町）で、市町村・圏域の選択肢を置き換える。
+// シードの市町村を残さないことで、フィルタに空の架空市町村が並ぶのを防ぐ。
+export function replaceMunis(list) {
+  MUNIS.length = 0;
+  list.forEach(m => MUNIS.push(m));
+  const regions = [...new Set(list.map(m => m.region).filter(Boolean))];
+  REGIONS.length = 0;
+  regions.forEach(r => REGIONS.push(r));
+}
+
+const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, COLS, AXES, SHEET_COLS, STAFF, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf, ensureKcl, newUserId, setUsers, replaceMunis };
 export default D;
