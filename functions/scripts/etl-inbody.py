@@ -254,56 +254,64 @@ def load_firestore(db):
     return users, meas_by_year
 
 
-def match(ib, users, meas_by_year, name_index):
-    year_meas = meas_by_year.get(ib['year'], [])
-    # 1) 台帳ID直結（2024/2025 書式は InBody 側に参加者IDがある）
+def build_profiles(users, meas_by_year):
+    """利用者ごとの身体プロフィール。身長はほぼ不変なので、全年度の身長体重を突合材料にする。
+       （令和4は台帳測定の多くに身長体重が無く、令和5は台帳に測定自体が無いため、
+        「その年の測定」ではなく「その人」に対して突合する）"""
+    prof = {uid: {**u, 'hw': {}} for uid, u in users.items()}
+    for y, ms in meas_by_year.items():
+        for m in ms:
+            p = prof.get(m['userId'])
+            if p is not None and (m['height'] is not None or m['weight'] is not None):
+                p['hw'][y] = (m['height'], m['weight'])
+    return prof
+
+
+def resolve_user(ib, users, name_index, profiles):
+    """InBody 1行 → 台帳の利用者を特定。確度の高い順: 台帳ID → 氏名 → 身体属性。"""
     if ib.get('rosterId') and ib['rosterId'] in users:
-        bym = [m for m in year_meas if m['userId'] == ib['rosterId']]
-        if len(bym) == 1:
-            return bym[0], 'id'
-    # 2) 氏名一致（空白除去済み）。同姓同名がいなければ確定
-    if ib.get('name') and name_index.get(ib['name']) and len(name_index[ib['name']]) == 1:
-        uid = name_index[ib['name']][0]
-        bym = [m for m in year_meas if m['userId'] == uid]
-        if len(bym) == 1:
-            return bym[0], 'name'
-    # 3) 身体属性（旧書式: 性別+身長+体重）
+        return ib['rosterId'], 'id'
+    if ib.get('name'):
+        lst = name_index.get(ib['name'], [])
+        if len(lst) == 1:
+            return lst[0], 'name'
+    # 身体属性: 性別・年齢(±1)・身長(全年度の記録と±2cm)・体重(最寄り年と比較)
     cands = []
-    for m in year_meas:
-        u = users.get(m['userId'])
-        if not u or m['height'] is None or m['weight'] is None:
+    for uid, p in profiles.items():
+        if ib['sex'] and p['sex'] and p['sex'] != ib['sex']:
             continue
-        if ib['sex'] and u['sex'] and u['sex'] != ib['sex']:
+        if ib['age'] and p['birth'] and abs((ib['year'] - p['birth']) - ib['age']) > 1:
             continue
-        if abs(m['height'] - ib['height']) <= HEIGHT_TOL and abs(m['weight'] - ib['weight']) <= WEIGHT_TOL:
-            cands.append(m)
+        if not p['hw']:
+            continue
+        hds = [abs(h - ib['height']) for (h, _w) in p['hw'].values() if h is not None]
+        if not hds or min(hds) > HEIGHT_TOL:
+            continue
+        wd, gap = None, None
+        for y, (_h, w) in p['hw'].items():
+            if w is None:
+                continue
+            g = abs(y - ib['year'])
+            if gap is None or g < gap:
+                gap, wd = g, abs(w - ib['weight'])
+        if wd is not None and wd > (WEIGHT_TOL if gap == 0 else 4.0):
+            continue  # 同年なら±1.5kg・別年なら±4kg まで
+        score = min(hds) + (wd if wd is not None else 2.0)
+        cands.append((uid, score, p['ward']))
     if not cands:
         return None, 'none'
-    if len(cands) == 1:
-        return cands[0], 'unique'
-    # 測定日が一致すれば最優先で確定
-    if ib['testDate']:
-        byd = [m for m in cands if m.get('date') == ib['testDate']]
-        if len(byd) == 1:
-            return byd[0], 'date'
+    # 地区(行政区)が一致する候補を優先
+    if ib['district']:
+        byd = [c for c in cands if c[2] and c[2] == ib['district']]
         if byd:
             cands = byd
-    if ib['district']:
-        bw = [m for m in cands if users[m['userId']]['ward'] == ib['district']]
-        if len(bw) == 1:
-            return bw[0], 'district'
-        if bw:
-            cands = bw
-    if ib['age']:
-        bya = [m for m in cands if users[m['userId']]['birth'] and abs((ib['year'] - users[m['userId']]['birth']) - ib['age']) <= 1]
-        if len(bya) == 1:
-            return bya[0], 'age'
-        if bya:
-            cands = bya
     if len(cands) == 1:
-        return cands[0], 'narrowed'
-    cands.sort(key=lambda m: abs(m['height'] - ib['height']) + abs(m['weight'] - ib['weight']))
-    return cands[0], 'ambiguous'
+        return cands[0][0], 'person'
+    cands.sort(key=lambda c: c[1])
+    # 2位と十分差があれば最有力を採用、僅差なら保留（誤マッチ防止）
+    if cands[0][1] + 0.8 <= cands[1][1]:
+        return cands[0][0], 'person'
+    return None, 'ambiguous'
 
 
 def main():
@@ -359,6 +367,11 @@ def main():
     for uid, u in users.items():
         if u['name']:
             name_index.setdefault(u['name'], []).append(uid)
+    profiles = build_profiles(users, meas_by_year)
+    meas_by_key = {}
+    for y, ms in meas_by_year.items():
+        for m in ms:
+            meas_by_key[(m['userId'], y)] = m
 
     # 年度別 availability（InBody行 / 台帳測定 / うち身長体重あり）— 突合率の当たりをつける
     from collections import Counter
@@ -369,43 +382,82 @@ def main():
         hw = sum(1 for m in mm if m['height'] is not None and m['weight'] is not None)
         print(f'  {y}: {ib_year.get(y, 0)} / {len(mm)} / {hw}')
 
-    stats = {'id': 0, 'name': 0, 'unique': 0, 'date': 0, 'district': 0, 'age': 0, 'narrowed': 0, 'ambiguous': 0, 'none': 0}
-    no_meas = 0  # ID/氏名で本人特定できたが、その年の測定ドキュメントが無い
+    stats = {'id': 0, 'name': 0, 'person': 0, 'ambiguous': 0, 'conflict': 0, 'none': 0}
+    n_attach = n_stub = n_fill = 0
     unmatched, writes = [], 0
+    assigned = set()  # (userId, year) — 同じ人の同じ年に2行が刺さるのを防ぐ
     batch, n_in_batch = db.batch(), 0
+
+    def flush(force=False):
+        nonlocal batch, n_in_batch
+        if args.commit and (force or n_in_batch >= 400) and n_in_batch:
+            batch.commit()
+            batch, n_in_batch = db.batch(), 0
+
     for ib in rows:
-        m, how = match(ib, users, meas_by_year, name_index)
+        uid, how = resolve_user(ib, users, name_index, profiles)
         stats[how] += 1
-        if how == 'none':
-            known = (ib.get('rosterId') in users) or (ib.get('name') and len(name_index.get(ib['name'], [])) == 1)
-            if known:
-                no_meas += 1
-        if m and how != 'ambiguous':
-            payload = {'inbody': {k: ib[k] for k in ('smm', 'smi', 'fatPct', 'score', 'height', 'weight', 'ibId', 'district', 'testDate')}}
-            payload['inbody']['source'] = 'lookinbody'
+        if not uid:
+            unmatched.append(ib)
+            continue
+        key = (uid, ib['year'])
+        if key in assigned:
+            stats[how] -= 1
+            stats['conflict'] += 1
+            unmatched.append(ib)
+            continue
+        assigned.add(key)
+        inbody = {k: ib[k] for k in ('smm', 'smi', 'fatPct', 'score', 'height', 'weight', 'ibId', 'district', 'testDate')}
+        inbody['source'] = 'lookinbody'
+        m = meas_by_key.get(key)
+        if m:
+            # 既存の測定に InBody を付与。台帳側に身長体重が無ければ InBody 実測で補完
+            payload = {'inbody': inbody}
+            fill = {}
+            if m['height'] is None and ib['height'] is not None:
+                fill['height'] = ib['height']
+            if m['weight'] is None and ib['weight'] is not None:
+                fill['weight'] = ib['weight']
+            if fill:
+                if ib['height'] and ib['weight']:
+                    fill['bmi'] = round(ib['weight'] / (ib['height'] / 100) ** 2, 1)
+                payload['values'] = fill
+                n_fill += 1
+            n_attach += 1
             if args.commit:
                 batch.set(m['ref'], payload, merge=True)
                 n_in_batch += 1
                 writes += 1
-                if n_in_batch >= 400:
-                    batch.commit(); batch, n_in_batch = db.batch(), 0
+                flush()
         else:
-            unmatched.append(ib)
-    if args.commit and n_in_batch:
-        batch.commit()
+            # その年の測定が台帳に無い（例: 令和5年度シート欠落）→ InBody 単独の記録として登録。
+            # 体力測定値をでっち上げないよう inbodyOnly を立て、アプリは InBody 欄にだけ表示する。
+            vals = {'height': ib['height'], 'weight': ib['weight']}
+            if ib['height'] and ib['weight']:
+                vals['bmi'] = round(ib['weight'] / (ib['height'] / 100) ** 2, 1)
+            n_stub += 1
+            if args.commit:
+                ref = db.collection('measurements').document(f"{uid}_{ib['year']}")
+                batch.set(ref, {'userId': uid, 'year': ib['year'], 'date': ib['testDate'],
+                                'inbodyOnly': True, 'values': vals, 'inbody': inbody,
+                                'source': 'lookinbody'}, merge=True)
+                n_in_batch += 1
+                writes += 1
+                flush()
+    flush(force=True)
 
-    matched = stats['id'] + stats['name'] + stats['unique'] + stats['date'] + stats['district'] + stats['age'] + stats['narrowed']
+    matched = stats['id'] + stats['name'] + stats['person']
     print('\n=== 突合結果 ===')
-    print(f'  台帳IDで確定: {stats["id"]}')
-    print(f'  氏名で確定  : {stats["name"]}')
-    print(f'  一意        : {stats["unique"]}')
-    print(f'  測定日で確定: {stats["date"]}')
-    print(f'  地区で確定  : {stats["district"]}')
-    print(f'  年齢で確定  : {stats["age"]}')
-    print(f'  絞込で確定  : {stats["narrowed"]}')
-    print(f'  曖昧(保留)  : {stats["ambiguous"]}')
-    print(f'  未一致      : {stats["none"]}（うち 本人特定済だが該当年の測定なし {no_meas}）')
-    print(f'  → 突合 {matched} / {len(rows)} 件' + (f'（{writes} 件書き込み）' if args.commit else '（ドライラン・未書込）'))
+    print(f'  台帳IDで確定  : {stats["id"]}')
+    print(f'  氏名で確定    : {stats["name"]}')
+    print(f'  身体属性で確定: {stats["person"]}（性別+年齢+身長は全年度から照合+地区）')
+    print(f'  曖昧(保留)    : {stats["ambiguous"]}')
+    print(f'  重複衝突      : {stats["conflict"]}')
+    print(f'  未一致        : {stats["none"]}')
+    print(f'  → 本人特定 {matched} / {len(rows)} 件')
+    print(f'     ├ 既存の測定に付与       : {n_attach} 件（うち身長体重を補完 {n_fill} 件）')
+    print(f'     └ InBody単独の記録を作成 : {n_stub} 件（台帳にその年の測定が無い分。例: 令和5年度）')
+    print('  ' + (f'{writes} 件書き込みました' if args.commit else '（ドライラン・未書込）'))
 
     if unmatched:
         out = os.path.join(args.dir or '.', 'inbody-unmatched.csv')
