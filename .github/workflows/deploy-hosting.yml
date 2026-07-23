@@ -1,0 +1,70 @@
+name: Deploy production app (Firebase Hosting)
+
+# 本番アプリ（ログイン必須・実データ）を Firebase Hosting へ自動デプロイする。
+# 公開デモ（GitHub Pages / deploy.yml）とは別物で、本番は cruto-motion.web.app に出る。
+# フロント変更のマージで走る。Secrets/Variables 未設定の間はスキップするだけで失敗しない。
+#
+# 事前準備:
+#   1. リポジトリ Variables: FIREBASE_PROJECT_ID = cruto-motion
+#   2. リポジトリ Secrets: FIREBASE_SERVICE_ACCOUNT = デプロイ権限を持つ SA の JSON 鍵
+#      （Firebase Hosting 管理者 等。deploy-functions.yml と同じものを流用可）
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'index.html'
+      - 'vite.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.env.hosting'
+      - 'firebase.json'
+      - '.github/workflows/deploy-hosting.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-hosting
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: guard
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          PID: ${{ vars.FIREBASE_PROJECT_ID }}
+        run: |
+          if [ -n "$SA" ] && [ -n "$PID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=本番未設定::FIREBASE_SERVICE_ACCOUNT / FIREBASE_PROJECT_ID 未設定のため Hosting デプロイをスキップ（docs/実データ取り込み.md 参照）。"
+          fi
+
+      - if: steps.guard.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - if: steps.guard.outputs.ready == 'true'
+        run: npm ci
+
+      # 本番ビルド（base=/、VITE_FIREBASE_CONFIG は .env.hosting から）
+      - if: steps.guard.outputs.ready == 'true'
+        run: npm run build:hosting
+
+      - if: steps.guard.outputs.ready == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - if: steps.guard.outputs.ready == 'true'
+        run: npx firebase-tools deploy --only hosting --project "${{ vars.FIREBASE_PROJECT_ID }}" --non-interactive
