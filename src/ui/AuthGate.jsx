@@ -20,16 +20,35 @@ function AuthSplash({ label = '読み込んでいます…' }) {
   )
 }
 
+// 権限がない（未承認の職員）ときの画面
+function NoAccess() {
+  return (
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--bg-canvas)' }}>
+      <div style={{ maxWidth: 380, textAlign: 'center' }}>
+        <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 26, marginBottom: 18 }} />
+        <div className="card" style={{ padding: '24px 26px' }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>閲覧権限がありません</div>
+          <div style={{ fontSize: 12.5, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.7 }}>
+            このアカウントは職員として承認されていません。<br />管理者にアカウントの承認を依頼してください。
+          </div>
+          <button className="btn btn-outline" style={{ marginTop: 18 }} onClick={() => signOutUser()}>ログアウト</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // 認証後に実データ（Firestore）を読み込んでから本体を表示する。
-// 実データが無ければ従来のシードのまま表示する。
+// 実データが無ければ従来のシードのまま表示する。権限が無ければ NoAccess を表示する。
 function RealDataBoot({ children }) {
-  const [ready, setReady] = useState(false)
+  const [res, setRes] = useState(null)
   useEffect(() => {
     let alive = true
-    loadRealData().catch(() => false).then(() => { if (alive) setReady(true) })
+    loadRealData().catch(() => ({ loaded: false })).then((r) => { if (alive) setRes(r || { loaded: false }) })
     return () => { alive = false }
   }, [])
-  if (!ready) return <AuthSplash label="データを読み込んでいます…" />
+  if (!res) return <AuthSplash label="データを読み込んでいます…" />
+  if (res.denied) return <NoAccess />
   return children
 }
 

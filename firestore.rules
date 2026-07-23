@@ -1,38 +1,50 @@
 rules_version = '2';
-// Firestore セキュリティルール — 認証済みの職員のみ読み書き可。
-// 本番では Firebase Auth で職員ログインを必須にする(request.auth を検証)。
+// Firestore セキュリティルール — 承認された職員のみ読み書き可。
+// Firebase の apiKey は公開情報のため「ログインしていれば読める」では不十分
+// （誰でも self-signup できてしまう）。管理者が staff/{uid} を作成した職員だけに限定する。
 service cloud.firestore {
   match /databases/{database}/documents {
 
     function signedIn() { return request.auth != null; }
+    // 承認済み職員か（管理者が staff/{uid} を作成。self-signup では staff 文書が無く読めない）
+    function isStaff() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/staff/$(request.auth.uid));
+    }
+
+    // 職員許可リスト。本人が自分の承認状態を確認する読み取りのみ許可。作成・更新はコンソール/Admin SDK のみ。
+    match /staff/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
 
     // 読み取りキュー(OCR 結果)。作成はバックエンド(Admin SDK)が行うためルールをすり抜ける。
     // クライアントは閲覧と、確認・本登録に伴うステータス更新のみ許可する。
     match /batches/{batchId} {
-      allow read: if signedIn();
+      allow read: if isStaff();
       allow write: if false; // メタ更新はバックエンドのみ
 
       match /recognitions/{recognitionId} {
-        allow read: if signedIn();
+        allow read: if isStaff();
         // 職員による確認・本登録の反映のみ許可(status / 解決値 / 照合ユーザ)。新規作成・削除は不可。
-        allow update: if signedIn()
+        allow update: if isStaff()
           && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['status', 'resolvedValues', 'matchedUserId', 'reviewedBy', 'reviewedAt']);
         allow create, delete: if false;
       }
     }
 
-    // 利用者台帳。職員が閲覧・編集可（氏名・市町村/行政区・介護度・電話 等）。削除は不可。
+    // 利用者台帳。承認職員が閲覧・編集可（氏名・市町村/行政区・介護度・電話 等）。削除は不可。
     match /users/{userId} {
-      allow read: if signedIn();
-      allow create, update: if signedIn();
+      allow read: if isStaff();
+      allow create, update: if isStaff();
       allow delete: if false;
     }
 
-    // 測定データ。職員が閲覧・作成・編集可（実データ取り込み後の修正を含む）。削除は不可(監査性のため)。
+    // 測定データ。承認職員が閲覧・作成・編集可（実データ取り込み後の修正を含む）。削除は不可(監査性)。
     match /measurements/{measurementId} {
-      allow read: if signedIn();
-      allow create, update: if signedIn()
+      allow read: if isStaff();
+      allow create, update: if isStaff()
         && request.resource.data.keys().hasAll(['userId', 'year']);
       allow delete: if false;
     }
