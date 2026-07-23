@@ -37,7 +37,7 @@ const TITLES = {
   ana: ['集計分析', '市町村・圏域別の年次集計'],
   pdf: ['PDF 出力', '個人結果票の一括出力'],
   exp: ['CSV 出力', '県報告用データの一括出力'],
-  mob: ['モバイル撮影', '現場スタッフ用の撮影フロー'],
+  mob: ['用紙アップロード', 'スマホから記録用紙をまとめてアップロード'],
   staff: ['職員管理', 'ログインできる職員アカウントの追加・解除'],
 }
 
@@ -48,7 +48,7 @@ const NAV_MAIN = [
   ['cal', 'カレンダー'],
   ['sheet', '用紙作成'],
   ['ros', '利用者台帳'],
-  ['mob', 'モバイル撮影'],
+  ['mob', '用紙アップロード'],
 ]
 const NAV_ANA = [
   ['ana', '集計分析'],
@@ -80,8 +80,8 @@ function Sidebar() {
       </div>
       <nav className="sidebar-nav">
         <div className="t-overline" style={{ padding: '4px 12px 6px' }}>業務</div>
-        {/* 本番(実データ)は OCR 連携が未完成のため 取り込み・モバイル撮影を隠す */}
-        {NAV_MAIN.filter(([id]) => !(dbEnabled() && (id === 'imp' || id === 'mob'))).map(([id, label]) => (
+        {/* 本番(実データ)は PC 側の OCR 確認画面(取り込み)がまだダミーのため隠す。用紙アップロードは実機能。 */}
+        {NAV_MAIN.filter(([id]) => !(dbEnabled() && id === 'imp')).map(([id, label]) => (
           <NavItem key={id} id={id} label={label} badge={id === 'imp' && pending.length > 0 ? pending.length : 0} />
         ))}
         <div className="t-overline" style={{ padding: '14px 12px 6px' }}>分析</div>
