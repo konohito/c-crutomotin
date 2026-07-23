@@ -60,7 +60,8 @@ export async function saveUserFields(id, patch) {
       const y = parseInt(String(patch.birthDate).slice(0, 4), 10)
       if (y) { u.birth = y; u.age = D.CUR - y }
     }
-    if (patch.muni !== undefined) { const m = D.MUNIS.find(x => x.id === patch.muni); if (m) u.muniName = m.name }
+    // 市町村は名前で登録・編集する（新しい市町村名を打てば自動で選択肢に増える）。
+    if (patch.muniName !== undefined) u.muni = patch.muniName
   }
   if (dbEnabled()) {
     const { fs, db } = await getFs()
@@ -68,7 +69,7 @@ export async function saveUserFields(id, patch) {
     for (const k of ['name', 'kana', 'sex', 'birthDate', 'careLevel', 'phone']) {
       if (patch[k] !== undefined) doc[k] = patch[k]
     }
-    if (patch.muni !== undefined) { doc.muni = patch.muni; const m = D.MUNIS.find(x => x.id === patch.muni); doc.muniName = m ? m.name : '' }
+    if (patch.muniName !== undefined) { doc.muniName = patch.muniName; doc.muni = patch.muniName }
     if (patch.venueName !== undefined) doc.ward = patch.venueName
     if (u && u.birth != null) doc.birth = u.birth
     await fs.setDoc(fs.doc(db, 'users', id), doc, { merge: true })
@@ -99,7 +100,8 @@ export async function loadRealData() {
   try {
     const { fs, db } = await getFs()
     const usnap = await fs.getDocs(fs.collection(db, 'users'))
-    if (usnap.empty) return { loaded: false }
+    // 本番(Firebase 設定あり)では、データが無くてもシード(ダミー)を表示しない。空の台帳にする。
+    if (usnap.empty) { setUsers([]); return { loaded: true, empty: true } }
     const msnap = await fs.getDocs(fs.collection(db, 'measurements'))
     const byUser = {}
     msnap.forEach(d => { const m = d.data(); (byUser[m.userId] ||= []).push(m) })

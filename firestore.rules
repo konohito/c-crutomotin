@@ -5,17 +5,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() { return request.auth != null; }
     // 承認済み職員か（管理者が staff/{uid} を作成。self-signup では staff 文書が無く読めない）
     function isStaff() {
       return request.auth != null
         && exists(/databases/$(database)/documents/staff/$(request.auth.uid));
     }
 
-    // 職員許可リスト。本人が自分の承認状態を確認する読み取りのみ許可。作成・更新はコンソール/Admin SDK のみ。
+    // 職員許可リスト。承認済み職員はアプリの「職員管理」で一覧・追加・解除できる（全員同権限）。
+    // 最初の 1 人だけは CLI(grant-staff.mjs / Admin SDK)で承認する（ルールをすり抜ける）。
     match /staff/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
-      allow write: if false;
+      allow read: if isStaff() || (request.auth != null && request.auth.uid == uid);
+      allow create, update, delete: if isStaff();
     }
 
     // 読み取りキュー(OCR 結果)。作成はバックエンド(Admin SDK)が行うためルールをすり抜ける。

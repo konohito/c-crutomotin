@@ -16,10 +16,12 @@ import Calendar from './screens/Calendar.jsx'
 import PdfExport from './screens/PdfExport.jsx'
 import SheetMaker from './screens/SheetMaker.jsx'
 import Mobile from './screens/Mobile.jsx'
+import Staff from './screens/Staff.jsx'
 import ReviewModal from './modals/ReviewModal.jsx'
 import RegisterModal from './modals/RegisterModal.jsx'
 import EventModal from './modals/EventModal.jsx'
 import { EditUserModal, EditMeasModal } from './modals/EditModals.jsx'
+import { staffAdminEnabled } from './lib/staffAdmin.js'
 
 const BASE = import.meta.env.BASE_URL
 
@@ -35,6 +37,7 @@ const TITLES = {
   pdf: ['PDF 出力', '個人結果票の一括出力'],
   exp: ['CSV 出力', '県報告用データの一括出力'],
   mob: ['モバイル撮影', '現場スタッフ用の撮影フロー'],
+  staff: ['職員管理', 'ログインできる職員アカウントの追加・解除'],
 }
 
 const NAV_MAIN = [
@@ -81,6 +84,12 @@ function Sidebar() {
         ))}
         <div className="t-overline" style={{ padding: '14px 12px 6px' }}>分析</div>
         {NAV_ANA.map(([id, label]) => <NavItem key={id} id={id} label={label} badge={0} />)}
+        {staffAdminEnabled() && (
+          <>
+            <div className="t-overline" style={{ padding: '14px 12px 6px' }}>管理</div>
+            <NavItem id="staff" label="職員管理" badge={0} />
+          </>
+        )}
       </nav>
       <button className="sidebar-next" onClick={() => set({ screen: 'cal', navOpen: false })}>
         <div className="t-overline" style={{ color: 'var(--brand-700)' }}>次回の測定会</div>
@@ -172,7 +181,7 @@ function Header() {
 
 const SCREENS = {
   dash: Dashboard, imp: ImportScreen, csv: CsvImport, ros: Roster, det: Detail,
-  ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, mob: Mobile, exp: CsvExport,
+  ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, mob: Mobile, exp: CsvExport, staff: Staff,
 }
 
 function AppInner() {
