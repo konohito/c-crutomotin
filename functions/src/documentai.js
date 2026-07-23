@@ -4,6 +4,7 @@
    サービスアカウント(ADC)を利用するため、コード内に鍵は持たない。 */
 const { DocumentProcessorServiceClient } = require('@google-cloud/documentai').v1
 const cfg = require('./config')
+const { mockDocument } = require('./mockdoc')
 
 let client
 function getClient() {
@@ -14,8 +15,21 @@ function getClient() {
   return client
 }
 
+// モック認識を使うか。実運用(FUNCTIONS_EMULATOR 未設定)では processorId が無ければエラーにするため false。
+// ・DOCAI_MOCK=1 を明示した場合
+// ・ローカルエミュレータ(FUNCTIONS_EMULATOR=true)で実プロセッサ未設定の場合
+// のいずれかで、実 Document AI を呼ばず合成レスポンスを返す。
+function useMock() {
+  if (process.env.DOCAI_MOCK === '1') return true
+  return process.env.FUNCTIONS_EMULATOR === 'true' && !cfg.processorId
+}
+
 // { content(Buffer) | gcsUri(string), mimeType } → document
 async function processDocument({ content, gcsUri, mimeType }) {
+  if (useMock()) {
+    // 用紙ごとに決定論的な擬似認識結果を返す(GCP 資格情報不要)
+    return mockDocument(gcsUri || (content && content.length) || 'mock')
+  }
   if (!cfg.project || !cfg.processorId) {
     throw new Error('DOCAI_PROJECT_ID / DOCAI_PROCESSOR_ID が未設定です。functions/.env を確認してください。')
   }
