@@ -1,8 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import D from './data/engine.js'
 import { useStore, pendingSheets, allEvents, StoreProvider } from './store.jsx'
 import { mdw } from './lib/helpers.js'
-import { dbEnabled } from './lib/db.js'
+import { dbEnabled, watchPendingCount } from './lib/db.js'
 import { Icon } from './ui/icons.jsx'
 import { Toast } from './ui/kit.jsx'
 import AuthGate, { useAuth } from './ui/AuthGate.jsx'
@@ -57,6 +57,18 @@ const NAV_ANA = [
   ['exp', 'CSV 出力'],
 ]
 
+// 本番: 確認待ちの読み取り件数（Firestore 全バッチ横断）をリアルタイム購読
+function useOcrPending() {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    if (!dbEnabled()) return
+    let unsub = () => {}
+    watchPendingCount(setN).then(fn => { unsub = fn }).catch(() => {})
+    return () => unsub()
+  }, [])
+  return n
+}
+
 function NavItem({ id, label, badge }) {
   const { state, set } = useStore()
   const active = state.screen === id
@@ -72,6 +84,8 @@ function NavItem({ id, label, badge }) {
 function Sidebar() {
   const { state, set } = useStore()
   const pending = pendingSheets(state)
+  const ocrPend = useOcrPending()
+  const impBadge = dbEnabled() ? ocrPend : pending.length
   const nextMeas = allEvents(state).filter(e => e.kind === 'meas' && e.date >= D.TODAY).sort((a, b) => a.date.localeCompare(b.date))[0]
   return (
     <aside className={`sidebar noprint${state.navOpen ? ' open' : ''}`}>
@@ -82,7 +96,7 @@ function Sidebar() {
       <nav className="sidebar-nav">
         <div className="t-overline" style={{ padding: '4px 12px 6px' }}>業務</div>
         {NAV_MAIN.map(([id, label]) => (
-          <NavItem key={id} id={id} label={label} badge={!dbEnabled() && id === 'imp' && pending.length > 0 ? pending.length : 0} />
+          <NavItem key={id} id={id} label={label} badge={id === 'imp' && impBadge > 0 ? impBadge : 0} />
         ))}
         <div className="t-overline" style={{ padding: '14px 12px 6px' }}>分析</div>
         {NAV_ANA.map(([id, label]) => <NavItem key={id} id={id} label={label} badge={0} />)}

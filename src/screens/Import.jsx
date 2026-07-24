@@ -3,13 +3,13 @@ import D from '../data/engine.js'
 import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, needsReview, openSheetVals, CONF_THRESHOLD } from '../store.jsx'
 import { fmtD } from '../lib/helpers.js'
 import { ocrEnabled, recognizeSheet, matchUser } from '../lib/ocr.js'
-import { dbEnabled, watchBatches, watchRecognitions, commitRecognition } from '../lib/db.js'
+import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, rejectRecognition } from '../lib/db.js'
 import { saveMeasurement } from '../lib/realdata.js'
 import { Card, Pill, Modal, ModalHead, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 
-const GRID = '42px 168px repeat(8, 1fr) 92px 88px'
+const GRID = '42px 168px repeat(8, 1fr) 92px 128px'
 
 // バッチID(例: 20260724-ab12x)から測定日を推定する。読めなければ今日。
 function batchDate(batchId) {
@@ -213,11 +213,20 @@ function ProdImport() {
     return () => unsub()
   }, [batchId])
 
-  const enriched = queue.map(rec => ({ rec, u: matchUser(rec) }))
+  // 却下済みは一覧から隠す（文書は監査のため Firestore に残る）
+  const enriched = queue.filter(r => r.status !== 'rejected').map(rec => ({ rec, u: matchUser(rec) }))
   const nDone = enriched.filter(x => x.rec.status === 'committed').length
   const nErr = enriched.filter(x => x.rec.status === 'error').length
   const ready = enriched.filter(x => x.rec.status === 'recognized' && x.u && !x.rec.needsReview)
   const nNeed = enriched.filter(x => x.rec.status === 'recognized' && (!x.u || x.rec.needsReview)).length
+
+  const reject = async (rec) => {
+    if (!window.confirm(`No.${rec.no ?? '—'} の読み取りを却下しますか？\n（関係ない画像・誤アップロードなどを一覧から取り除きます）`)) return
+    try {
+      await rejectRecognition({ batchId, recognitionId: rec.id })
+      showToast('読み取りを却下しました')
+    } catch (e) { showToast('却下に失敗しました: ' + (e.message || '')) }
+  }
 
   const commitOne = async ({ rec, u }) => {
     const finalValues = {}
@@ -327,9 +336,13 @@ function ProdImport() {
                   <div style={{ paddingLeft: 12 }}>
                     <Pill bg={st[1]} fg={st[2]}>{st[0]}</Pill>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
-                    {rec.status !== 'committed' && rec.status !== 'error' && (
+                  <div style={{ textAlign: 'right', display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                    {rec.status === 'recognized' && (
                       <button className="btn btn-outline btn-sm" style={{ height: 28, padding: '0 10px', fontSize: 12 }} onClick={() => setReview(rec)}>確認する</button>
+                    )}
+                    {rec.status !== 'committed' && (
+                      <button className="btn btn-ghost btn-sm" title="この読み取りを却下（一覧から取り除く）"
+                        style={{ height: 28, padding: '0 8px', fontSize: 12, color: 'var(--danger-700)' }} onClick={() => reject(rec)}>却下</button>
                     )}
                   </div>
                 </div>

@@ -65,6 +65,26 @@ export async function watchBatches(cb) {
   })
 }
 
+// 未処理（確認待ち）の読み取り件数を全バッチ横断でリアルタイム購読する（ナビのバッジ用）。
+export async function watchPendingCount(cb) {
+  if (!dbEnabled()) return () => {}
+  const { firestore, db } = await sdk()
+  const q = firestore.query(
+    firestore.collectionGroup(db, 'recognitions'),
+    firestore.where('status', '==', 'recognized'),
+  )
+  return firestore.onSnapshot(q, (snap) => cb(snap.size), () => cb(0))
+}
+
+// 読み取りを却下する（誤アップロード・関係ない画像など）。監査のため文書は残し status のみ変更。
+export async function rejectRecognition({ batchId, recognitionId }) {
+  if (!dbEnabled()) throw new Error('Firebase 未設定です')
+  const { firestore, db } = await sdk()
+  await firestore.updateDoc(firestore.doc(db, 'batches', batchId, 'recognitions', recognitionId), {
+    status: 'rejected', reviewedAt: firestore.serverTimestamp(),
+  })
+}
+
 // 読み取りキュー(recognitions)をリアルタイム購読する。unsubscribe 関数を返す。
 export async function watchRecognitions(batchId, cb) {
   if (!dbEnabled()) return () => {}
