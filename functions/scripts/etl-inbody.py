@@ -384,7 +384,7 @@ def main():
 
     # --- Pass 1: 各InBody行を利用者に解決 ---
     CONF = {'id': 3, 'name': 2, 'person': 1}
-    method_count = {'id': 0, 'name': 0, 'person': 0, 'none': 0}
+    method_count = {'id': 0, 'name': 0, 'person': 0, 'ambiguous': 0, 'none': 0}
     resolved, none_rows = [], []
     for ib in rows:
         uid, how = resolve_user(ib, users, name_index, profiles)
@@ -460,6 +460,7 @@ def main():
     print(f'  台帳IDで確定  : {method_count["id"]}')
     print(f'  氏名で確定    : {method_count["name"]}')
     print(f'  身体属性で確定: {method_count["person"]}（性別+年齢+身長を全年度から照合+地区）')
+    print(f'  曖昧(保留)    : {method_count["ambiguous"]}（候補が複数で確定できず）')
     print(f'  未一致        : {method_count["none"]}')
     print('  --- 取り込み内訳 ---')
     print(f'  同一人物の重複行を除外: {dup_dropped}')
