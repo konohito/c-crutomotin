@@ -43,7 +43,7 @@ const initialState = {
   expYear: 2025, expScope: 'all', expWard: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true, expKcl: true, expFormat: 'std',
   // メモ / CSV / 新規登録
   memos: {}, memoDraft: '', csvMuni: 'sakuragawa', csvDrag: false,
-  regOpen: false, regName: '', regKana: '', regBirth: '', regSex: 'F', regMuni: 'sakuragawa', regWard: '', regPhone: '', regError: '',
+  regOpen: false, regName: '', regKana: '', regBirth: '', regSex: 'F', regMuni: 'sakuragawa', regWard: '', regCare: '', regPhone: '', regError: '',
   toast: null,
   // グラフの年表示（era=令和 / west=西暦）
   yearFmt: 'era',
