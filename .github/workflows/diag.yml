@@ -1,0 +1,61 @@
+name: Diagnose OCR pipeline
+
+# 一時的な診断用。diag/ocr-check ブランチへの push で本番の OCR パイプラインの状態
+# （Firestore キュー・Storage・関数ログ・インデックス）を確認する。原因判明後に削除する。
+# 個人情報は出力しない（functions/scripts/diag-ocr.cjs 参照）。
+
+on:
+  push:
+    branches: [diag/ocr-check]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - working-directory: functions
+        run: npm ci
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Firestore / Storage の状態
+        working-directory: functions
+        env:
+          GCLOUD_PROJECT: ${{ vars.FIREBASE_PROJECT_ID }}
+        run: node scripts/diag-ocr.cjs
+
+      - name: onSheetImageUpload の関数ログ (7日分)
+        run: >-
+          gcloud logging read
+          'resource.type="cloud_run_revision" AND resource.labels.service_name="onsheetimageupload"'
+          --project "${{ vars.FIREBASE_PROJECT_ID }}"
+          --freshness=7d --limit=60 --order=desc
+          --format='value(timestamp,severity,textPayload,jsonPayload.message)'
+          || echo "LOGS FAILED"
+
+      - name: Eventarc トリガー一覧
+        run: >-
+          gcloud eventarc triggers list
+          --location=asia-northeast1
+          --project "${{ vars.FIREBASE_PROJECT_ID }}"
+          || echo "TRIGGERS FAILED"
+
+      - name: Firestore 単一フィールドインデックス設定
+        run: >-
+          curl -sS -H "Authorization: Bearer $(gcloud auth print-access-token)"
+          "https://firestore.googleapis.com/v1/projects/${{ vars.FIREBASE_PROJECT_ID }}/databases/(default)/collectionGroups/recognitions/fields/status"
+          || echo "FIELDS API FAILED"
