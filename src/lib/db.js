@@ -38,6 +38,8 @@ async function sdk() {
   if (_sdk) return _sdk
   const [{ fs, db }, app, storage] = await Promise.all([getFs(), firebaseApp(), import('firebase/storage')])
   _sdk = { firestore: fs, storage, db, bucket: storage.getStorage(app) }
+  const semu = import.meta.env.VITE_STORAGE_EMULATOR
+  if (semu) { const [h, p] = semu.split(':'); try { storage.connectStorageEmulator(_sdk.bucket, h, +p || 9199) } catch { /* 接続済みは無視 */ } }
   return _sdk
 }
 
@@ -49,6 +51,13 @@ export async function uploadSheetImage(file, { batchId, no }) {
   const r = storage.ref(bucket, path)
   await storage.uploadBytes(r, file, { contentType: file.type || 'image/jpeg' })
   return path
+}
+
+// 記録用紙画像の表示用 URL を取得する（確認モーダルで原本と読み取り値を見比べるため）
+export async function sheetImageUrl(storagePath) {
+  if (!dbEnabled() || !storagePath) return null
+  const { storage, bucket } = await sdk()
+  return storage.getDownloadURL(storage.ref(bucket, storagePath))
 }
 
 // 取り込みバッチ一覧（新しい順）をリアルタイム購読する。unsubscribe 関数を返す。

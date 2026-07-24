@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStore } from '../store.jsx'
 import { useAuth } from '../ui/AuthGate.jsx'
 import { listStaff, addStaff, revokeStaff, updateStaffName } from '../lib/staffAdmin.js'
-import { Card } from '../ui/kit.jsx'
+import { Card, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 export default function Staff() {
@@ -13,6 +13,8 @@ export default function Staff() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [edit, setEdit] = useState({ uid: null, name: '' })
+  const [revTarget, setRevTarget] = useState(null)
+  const [revBusy, setRevBusy] = useState(false)
 
   const reload = () => listStaff().then(setStaff).catch(() => setStaff([]))
   useEffect(() => { reload() }, [])
@@ -41,13 +43,16 @@ export default function Staff() {
     setBusy(false)
   }
 
-  const revoke = async (s) => {
-    if (!window.confirm(`${s.email} の閲覧権限を解除しますか？\n（アカウントは残りますが、ログインしてもデータは見られなくなります）`)) return
+  const doRevoke = async () => {
+    if (!revTarget || revBusy) return
+    setRevBusy(true)
     try {
-      await revokeStaff(s.uid)
+      await revokeStaff(revTarget.uid)
       showToast('権限を解除しました')
+      setRevTarget(null)
       await reload()
     } catch { showToast('解除に失敗しました') }
+    setRevBusy(false)
   }
 
   return (
@@ -108,7 +113,7 @@ export default function Staff() {
                   )}
                   <div style={{ fontSize: 11.5, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.email}</div>
                 </div>
-                <button className="btn btn-outline btn-sm" onClick={() => revoke(s)} disabled={isMe} title={isMe ? '自分自身は解除できません' : '権限を解除'}>
+                <button className="btn btn-outline btn-sm" onClick={() => setRevTarget(s)} disabled={isMe} title={isMe ? '自分自身は解除できません' : '権限を解除'}>
                   <Icon name="logout" size={14} /> 解除
                 </button>
               </div>
@@ -119,6 +124,14 @@ export default function Staff() {
           「解除」するとログインはできてもデータが見られなくなります（アカウント自体は Firebase に残ります）。パスワードのリセットは Firebase コンソール → Authentication から行えます。
         </div>
       </Card>
+
+      {revTarget && (
+        <ConfirmModal danger icon="logout"
+          title="閲覧権限の解除"
+          body={`${revTarget.name || revTarget.email} さんの閲覧権限を解除します。アカウントは残りますが、ログインしてもデータは見られなくなります。`}
+          confirmLabel="解除する" busy={revBusy}
+          onConfirm={doRevoke} onClose={() => { if (!revBusy) setRevTarget(null) }} />
+      )}
     </div>
   )
 }

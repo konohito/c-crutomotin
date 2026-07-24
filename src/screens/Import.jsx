@@ -3,9 +3,9 @@ import D from '../data/engine.js'
 import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, needsReview, openSheetVals, CONF_THRESHOLD } from '../store.jsx'
 import { fmtD } from '../lib/helpers.js'
 import { ocrEnabled, recognizeSheet, matchUser } from '../lib/ocr.js'
-import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, rejectRecognition } from '../lib/db.js'
+import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, rejectRecognition, sheetImageUrl } from '../lib/db.js'
 import { saveMeasurement } from '../lib/realdata.js'
-import { Card, Pill, Modal, ModalHead, Select } from '../ui/kit.jsx'
+import { Card, Pill, Modal, ModalHead, Select, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 
@@ -105,6 +105,18 @@ function RecReviewModal({ rec, batchId, onClose, onDone }) {
     return o
   })
   const [busy, setBusy] = useState(false)
+  // アップロードされた原本画像（読み取り値と見比べるため表示。クリックで拡大）
+  const [img, setImg] = useState(null)
+  const [zoom, setZoom] = useState(false)
+  useEffect(() => {
+    let alive = true
+    setImg(null)
+    if (!rec.storagePath) { setImg('none'); return }
+    sheetImageUrl(rec.storagePath)
+      .then(u => { if (alive) setImg(u || 'none') })
+      .catch(() => { if (alive) setImg('none') })
+    return () => { alive = false }
+  }, [rec.storagePath])
   const sel = D.users.find(u => u.id === uid)
   const qt = q.trim().toLowerCase()
   const cands = qt ? D.users.filter(u => u.name.toLowerCase().includes(qt) || u.kana.toLowerCase().includes(qt) || u.id.includes(qt)).slice(0, 6) : []
@@ -127,10 +139,29 @@ function RecReviewModal({ rec, batchId, onClose, onDone }) {
   }
 
   return (
-    <Modal onClose={onClose} width={560}>
+    <Modal onClose={onClose} width={img !== 'none' ? 'min(1080px, 96vw)' : 560}>
       <ModalHead icon="imp" iconBg="var(--brand-50)" iconFg="var(--brand-600)"
         title={`読み取り結果の確認（No.${rec.no ?? '—'}）`} sub={`読み取り氏名: ${rec.ocrName || '（未取得）'}${rec.ocrId ? ' · ID ' + rec.ocrId : ''}`} onClose={onClose} />
-      <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ padding: 20, display: 'flex', gap: 18, alignItems: 'stretch', flexWrap: 'wrap', maxHeight: 'calc(100vh - 170px)', overflow: 'auto' }}>
+        {/* 原本画像（読み取り値と見比べる。クリックで拡大） */}
+        {img !== 'none' && (
+          <div style={{ flex: '1.2 1 360px', minWidth: 280, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)' }}>アップロードされた記録用紙</div>
+            <div style={{ flex: 1, minHeight: 280, maxHeight: '64vh', overflow: 'auto', border: '1px solid var(--border-subtle)', borderRadius: 10, background: 'var(--slate-100)' }}>
+              {img === null ? (
+                <div style={{ display: 'grid', placeItems: 'center', height: '100%', minHeight: 280, fontSize: 12.5, color: 'var(--fg-3)' }}>画像を読み込み中…</div>
+              ) : (
+                <img src={img} alt={`記録用紙 No.${rec.no ?? ''}`} onClick={() => setZoom(z => !z)}
+                  style={{ width: zoom ? '190%' : '100%', display: 'block', cursor: zoom ? 'zoom-out' : 'zoom-in' }} />
+              )}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--fg-4)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <span>画像をクリックで拡大／縮小</span>
+              {img && <a href={img} target="_blank" rel="noreferrer" style={{ color: 'var(--brand-600)' }}>新しいタブで開く</a>}
+            </div>
+          </div>
+        )}
+        <div style={{ flex: '1 1 330px', minWidth: 300, display: 'flex', flexDirection: 'column', gap: 14 }}>
         {/* 利用者照合 */}
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg-2)', marginBottom: 6 }}>本登録する利用者</div>
@@ -180,9 +211,10 @@ function RecReviewModal({ rec, batchId, onClose, onDone }) {
             })}
           </div>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 'auto' }}>
           <button className="btn btn-outline" onClick={onClose} disabled={busy}>キャンセル</button>
           <button className="btn btn-primary" onClick={save} disabled={busy || !sel}>{busy ? '登録中…' : 'この内容で本登録'}</button>
+        </div>
         </div>
       </div>
     </Modal>
@@ -196,6 +228,8 @@ function ProdImport() {
   const [queue, setQueue] = useState([])
   const [review, setReview] = useState(null)
   const [bulkBusy, setBulkBusy] = useState(false)
+  const [rejTarget, setRejTarget] = useState(null)
+  const [rejBusy, setRejBusy] = useState(false)
 
   useEffect(() => {
     let unsub = () => {}
@@ -220,12 +254,15 @@ function ProdImport() {
   const ready = enriched.filter(x => x.rec.status === 'recognized' && x.u && !x.rec.needsReview)
   const nNeed = enriched.filter(x => x.rec.status === 'recognized' && (!x.u || x.rec.needsReview)).length
 
-  const reject = async (rec) => {
-    if (!window.confirm(`No.${rec.no ?? '—'} の読み取りを却下しますか？\n（関係ない画像・誤アップロードなどを一覧から取り除きます）`)) return
+  const doReject = async () => {
+    if (!rejTarget || rejBusy) return
+    setRejBusy(true)
     try {
-      await rejectRecognition({ batchId, recognitionId: rec.id })
+      await rejectRecognition({ batchId, recognitionId: rejTarget.id })
       showToast('読み取りを却下しました')
+      setRejTarget(null)
     } catch (e) { showToast('却下に失敗しました: ' + (e.message || '')) }
+    setRejBusy(false)
   }
 
   const commitOne = async ({ rec, u }) => {
@@ -342,7 +379,7 @@ function ProdImport() {
                     )}
                     {rec.status !== 'committed' && (
                       <button className="btn btn-ghost btn-sm" title="この読み取りを却下（一覧から取り除く）"
-                        style={{ height: 28, padding: '0 8px', fontSize: 12, color: 'var(--danger-700)' }} onClick={() => reject(rec)}>却下</button>
+                        style={{ height: 28, padding: '0 8px', fontSize: 12, color: 'var(--danger-700)' }} onClick={() => setRejTarget(rec)}>却下</button>
                     )}
                   </div>
                 </div>
@@ -355,6 +392,14 @@ function ProdImport() {
       {review && (
         <RecReviewModal rec={review} batchId={batchId} onClose={() => setReview(null)}
           onDone={() => set(s => ({ rev: s.rev + 1 }))} />
+      )}
+
+      {rejTarget && (
+        <ConfirmModal danger icon="warn"
+          title={`No.${rejTarget.no ?? '—'} の読み取りを却下`}
+          body="関係ない画像や誤アップロードを一覧から取り除きます。却下した読み取りは一覧に表示されなくなります（記録自体は監査のため残ります）。"
+          confirmLabel="却下する" busy={rejBusy}
+          onConfirm={doReject} onClose={() => { if (!rejBusy) setRejTarget(null) }} />
       )}
     </div>
   )

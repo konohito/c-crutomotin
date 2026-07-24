@@ -98,6 +98,28 @@ export function ModalHead({ icon, iconBg, iconFg, title, sub, onClose }) {
   )
 }
 
+// 確認ダイアログ（window.confirm の代替）。破壊的な操作は danger を立てて赤の実行ボタンにする。
+export function ConfirmModal({ icon = 'warn', title, body, confirmLabel = '実行する', danger = false, busy = false, onConfirm, onClose }) {
+  return (
+    <Modal onClose={onClose} width={440}>
+      <ModalHead icon={icon}
+        iconBg={danger ? 'var(--danger-50)' : 'var(--warning-50)'}
+        iconFg={danger ? 'var(--danger-700)' : 'var(--warning-700)'}
+        title={title} onClose={onClose} />
+      <div style={{ padding: '2px 22px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.75 }}>{body}</div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button className="btn btn-outline" onClick={onClose} disabled={busy}>キャンセル</button>
+          <button className={`btn${danger ? '' : ' btn-primary'}`} disabled={busy} onClick={onConfirm}
+            style={danger ? { background: 'var(--danger-500)', color: '#fff', boxShadow: 'var(--shadow-xs), inset 0 1px 0 rgba(255,255,255,0.18)' } : undefined}>
+            {busy ? '処理中…' : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export function Toast({ msg }) {
   if (!msg) return null
   return (
