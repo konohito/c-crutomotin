@@ -65,15 +65,19 @@ export async function watchBatches(cb) {
   })
 }
 
-// 未処理（確認待ち）の読み取り件数を全バッチ横断でリアルタイム購読する（ナビのバッジ用）。
+// 未処理の読み取り件数を全バッチ横断でリアルタイム購読する（ナビのバッジ用）。
+// 確認待ち(recognized)と読み取り失敗(error)の両方を数える（どちらも職員の対応が必要なため）。
 export async function watchPendingCount(cb) {
   if (!dbEnabled()) return () => {}
   const { firestore, db } = await sdk()
   const q = firestore.query(
     firestore.collectionGroup(db, 'recognitions'),
-    firestore.where('status', '==', 'recognized'),
+    firestore.where('status', 'in', ['recognized', 'error']),
   )
-  return firestore.onSnapshot(q, (snap) => cb(snap.size), () => cb(0))
+  return firestore.onSnapshot(q, (snap) => cb(snap.size), (e) => {
+    console.warn('watchPendingCount failed:', e && e.message)
+    cb(0)
+  })
 }
 
 // 読み取りを却下する（誤アップロード・関係ない画像など）。監査のため文書は残し status のみ変更。
