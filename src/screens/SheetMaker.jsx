@@ -1,10 +1,13 @@
 import D from '../data/engine.js'
 import { useStore, allEvents, allMunis } from '../store.jsx'
 import { mdw } from '../lib/helpers.js'
+import { wardLabel } from '../lib/db.js'
 import { RadioCard, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 const BASE = import.meta.env.BASE_URL
+// 会場＝行政区。利用者の基本情報 venueName に行政区を持たせているので、そこから選択肢を作る。
+const distinct = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
 const SHEET_BOXES = { walk5: [1, 1], walk5max: [1, 1], balR: [2, 1], balL: [2, 1], gripR: [2, 1], gripL: [2, 1], tug: [2, 1], height: [3, 1], weight: [3, 1] }
 // 2 回測定する項目は下書きスペース(①②)を設ける
 const DRAFT_COLS = ['gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
@@ -96,13 +99,15 @@ function SheetPage({ p }) {
             </div>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.7fr 0.6fr', gridTemplateRows: 'auto 1fr' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.55fr 0.5fr 0.9fr', gridTemplateRows: 'auto 1fr' }}>
           <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>生年月日</div>
           <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>年齢</div>
-          <div style={CELL_LABEL}>性別</div>
+          <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>性別</div>
+          <div style={CELL_LABEL}>{wardLabel()}</div>
           <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.birth}</div>
           <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.age}</div>
-          <div style={{ padding: '8px 10px', alignSelf: 'center', fontSize: 17 }}>{p.sex}</div>
+          <div style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.sex}</div>
+          <div style={{ padding: '8px 10px', alignSelf: 'center', fontSize: p.ward.length > 5 ? 12.5 : 15, lineHeight: 1.3 }}>{p.ward}</div>
         </div>
       </div>
 
@@ -208,11 +213,15 @@ export default function SheetMaker() {
   const evKey = state.shEvent || (defEv ? defEv.code + '@' + defEv.date : '')
   const code = +evKey.split('@')[0]
   const ev = evs.find(e => e.code === code && e.date === evKey.split('@')[1])
+  // 「市町村から選ぶ」用: 選択中の市町村と、その市町村に属する行政区の選択肢
+  const mu = allMunis(state).find(x => x.id === state.shMuni) || D.MUNIS[0]
+  const muniUsers = D.users.filter(u => u.muni === mu.id)
+  const wardOpts = distinct(muniUsers.map(u => u.venueName))
+  const ward = state.shWard || 'all'
   let parts, venue, muni, dateLabel
   if (state.shMode === 'muni') {
-    const mu = allMunis(state).find(x => x.id === state.shMuni) || D.MUNIS[0]
-    parts = D.users.filter(u => u.muni === mu.id)
-    venue = ''; muni = mu.name; dateLabel = ''
+    parts = muniUsers.filter(u => ward === 'all' || u.venueName === ward)
+    venue = ward === 'all' ? '' : ward; muni = mu.name; dateLabel = ''
   } else {
     parts = ev ? D.users.filter(u => u.venueCode === ev.code) : []
     venue = ev ? ev.venue : ''; muni = ev ? ev.muni : ''; dateLabel = ev ? ev.date : ''
@@ -225,6 +234,7 @@ export default function SheetMaker() {
     strip: u ? stripOf(u.id) : Array.from({ length: 20 }, () => 'transparent'),
     name: u ? u.name : '', kana: u ? u.kana : '',
     birth: u ? u.birthDate : '', age: u ? String(u.age) : '', sex: u ? u.sexLabel : '',
+    ward: u ? (u.venueName || '') : '',
     muniVenue: (muni || '') + (venue ? ' · ' + venue : ''), dateLabel: dateLabel || '　　　/　　/　　',
     rows: sheetRowsFor(u),
   })
@@ -254,8 +264,16 @@ export default function SheetMaker() {
         {state.shMode === 'muni' && (
           <div>
             <Overline style={{ marginBottom: 8 }}>市町村</Overline>
-            <Select value={state.shMuni} onChange={(e) => set({ shMuni: e.target.value })} options={D.MUNIS.map(m => ({ v: m.id, l: m.name }))} style={{ width: '100%' }} />
-            <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}>登録者 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{parts.length}</span> 名（五十音順）</div>
+            <Select value={state.shMuni} onChange={(e) => set({ shMuni: e.target.value, shWard: 'all' })} options={D.MUNIS.map(m => ({ v: m.id, l: m.name }))} style={{ width: '100%' }} />
+            <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}>登録者 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{muniUsers.length}</span> 名</div>
+          </div>
+        )}
+        {state.shMode === 'muni' && wardOpts.length > 0 && (
+          <div>
+            <Overline style={{ marginBottom: 8 }}>{wardLabel()}</Overline>
+            <Select value={ward} onChange={(e) => set({ shWard: e.target.value })}
+              options={[{ v: 'all', l: 'すべての' + wardLabel() }].concat(wardOpts.map(w => ({ v: w, l: w })))} style={{ width: '100%' }} />
+            <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}>{ward === 'all' ? '全' + wardLabel() : ward} · 対象 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{parts.length}</span> 名（五十音順）</div>
           </div>
         )}
         <div>

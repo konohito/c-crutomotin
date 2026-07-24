@@ -34,6 +34,11 @@ service cloud.firestore {
       }
     }
 
+    // 未処理件数バッジ用のコレクショングループクエリ(全バッチ横断で recognitions を数える)
+    match /{path=**}/recognitions/{recognitionId} {
+      allow read: if isStaff();
+    }
+
     // 利用者台帳。承認職員が閲覧・編集可（氏名・市町村/行政区・介護度・電話 等）。削除は不可。
     match /users/{userId} {
       allow read: if isStaff();

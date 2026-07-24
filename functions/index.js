@@ -68,25 +68,30 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '512MiB', timeoutSecond
   const parsed = parseStoragePath(name)
   if (!parsed) return // sheets/{batchId}/... 以外は無視(サムネイル等)
   const bucket = obj.bucket
-  const gcsUri = `gs://${bucket}/${name}`
   const db = admin.firestore()
   const ref = db.collection('batches').doc(parsed.batchId).collection('recognitions').doc()
+  // 成否に関わらずバッチのメタを更新し、取り込み画面のバッチ一覧に必ず現れるようにする
+  const touchBatch = () => db.collection('batches').doc(parsed.batchId).set(
+    { updatedAt: FieldValue.serverTimestamp(), sheetCount: FieldValue.increment(1) },
+    { merge: true },
+  )
   try {
-    const document = await processDocument({ gcsUri, mimeType: obj.contentType || 'image/jpeg' })
+    // 画像は関数がバケットから読み込んで bytes で渡す。
+    // (gcsUri 渡しだと Document AI 側のサービスにバケット読み取り権限が必要になり、
+    //  secure-by-default の組織では既定で拒否されて失敗するため)
+    const [content] = await admin.storage().bucket(bucket).file(name).download()
+    const document = await processDocument({ content, mimeType: obj.contentType || 'image/jpeg' })
     const rec = buildRecognitionDoc(document, {
       no: parsed.no, storagePath: name, threshold: cfg.reviewThreshold,
     })
     await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: FieldValue.serverTimestamp() })
-    // バッチのメタ(件数)を更新
-    await db.collection('batches').doc(parsed.batchId).set(
-      { updatedAt: FieldValue.serverTimestamp(), sheetCount: FieldValue.increment(1) },
-      { merge: true },
-    )
+    await touchBatch()
   } catch (err) {
     console.error('onSheetImageUpload error:', name, err)
     await ref.set({
       no: parsed.no, storagePath: name, batchId: parsed.batchId, status: 'error',
       error: err.message || 'OCR に失敗しました', recognizedAt: FieldValue.serverTimestamp(),
     })
+    await touchBatch().catch(() => {})
   }
 })

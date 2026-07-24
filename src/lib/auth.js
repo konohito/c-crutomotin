@@ -51,3 +51,22 @@ export async function signOutUser() {
   const { m, auth } = await getAuth()
   await m.signOut(auth)
 }
+
+// パスワード変更（本人）。Firebase は直近ログインを要求するため、現在のパスワードで再認証してから更新する。
+export async function changePassword(currentPassword, newPassword) {
+  const { m, auth } = await getAuth()
+  const user = auth.currentUser
+  if (!user || !user.email) throw new Error('ログイン状態を確認できませんでした。')
+  const cred = m.EmailAuthProvider.credential(user.email, currentPassword)
+  try {
+    await m.reauthenticateWithCredential(user, cred)
+  } catch (e) {
+    throw new Error(MSG[e && e.code] || '現在のパスワードが違います。')
+  }
+  try {
+    await m.updatePassword(user, newPassword)
+  } catch (e) {
+    if (e && e.code === 'auth/weak-password') throw new Error('新しいパスワードは6文字以上にしてください。')
+    throw new Error(authErrorMessage(e))
+  }
+}

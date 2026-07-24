@@ -9,6 +9,9 @@ try { CONFIG = import.meta.env.VITE_FIREBASE_CONFIG ? JSON.parse(import.meta.env
 export const dbEnabled = () => !!CONFIG
 export const firebaseConfig = () => CONFIG
 
+// 会場＝行政区。実データ(本番)では「行政区」、公開デモ(シードの会場名)では「会場」と表示する。
+export const wardLabel = () => (CONFIG ? '行政区' : '会場')
+
 const SHEET_COLS = ['height', 'weight', 'gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
 
 // firebase アプリを 1 回だけ初期化して使い回す（Firestore/Storage と Auth で共有する）
@@ -46,6 +49,44 @@ export async function uploadSheetImage(file, { batchId, no }) {
   const r = storage.ref(bucket, path)
   await storage.uploadBytes(r, file, { contentType: file.type || 'image/jpeg' })
   return path
+}
+
+// 取り込みバッチ一覧（新しい順）をリアルタイム購読する。unsubscribe 関数を返す。
+export async function watchBatches(cb) {
+  if (!dbEnabled()) return () => {}
+  const { firestore, db } = await sdk()
+  const q = firestore.query(
+    firestore.collection(db, 'batches'),
+    firestore.orderBy('updatedAt', 'desc'),
+    firestore.limit(30),
+  )
+  return firestore.onSnapshot(q, (snap) => {
+    cb(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  })
+}
+
+// 未処理の読み取り件数を全バッチ横断でリアルタイム購読する（ナビのバッジ用）。
+// 確認待ち(recognized)と読み取り失敗(error)の両方を数える（どちらも職員の対応が必要なため）。
+export async function watchPendingCount(cb) {
+  if (!dbEnabled()) return () => {}
+  const { firestore, db } = await sdk()
+  const q = firestore.query(
+    firestore.collectionGroup(db, 'recognitions'),
+    firestore.where('status', 'in', ['recognized', 'error']),
+  )
+  return firestore.onSnapshot(q, (snap) => cb(snap.size), (e) => {
+    console.warn('watchPendingCount failed:', e && e.message)
+    cb(0)
+  })
+}
+
+// 読み取りを却下する（誤アップロード・関係ない画像など）。監査のため文書は残し status のみ変更。
+export async function rejectRecognition({ batchId, recognitionId }) {
+  if (!dbEnabled()) throw new Error('Firebase 未設定です')
+  const { firestore, db } = await sdk()
+  await firestore.updateDoc(firestore.doc(db, 'batches', batchId, 'recognitions', recognitionId), {
+    status: 'rejected', reviewedAt: firestore.serverTimestamp(),
+  })
 }
 
 // 読み取りキュー(recognitions)をリアルタイム購読する。unsubscribe 関数を返す。

@@ -1,0 +1,84 @@
+name: Deploy production (app + backend)
+
+# main または production への push で、本番一式（Hosting + Functions + Firestore/Storage
+# ルール・インデックス）を GitHub のサーバーから自動デプロイする。
+# 運用: main へのマージ＝本番デプロイ（公開デモの Pages デプロイも main で並走する）。
+# production ブランチはチャット(Claude)からのマージ無しデプロイ用。
+# 認証は Workload Identity Federation（鍵レス）。必要な Variables は deploy-functions.yml と共通:
+#   GCP_WIF_PROVIDER / GCP_DEPLOY_SA / FIREBASE_PROJECT_ID / DOCAI_PROCESSOR_ID
+
+on:
+  push:
+    branches: [main, production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: guard
+        env:
+          WIF: ${{ vars.GCP_WIF_PROVIDER }}
+          WSA: ${{ vars.GCP_DEPLOY_SA }}
+          PID: ${{ vars.FIREBASE_PROJECT_ID }}
+        run: |
+          if [ -n "$PID" ] && [ -n "$WIF" ] && [ -n "$WSA" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=未設定::GCP_WIF_PROVIDER / GCP_DEPLOY_SA / FIREBASE_PROJECT_ID が未設定のためスキップしました。"
+          fi
+
+      - if: steps.guard.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # フロントエンドのビルド（.env.hosting はリポジトリに含まれる公開設定）
+      - if: steps.guard.outputs.ready == 'true'
+        run: |
+          npm ci
+          npm run build:hosting
+
+      # バックエンドの依存＋単体テスト
+      - if: steps.guard.outputs.ready == 'true'
+        working-directory: functions
+        run: |
+          npm ci
+          npm test
+
+      # functions/.env は gitignore のため Variables から生成
+      - if: steps.guard.outputs.ready == 'true'
+        working-directory: functions
+        run: |
+          {
+            echo "DOCAI_LOCATION=${{ vars.DOCAI_LOCATION || 'us' }}"
+            echo "DOCAI_PROCESSOR_ID=${{ vars.DOCAI_PROCESSOR_ID }}"
+            echo "OCR_ALLOW_ORIGIN=${{ vars.OCR_ALLOW_ORIGIN || 'https://cruto-motion.web.app' }}"
+          } > .env
+
+      - if: steps.guard.outputs.ready == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      # 本番一式をデプロイ（functions/ の firebase-tools を使う。firebase.json はルートを自動検出）
+      - if: steps.guard.outputs.ready == 'true'
+        working-directory: functions
+        run: >-
+          npx firebase-tools deploy
+          --only hosting,functions,firestore:rules,firestore:indexes,storage
+          --project "${{ vars.FIREBASE_PROJECT_ID }}"
+          --non-interactive

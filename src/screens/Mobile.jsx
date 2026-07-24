@@ -1,10 +1,17 @@
+import { useState, useRef } from 'react'
 import D from '../data/engine.js'
 import { useStore, sheetsAll } from '../store.jsx'
+import { dbEnabled, uploadSheetImage } from '../lib/db.js'
 import { Card } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 import IOSDevice from '../ui/IOSDevice.jsx'
 
 const BASE = import.meta.env.BASE_URL
+
+// 本番(実データ)は実際の一括アップロード画面、公開デモは従来のモックアップを表示する。
+export default function Mobile() {
+  return dbEnabled() ? <SheetUploader /> : <MobileDemo />
+}
 
 function Step({ n, title, desc }) {
   return (
@@ -18,7 +25,7 @@ function Step({ n, title, desc }) {
   )
 }
 
-export default function Mobile() {
+function MobileDemo() {
   const { state, set } = useStore()
   const all = sheetsAll()
   const sheet = all.length ? all[(state.mShots + state.mSent) % all.length] : null
@@ -204,6 +211,182 @@ export default function Mobile() {
           </div>
         </IOSDevice>
       </div>
+    </div>
+  )
+}
+
+// ---- 本番: 記録用紙の一括アップロード（スマホ対応）----------------------------
+// スマホのカメラ/写真から記録用紙を複数選んで Cloud Storage へアップロードすると、
+// バックエンド(onSheetImageUpload)が Document AI で読み取り、PCの取り込み画面に並ぶ。
+const pad2 = (n) => String(n).padStart(2, '0')
+function newBatchId() {
+  const d = new Date()
+  const ymd = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`
+  return `${ymd}-${Math.random().toString(36).slice(2, 7)}`
+}
+const ST = {
+  wait: { label: '未送信', bg: 'var(--slate-100)', fg: 'var(--fg-3)' },
+  up: { label: '送信中', bg: 'var(--brand-50)', fg: 'var(--brand-700)' },
+  done: { label: '完了', bg: 'var(--success-50)', fg: 'var(--success-700)' },
+  err: { label: '失敗', bg: 'var(--danger-50)', fg: 'var(--danger-700)' },
+}
+
+function SheetUploader() {
+  const { showToast } = useStore()
+  const [batchId, setBatchId] = useState(newBatchId)
+  const [label, setLabel] = useState('')
+  const [items, setItems] = useState([])
+  const [busy, setBusy] = useState(false)
+  const pickRef = useRef(null)
+  const camRef = useRef(null)
+
+  const addFiles = (fileList) => {
+    const arr = Array.from(fileList || []).filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|pdf)$/i.test(f.name))
+    if (!arr.length) return
+    setItems(prev => prev.concat(arr.map((f, i) => ({
+      id: `${Date.now()}-${prev.length + i}-${Math.random().toString(36).slice(2, 6)}`,
+      file: f, url: URL.createObjectURL(f), status: 'wait', err: '',
+    }))))
+  }
+  const removeItem = (id) => setItems(prev => {
+    const it = prev.find(x => x.id === id); if (it) URL.revokeObjectURL(it.url)
+    return prev.filter(x => x.id !== id)
+  })
+  const startNew = () => {
+    items.forEach(it => URL.revokeObjectURL(it.url))
+    setItems([]); setLabel(''); setBatchId(newBatchId())
+  }
+
+  const uploadAll = async () => {
+    if (busy) return
+    setBusy(true)
+    const pend = items.filter(it => it.status === 'wait' || it.status === 'err')
+    let no = items.filter(it => it.status === 'done').length
+    for (const it of pend) {
+      no++
+      setItems(prev => prev.map(x => x.id === it.id ? { ...x, status: 'up', err: '' } : x))
+      try {
+        await uploadSheetImage(it.file, { batchId, no })
+        setItems(prev => prev.map(x => x.id === it.id ? { ...x, status: 'done' } : x))
+      } catch (e) {
+        setItems(prev => prev.map(x => x.id === it.id ? { ...x, status: 'err', err: (e && e.message) || 'アップロードに失敗しました' } : x))
+      }
+    }
+    setBusy(false)
+    const failed = items.filter(it => it.status === 'err').length
+    showToast(failed ? '一部の送信に失敗しました。再送してください' : 'アップロードが完了しました')
+  }
+
+  const doneN = items.filter(it => it.status === 'done').length
+  const errN = items.filter(it => it.status === 'err').length
+  const pendN = items.filter(it => it.status === 'wait' || it.status === 'err').length
+  const today = new Date()
+  const dateLabel = `${today.getFullYear()}/${pad2(today.getMonth() + 1)}/${pad2(today.getDate())}`
+
+  return (
+    <div className="screen" style={{ maxWidth: 640, margin: '0 auto', width: '100%' }}>
+      <input ref={pickRef} type="file" accept="image/*,application/pdf" multiple style={{ display: 'none' }}
+        onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
+      <input ref={camRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+        onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
+
+      {/* 見出し・セッション */}
+      <Card pad>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--brand-50)', color: 'var(--brand-600)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <Icon name="camera" size={20} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>記録用紙アップロード</div>
+            <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>撮影した記録用紙をまとめて送ると、自動で読み取ります</div>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginTop: 14 }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontSize: 12, color: 'var(--fg-2)', fontWeight: 600 }}>会場・{'行政区'}（任意メモ）</span>
+            <input className="field" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="例: 上島公民館" />
+          </label>
+          <div style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
+            測定日 <span className="t-num">{dateLabel}</span> · セッション <span className="t-num">{batchId}</span>
+          </div>
+        </div>
+      </Card>
+
+      {/* 追加ボタン */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <button className="btn btn-primary btn-lg" onClick={() => pickRef.current?.click()} disabled={busy} style={{ justifyContent: 'center' }}>
+          <Icon name="upload" size={18} strokeWidth={1.8} /> 写真を選ぶ
+        </button>
+        <button className="btn btn-outline btn-lg" onClick={() => camRef.current?.click()} disabled={busy} style={{ justifyContent: 'center' }}>
+          <Icon name="camera" size={18} strokeWidth={1.8} /> カメラで撮る
+        </button>
+      </div>
+
+      {/* サムネイル一覧 */}
+      {items.length === 0 ? (
+        <Card pad>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '28px 0', textAlign: 'center' }}>
+            <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--slate-50)', color: 'var(--slate-400)', display: 'grid', placeItems: 'center' }}>
+              <Icon name="camera" size={26} />
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--fg-3)', lineHeight: 1.7 }}>
+              「写真を選ぶ」で複数枚まとめて選択、または「カメラで撮る」で 1 枚ずつ撮影できます。<br />1 枚 = 記録用紙 1 名分です。
+            </div>
+          </div>
+        </Card>
+      ) : (
+        <Card pad>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div className="t-h4">選択中 <span className="t-num">{items.length}</span> 枚</div>
+            <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>完了 {doneN}{errN ? ` · 失敗 ${errN}` : ''}</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 10 }}>
+            {items.map(it => (
+              <div key={it.id} style={{ position: 'relative', aspectRatio: '3 / 4', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border-default)', background: 'var(--slate-100)' }}>
+                {/\.pdf$/i.test(it.file.name)
+                  ? <div style={{ height: '100%', display: 'grid', placeItems: 'center', color: 'var(--slate-400)' }}><Icon name="file" size={26} /></div>
+                  : <img src={it.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+                <div style={{ position: 'absolute', left: 4, bottom: 4, height: 18, padding: '0 6px', borderRadius: 999, background: ST[it.status].bg, color: ST[it.status].fg, fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                  {it.status === 'done' && <Icon name="check" size={10} strokeWidth={3} />}
+                  {it.status === 'err' && <Icon name="warn" size={10} />}
+                  {ST[it.status].label}
+                </div>
+                {it.status !== 'up' && it.status !== 'done' && (
+                  <button onClick={() => removeItem(it.id)} aria-label="削除"
+                    style={{ position: 'absolute', top: 3, right: 3, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
+                    <Icon name="x" size={13} strokeWidth={2.4} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* 送信・完了 */}
+      {items.length > 0 && (
+        <Card pad>
+          {pendN > 0 ? (
+            <button className="btn btn-primary btn-lg" onClick={uploadAll} disabled={busy} style={{ width: '100%', justifyContent: 'center' }}>
+              <Icon name="upload" size={18} strokeWidth={1.8} />
+              {busy ? '送信中…' : `${pendN} 枚をアップロード`}
+            </button>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--success-700)', fontWeight: 700 }}>
+                <Icon name="check" size={18} strokeWidth={2.4} /> {doneN} 枚を送信しました
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--fg-3)', textAlign: 'center', lineHeight: 1.7 }}>
+                読み取りと台帳照合は自動で行われます。結果は PC の「取り込み」画面でご確認ください。
+              </div>
+              <button className="btn btn-outline" onClick={startNew} style={{ marginTop: 4 }}>新しく撮影する</button>
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: 'var(--fg-4)', marginTop: 12, lineHeight: 1.6 }}>
+            用紙全体が写るように明るい場所で撮影してください。1 枚ずつ別の用紙にしてください（1 枚 = 1 名分）。
+          </div>
+        </Card>
+      )}
     </div>
   )
 }

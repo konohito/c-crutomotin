@@ -7,3 +7,12 @@ dist
 normalized.json
 *.xlsx
 contradictions.txt
+inbody/
+inbody-unmatched.csv
+
+# 環境ごとの設定（プロセッサIDなど。コミットしない）
+functions/.env
+
+# Python バイトコードキャッシュ
+__pycache__/
+*.pyc

@@ -1,6 +1,9 @@
 import D from '../data/engine.js'
 import { useStore, pendingSheets, allEvents, staffNames, flagsFor, batchN, openSheetVals } from '../store.jsx'
-import { mdw, addDays, eraOf, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
+import { mdw, addDays, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
+import { dbEnabled } from '../lib/db.js'
+import { useAuth } from '../ui/AuthGate.jsx'
+import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel } from '../ui/chart.jsx'
 import { Card, Pill, Overline, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -19,6 +22,9 @@ function StatCard({ label, labelColor, value, valueColor, unit, foot, onClick })
 
 export default function Dashboard() {
   const { state, set, setState, showToast } = useStore()
+  const { profile } = useAuth()
+  // 本番(実データ)では OCR キュー・直近の取り込み等のダミーは出さない
+  const demo = !dbEnabled()
   const cur = D.CUR
   const done = D.users.filter(u => u.meas[cur]).length
   const newN = D.users.filter(u => u.joined === cur).length
@@ -28,9 +34,14 @@ export default function Dashboard() {
   const statFRate = Math.round((D.users.filter(u => u.sex === 'F').length / Math.max(1, D.users.length)) * 100)
   const statOld = D.users.filter(u => u.age >= 85).length
 
-  const muniProg = D.REGIONS.map(r => {
-    const total = D.users.filter(u => u.region === r).length
-    const d = D.users.filter(u => u.region === r && u.meas[cur]).length
+  // 本番(単一圏域)では圏域別ではなく行政区別に集計する
+  const progField = demo ? 'region' : 'venueName'
+  const progGroups = demo
+    ? D.REGIONS
+    : [...new Set(D.users.map(u => u.venueName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
+  const muniProg = progGroups.map(r => {
+    const total = D.users.filter(u => u[progField] === r).length
+    const d = D.users.filter(u => u[progField] === r && u.meas[cur]).length
     return { name: r, done: d, total, w: Math.round((d / Math.max(1, total)) * 100) + '%' }
   })
 
@@ -45,8 +56,13 @@ export default function Dashboard() {
 
   const cbm = colsPlus()
   const dcol = cbm.find(c => c.id === state.dashItem) || cbm[3]
-  const dSeries = D.YEARS.map(y => ({ year: y, v: itemAvg(D.users, y, dcol.id) }))
-  const dAuto = autoLines([{ pts: dSeries }], D.YEARS, 70, 520, 24, 132)
+  // グラフは実際に測定のある年度だけを等間隔で描く（空の年度で間延びさせない）
+  const dSeries = D.YEARS.map(y => ({ year: y, v: itemAvg(D.users, y, dcol.id) })).filter(p => p.v != null)
+  const dYears = dSeries.map(p => p.year)
+  // コンテナ幅を実測し、viewBox 幅と一致させて文字の引き伸ばし（潰れ）を防ぐ
+  const [chartRef, chartW] = useChartWidth(560)
+  const CH = 176
+  const dAuto = autoLines([{ pts: dSeries }], dYears, 46, chartW - 24, 26, CH - 44)
   const dLine = dAuto.lines[0] || { path: '', pts: [] }
 
   const evsAll = allEvents(state)
@@ -72,28 +88,38 @@ export default function Dashboard() {
 
   // ---- 今日のやること（作業キュー） ----
   const tasks = []
-  if (state.imp === 'idle') {
-    tasks.push({ icon: 'imp', bg: 'var(--brand-50)', fg: 'var(--brand-600)', title: `記録用紙 ${batchN()} 枚が読み取り待ち`, sub: `${D.batchMeta.venue} · モバイル撮影から受信済み`, go: () => set({ screen: 'imp' }) })
-  } else if (state.imp === 'run') {
-    tasks.push({ icon: 'imp', bg: 'var(--brand-50)', fg: 'var(--brand-600)', title: '手書き数値を読み取り中…', sub: `${state.impCount} / ${batchN()} 枚`, go: () => set({ screen: 'imp' }) })
-  } else if (state.imp === 'scanned') {
-    if (pend.length > 0) tasks.push({ icon: 'warn', bg: 'var(--warning-50)', fg: 'var(--warning-700)', title: `要確認の用紙 ${pend.length} 件`, sub: '読み取り結果の確認が必要です', go: () => openFlagged(pend[0].no) })
-    else tasks.push({ icon: 'check', bg: 'var(--success-50)', fg: 'var(--success-700)', title: `${batchN()} 枚の本登録待ち`, sub: '確認が完了しました。本登録できます', go: () => set({ screen: 'imp' }) })
+  // OCR 取り込みキューはデモのダミー。本番（実データ）では表示しない。
+  if (demo) {
+    if (state.imp === 'idle') {
+      tasks.push({ icon: 'imp', bg: 'var(--brand-50)', fg: 'var(--brand-600)', title: `記録用紙 ${batchN()} 枚が読み取り待ち`, sub: `${D.batchMeta.venue} · モバイル撮影から受信済み`, go: () => set({ screen: 'imp' }) })
+    } else if (state.imp === 'run') {
+      tasks.push({ icon: 'imp', bg: 'var(--brand-50)', fg: 'var(--brand-600)', title: '手書き数値を読み取り中…', sub: `${state.impCount} / ${batchN()} 枚`, go: () => set({ screen: 'imp' }) })
+    } else if (state.imp === 'scanned') {
+      if (pend.length > 0) tasks.push({ icon: 'warn', bg: 'var(--warning-50)', fg: 'var(--warning-700)', title: `要確認の用紙 ${pend.length} 件`, sub: '読み取り結果の確認が必要です', go: () => openFlagged(pend[0].no) })
+      else tasks.push({ icon: 'check', bg: 'var(--success-50)', fg: 'var(--success-700)', title: `${batchN()} 枚の本登録待ち`, sub: '確認が完了しました。本登録できます', go: () => set({ screen: 'imp' }) })
+    }
   }
   const tomorrowMeas = evsAll.filter(e => e.date === addDays(D.TODAY, 1) && e.kind === 'meas')
   if (tomorrowMeas.length > 0) {
     tasks.push({ icon: 'printer', bg: 'var(--info-50)', fg: 'var(--info-700)', title: `明日の測定会 ${tomorrowMeas.length} 件の用紙準備`, sub: tomorrowMeas.map(e => e.muni).join('・') + ' — 記録用紙を印刷', go: () => set({ screen: 'sheet' }) })
   }
-  const [, tm, td] = D.TODAY.split('/').map(Number)
-  const tw = '日月火水木金土'[new Date(D.TODAY).getDay()]
+  // 日めくりは本番では実際の「今日」を表示する（デモはシードの固定日 9/24）
+  const now = demo ? new Date(D.TODAY) : new Date()
+  const tm = now.getMonth() + 1
+  const td = now.getDate()
+  const tw = '日月火水木金土'[now.getDay()]
+  const eraTop = demo ? '令和7年度' : `令和${now.getFullYear() - 2018}年`
   const greet = loginGreeting()
-  const staffFamily = (D.STAFF[0].name.split(' ')[0]) || '担当'
+  // 本番はログイン職員の氏名（姓）を使い、未設定なら掛け声のみにする
+  const staffFamily = demo
+    ? ((D.STAFF[0].name.split(' ')[0]) || '担当')
+    : ((profile && profile.name) ? profile.name.trim().split(/\s+/)[0] : '')
 
   return (
     <div className="screen">
       {/* ログイン時刻と季節でひとことが変わる、さりげない掛け声 */}
       <div className="cm-greeting" style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '0 2px 2px', flexWrap: 'wrap', fontSize: 12.5, color: 'var(--fg-3)', lineHeight: 1.5, animation: 'rowIn 320ms var(--ease-standard)' }}>
-        <span style={{ color: 'var(--fg-2)', fontWeight: 500 }}>{staffFamily}さん、{greet.hello}。</span>
+        <span style={{ color: 'var(--fg-2)', fontWeight: 500 }}>{staffFamily ? staffFamily + 'さん、' : ''}{greet.hello}。</span>
         <span>{greet.aside}</span>
       </div>
 
@@ -106,7 +132,7 @@ export default function Dashboard() {
             <rect width="128" height="110" fill="url(#cmDots)" />
           </svg>
           <div className="today-date-inner" style={{ position: 'relative' }}>
-            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--brand-100)' }}>令和7年度</div>
+            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', color: 'var(--brand-100)' }}>{eraTop}</div>
             <div className="t-display t-num" style={{ fontSize: 30, lineHeight: 1.2, marginTop: 2 }}>{tm}/{td}</div>
             <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--brand-100)', marginTop: 1 }}>{tw}曜日</div>
           </div>
@@ -152,10 +178,10 @@ export default function Dashboard() {
       </Card>
 
       {/* 統計カード */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${demo ? 4 : 3}, 1fr)`, gap: 16 }}>
         <StatCard label="登録利用者" value={D.users.length} unit="名" foot={<>うち今年度の新規 <span className="t-num">{newN}</span> 名</>} />
         <StatCard label="令和7年度 測定済" value={done} unit="名" foot={<>参加率 <span className="t-num">{Math.round((done / Math.max(1, D.users.length)) * 100)}</span>%</>} />
-        <StatCard label="要確認" labelColor="var(--warning-700)" value={pend.length} valueColor={pend.length ? 'var(--warning-700)' : 'var(--fg-1)'} unit="件" foot="読み取り結果の確認待ち" onClick={() => set({ screen: 'imp' })} />
+        {demo && <StatCard label="要確認" labelColor="var(--warning-700)" value={pend.length} valueColor={pend.length ? 'var(--warning-700)' : 'var(--fg-1)'} unit="件" foot="読み取り結果の確認待ち" onClick={() => set({ screen: 'imp' })} />}
         <StatCard label="参加者の平均年齢" value={statAge} unit="歳" foot={<>女性 <span className="t-num">{statFRate}</span>% · 85歳以上 <span className="t-num">{statOld}</span> 名</>} />
       </div>
 
@@ -180,24 +206,24 @@ export default function Dashboard() {
         </Card>
       ))}
 
-      {/* 区域別 + 要確認 */}
-      <div className="duo" style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 16, alignItems: 'start' }}>
+      {/* 区域別（+ 確認が必要な用紙。用紙確認はデモのみ） */}
+      <div className="duo" style={{ display: 'grid', gridTemplateColumns: demo ? '1.25fr 1fr' : '1fr', gap: 16, alignItems: 'start' }}>
         <Card pad>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-            <div className="t-h4">区域別の参加状況</div>
+            <div className="t-h4">{demo ? '区域別' : '行政区別'}の参加状況</div>
             <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>令和7年度 測定済 / 登録</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
             {muniProg.map(m => (
-              <div key={m.name} style={{ display: 'grid', gridTemplateColumns: '76px 1fr 84px', gap: 12, alignItems: 'center' }}>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</div>
+              <div key={m.name} style={{ display: 'grid', gridTemplateColumns: '104px 1fr 84px', gap: 12, alignItems: 'center' }}>
+                <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
                 <div className="meter"><div style={{ width: m.w }} /></div>
                 <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-2)', textAlign: 'right' }}>{m.done} / {m.total} 名</div>
               </div>
             ))}
           </div>
         </Card>
-        <Card pad>
+        {demo && <Card pad>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <div className="t-h4">確認が必要な用紙</div>
             <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{pend.length} 件</div>
@@ -232,11 +258,12 @@ export default function Dashboard() {
               )
             })}
           </div>
-        </Card>
+        </Card>}
       </div>
 
-      {/* 直近の取り込み + 推移 */}
-      <div className="duo" style={{ display: 'grid', gridTemplateColumns: '1fr 1.25fr', gap: 16, alignItems: 'start' }}>
+      {/* 直近の取り込み + 推移（直近の取り込みはデモのダミーのため本番では非表示） */}
+      <div className="duo" style={{ display: 'grid', gridTemplateColumns: demo ? '1fr 1.25fr' : '1fr', gap: 16, alignItems: 'start' }}>
+        {demo && (
         <Card pad>
           <div className="t-h4">直近の取り込み</div>
           <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
@@ -250,30 +277,35 @@ export default function Dashboard() {
             ))}
           </div>
         </Card>
+        )}
         <Card pad>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <div className="t-h4">運動機能の推移（全体平均）</div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <YearFmtSwitch />
               <Select sm value={state.dashItem} onChange={(e) => set({ dashItem: e.target.value })} options={cbm.map(c => ({ v: c.id, l: c.label }))} />
               <button className="btn btn-outline btn-sm" onClick={() => set({ screen: 'ana' })}>詳しく分析</button>
             </div>
           </div>
-          <svg width="100%" height="170" viewBox="0 0 560 170" preserveAspectRatio="none" style={{ marginTop: 10, display: 'block' }}>
-            {dAuto.ticks.map((tk, i) => (
-              <g key={i}>
-                <line x1="36" y1={tk.y} x2="548" y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
-                <text x="30" y={tk.y + 3.5} textAnchor="end" fontSize="10" fill="var(--slate-400)" fontFamily="Inter">{fmtD(tk.v, dcol.dec)}</text>
-              </g>
-            ))}
-            <path d={dLine.path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-            {dLine.pts.map((p, i) => (
-              <g key={i}>
-                <circle cx={p.x} cy={p.y} r="3.5" fill="var(--bg-surface)" stroke="var(--brand-500)" strokeWidth="2" />
-                <text x={p.x} y={p.y < 44 ? p.y + 17 : p.y - 9} textAnchor="middle" fontSize="10.5" fontWeight="600" fill="var(--slate-700)" fontFamily="Inter">{fmtD(Math.round(p.v * 10) / 10, dcol.dec)}</text>
-                <text x={p.x} y="162" textAnchor="middle" fontSize="10" fill="var(--slate-500)" fontFamily="Inter">{eraOf(p.year)}</text>
-              </g>
-            ))}
-          </svg>
+          <div ref={chartRef} style={{ marginTop: 10 }}>
+            {dLine.pts.length === 0 ? (
+              <div style={{ height: CH, display: 'grid', placeItems: 'center', fontSize: 12.5, color: 'var(--fg-3)' }}>この項目の測定データがありません</div>
+            ) : (
+              <svg width="100%" height={CH} viewBox={`0 0 ${chartW} ${CH}`} style={{ display: 'block' }}>
+                {dAuto.ticks.map((tk, i) => (
+                  <g key={i}>
+                    <line x1="40" y1={tk.y} x2={chartW - 12} y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
+                    <text x="34" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--slate-400)" fontFamily="Inter">{tk.label}</text>
+                  </g>
+                ))}
+                <path d={dLine.path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                {dLine.pts.map((p, i) => (
+                  <text key={i} x={p.x} y={CH - 8} textAnchor="middle" fontSize="11" fill="var(--slate-500)" fontFamily="Inter">{yearLabel(p.year, state.yearFmt)}</text>
+                ))}
+                <ChartDots pts={dLine.pts} dec={dcol.dec} unit={dcol.unit} yearFmt={state.yearFmt} chartW={chartW} />
+              </svg>
+            )}
+          </div>
           <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 4 }}>
             各年度に測定したすべての方の平均{dcol.unit ? ' · 単位 ' + dcol.unit : ''}{betterNote(dcol) ? ' · ' + betterNote(dcol) : ''} — 集団の入れ替わりを含むため、詳しくは集計分析へ
           </div>

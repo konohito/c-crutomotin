@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import D from './data/engine.js'
 import { useStore, pendingSheets, allEvents, StoreProvider } from './store.jsx'
 import { mdw } from './lib/helpers.js'
+import { dbEnabled, watchPendingCount } from './lib/db.js'
 import { Icon } from './ui/icons.jsx'
 import { Toast } from './ui/kit.jsx'
 import AuthGate, { useAuth } from './ui/AuthGate.jsx'
@@ -21,6 +22,7 @@ import ReviewModal from './modals/ReviewModal.jsx'
 import RegisterModal from './modals/RegisterModal.jsx'
 import EventModal from './modals/EventModal.jsx'
 import { EditUserModal, EditMeasModal } from './modals/EditModals.jsx'
+import PasswordModal from './modals/PasswordModal.jsx'
 import { staffAdminEnabled } from './lib/staffAdmin.js'
 
 const BASE = import.meta.env.BASE_URL
@@ -36,7 +38,7 @@ const TITLES = {
   ana: ['集計分析', '市町村・圏域別の年次集計'],
   pdf: ['PDF 出力', '個人結果票の一括出力'],
   exp: ['CSV 出力', '県報告用データの一括出力'],
-  mob: ['モバイル撮影', '現場スタッフ用の撮影フロー'],
+  mob: ['用紙アップロード', 'スマホから記録用紙をまとめてアップロード'],
   staff: ['職員管理', 'ログインできる職員アカウントの追加・解除'],
 }
 
@@ -47,13 +49,25 @@ const NAV_MAIN = [
   ['cal', 'カレンダー'],
   ['sheet', '用紙作成'],
   ['ros', '利用者台帳'],
-  ['mob', 'モバイル撮影'],
+  ['mob', '用紙アップロード'],
 ]
 const NAV_ANA = [
   ['ana', '集計分析'],
   ['pdf', 'PDF 出力'],
   ['exp', 'CSV 出力'],
 ]
+
+// 本番: 確認待ちの読み取り件数（Firestore 全バッチ横断）をリアルタイム購読
+function useOcrPending() {
+  const [n, setN] = useState(0)
+  useEffect(() => {
+    if (!dbEnabled()) return
+    let unsub = () => {}
+    watchPendingCount(setN).then(fn => { unsub = fn }).catch(() => {})
+    return () => unsub()
+  }, [])
+  return n
+}
 
 function NavItem({ id, label, badge }) {
   const { state, set } = useStore()
@@ -70,6 +84,8 @@ function NavItem({ id, label, badge }) {
 function Sidebar() {
   const { state, set } = useStore()
   const pending = pendingSheets(state)
+  const ocrPend = useOcrPending()
+  const impBadge = dbEnabled() ? ocrPend : pending.length
   const nextMeas = allEvents(state).filter(e => e.kind === 'meas' && e.date >= D.TODAY).sort((a, b) => a.date.localeCompare(b.date))[0]
   return (
     <aside className={`sidebar noprint${state.navOpen ? ' open' : ''}`}>
@@ -80,7 +96,7 @@ function Sidebar() {
       <nav className="sidebar-nav">
         <div className="t-overline" style={{ padding: '4px 12px 6px' }}>業務</div>
         {NAV_MAIN.map(([id, label]) => (
-          <NavItem key={id} id={id} label={label} badge={id === 'imp' && pending.length > 0 ? pending.length : 0} />
+          <NavItem key={id} id={id} label={label} badge={id === 'imp' && impBadge > 0 ? impBadge : 0} />
         ))}
         <div className="t-overline" style={{ padding: '14px 12px 6px' }}>分析</div>
         {NAV_ANA.map(([id, label]) => <NavItem key={id} id={id} label={label} badge={0} />)}
@@ -110,9 +126,10 @@ function Sidebar() {
 
 // ログイン中の職員（Firebase 認証時）。未設定のデモではダミーの職員名を表示する。
 function SidebarUser() {
-  const { user, enabled, signOut } = useAuth()
+  const { set } = useStore()
+  const { user, enabled, profile, signOut } = useAuth()
   const email = user && (user.email || '')
-  const name = enabled ? (user && user.displayName) || (email ? email.split('@')[0] : '職員') : '相馬 直樹'
+  const name = enabled ? ((profile && profile.name) || (user && user.displayName) || (email ? email.split('@')[0] : '職員')) : '相馬 直樹'
   const sub = enabled ? email : '事務局 · 管理者権限'
   const initial = (name || '職').trim().charAt(0)
   return (
@@ -123,9 +140,14 @@ function SidebarUser() {
         <div style={{ fontSize: 11, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>
       </div>
       {enabled && (
-        <button className="icon-btn" title="ログアウト" aria-label="ログアウト" onClick={() => signOut()} style={{ flexShrink: 0 }}>
-          <Icon name="logout" size={17} />
-        </button>
+        <>
+          <button className="icon-btn" title="パスワード変更" aria-label="パスワード変更" onClick={() => set({ pwOpen: true })} style={{ flexShrink: 0 }}>
+            <Icon name="key" size={16} />
+          </button>
+          <button className="icon-btn" title="ログアウト" aria-label="ログアウト" onClick={() => signOut()} style={{ flexShrink: 0 }}>
+            <Icon name="logout" size={17} />
+          </button>
+        </>
       )}
     </div>
   )
@@ -163,12 +185,14 @@ function Header() {
         />
         <div className="search-icon"><Icon name="search" size={16} /></div>
       </div>
-      <button className="icon-btn" title="確認が必要な用紙" onClick={() => set({ screen: 'imp' })}>
-        <Icon name="bell" size={18} />
-        {pending.length > 0 && (
-          <span className="t-num" style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, borderRadius: 999, background: 'var(--danger-500)', border: '1.5px solid #fff', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center', padding: '0 4px' }}>{pending.length}</span>
-        )}
-      </button>
+      {!dbEnabled() && (
+        <button className="icon-btn" title="確認が必要な用紙" onClick={() => set({ screen: 'imp' })}>
+          <Icon name="bell" size={18} />
+          {pending.length > 0 && (
+            <span className="t-num" style={{ position: 'absolute', top: -5, right: -5, minWidth: 17, height: 17, borderRadius: 999, background: 'var(--danger-500)', border: '1.5px solid #fff', color: '#fff', fontSize: 10, fontWeight: 700, display: 'grid', placeItems: 'center', padding: '0 4px' }}>{pending.length}</span>
+          )}
+        </button>
+      )}
       {state.screen === 'ros' && (
         <button className="btn btn-primary" onClick={() => set({ regOpen: true, regError: '' })}>
           <Icon name="plus" size={15} strokeWidth={2} />
@@ -202,6 +226,7 @@ function AppInner() {
       {state.evOpen && <EventModal />}
       {state.editUser && <EditUserModal />}
       {state.editMeas && <EditMeasModal />}
+      {state.pwOpen && <PasswordModal />}
       <Toast msg={state.toast} />
     </div>
   )

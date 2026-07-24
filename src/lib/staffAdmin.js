@@ -14,6 +14,22 @@ export async function listStaff() {
     .sort((a, b) => String(a.email || '').localeCompare(String(b.email || '')))
 }
 
+// ログイン中の職員自身のプロフィール（氏名など）を取得。未承認・未設定なら null。
+export async function getStaffProfile(uid) {
+  if (!dbEnabled() || !uid) return null
+  try {
+    const { fs, db } = await getFs()
+    const snap = await fs.getDoc(fs.doc(db, 'staff', uid))
+    return snap.exists() ? { uid, ...snap.data() } : null
+  } catch { return null }
+}
+
+// 職員の表示名を更新（全職員が同権限で編集可）。
+export async function updateStaffName(uid, name) {
+  const { fs, db } = await getFs()
+  await fs.setDoc(fs.doc(db, 'staff', uid), { name: name || '' }, { merge: true })
+}
+
 const AUTH_ERR = {
   'auth/email-already-in-use': 'このメールアドレスは既に登録されています。',
   'auth/invalid-email': 'メールアドレスの形式が正しくありません。',

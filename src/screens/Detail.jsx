@@ -3,6 +3,9 @@ import { useStore, memosFor } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAvg, frailtyOf, FRAIL_LEVELS } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAINS } from '../data/kihon.js'
 import { realDataEnabled } from '../lib/realdata.js'
+import { wardLabel } from '../lib/db.js'
+import { useAuth } from '../ui/AuthGate.jsx'
+import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel } from '../ui/chart.jsx'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -19,6 +22,7 @@ function LegendSwatch({ kind, color, label }) {
 
 export default function Detail() {
   const { state, set, setState, showToast } = useStore()
+  const { profile: staffProfile, enabled: authOn } = useAuth()
   const u = D.users.find(x => x.id === state.detId) || D.users[0]
   const ys = Object.keys(u.meas).map(Number)
   const last = ys.length ? u.meas[ys[ys.length - 1]] : null
@@ -39,7 +43,8 @@ export default function Detail() {
   const pSeries = D.YEARS.map(y => ({ year: y, v: u.meas[y] ? (mcol.id === 'total' ? u.meas[y].total : u.meas[y].values[mcol.id]) : null }))
   const muniPool = D.users.filter(x => x.muni === u.muni)
   const mSeries = D.YEARS.map(y => ({ year: y, v: itemAvg(muniPool, y, mcol.id) }))
-  const tAuto = autoLines([{ pts: pSeries }, { pts: mSeries }], D.YEARS, 56, 490, 18, 170)
+  const [trRef, trW] = useChartWidth(520)
+  const tAuto = autoLines([{ pts: pSeries }, { pts: mSeries }], D.YEARS, 44, trW - 18, 18, 170)
 
   const detMult = D.COLS.map(c => {
     const vals = ys.filter(y => u.meas[y].values[c.id] !== null).map(y => u.meas[y].values[c.id])
@@ -80,14 +85,17 @@ export default function Detail() {
   const memoAdd = () => {
     const t = state.memoDraft.trim()
     if (!t) return
-    const arr = memos.concat([{ date: D.TODAY, text: t, by: '相馬' }])
+    // 投稿者名と日付は本番ではログイン職員・実際の今日を使う
+    const byName = authOn ? ((staffProfile && staffProfile.name) || '職員') : '相馬'
+    const today = authOn ? new Date().toLocaleDateString('sv-SE').replace(/-/g, '/') : D.TODAY
+    const arr = memos.concat([{ date: today, text: t, by: byName }])
     setState(s => ({ ...s, memos: { ...s.memos, [u.id]: arr }, memoDraft: '' }))
     showToast('気づきを登録しました')
   }
 
   const profile = [
     { k: '参加者 ID', v: u.id }, { k: '生年月日', v: u.birthDate }, { k: '電話番号', v: u.phone || '—' },
-    { k: '会場', v: u.venueName }, { k: '参加開始', v: eraOf(u.joined) + '年度' }, { k: '備考', v: u.note || '—' },
+    { k: wardLabel(), v: u.venueName }, { k: '参加開始', v: eraOf(u.joined) + '年度' }, { k: '備考', v: u.note || '—' },
   ]
 
   return (
@@ -394,31 +402,29 @@ export default function Detail() {
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                 <div className="t-h4">年次推移</div>
                 <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <YearFmtSwitch />
                   <Select sm value={state.detMetric} onChange={(e) => set({ detMetric: e.target.value })}
                     options={[{ v: 'total', l: '総合スコア' }].concat(colsBmi.map(c => ({ v: c.id, l: c.label })))} />
                   <LegendSwatch kind="line" color="var(--brand-500)" label="本人" />
                   <LegendSwatch kind="dash" color="var(--slate-300)" label="市町村平均" />
                 </div>
               </div>
-              <svg width="100%" height="196" viewBox="0 0 520 196" preserveAspectRatio="none" style={{ display: 'block', marginTop: 8 }}>
-                {tAuto.ticks.map((tk, i) => (
-                  <g key={i}>
-                    <line x1="30" y1={tk.y} x2="508" y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
-                    <text x="24" y={tk.y + 3.5} textAnchor="end" fontSize="10" fill="var(--slate-400)" fontFamily="Inter">{fmtD(tk.v, mcol.dec)}</text>
-                  </g>
-                ))}
-                {tAuto.lines[1] && <path d={tAuto.lines[1].path} fill="none" stroke="var(--slate-300)" strokeWidth="1.5" strokeDasharray="5 4" />}
-                <path d={tAuto.lines[0].path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                {tAuto.lines[0].pts.map((p, i) => (
-                  <g key={i}>
-                    <circle cx={p.x} cy={p.y} r="4" fill="var(--bg-surface)" stroke="var(--brand-500)" strokeWidth="2" />
-                    <text x={p.x} y={p.y < 36 ? p.y + 17 : p.y - 9} textAnchor="middle" fontSize="11" fontWeight="600" fill="var(--slate-700)" fontFamily="Inter">{fmtD(Math.round(p.v * 10) / 10, mcol.dec)}</text>
-                  </g>
-                ))}
-                {D.YEARS.map((y, i) => (
-                  <text key={y} x={Math.round(56 + (i * (490 - 56)) / 5)} y="189" textAnchor="middle" fontSize="10" fill="var(--slate-500)" fontFamily="Inter">{eraOf(y)}</text>
-                ))}
-              </svg>
+              <div ref={trRef}>
+                <svg width="100%" height="196" viewBox={`0 0 ${trW} 196`} style={{ display: 'block', marginTop: 8 }}>
+                  {tAuto.ticks.map((tk, i) => (
+                    <g key={i}>
+                      <line x1="30" y1={tk.y} x2={trW - 8} y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
+                      <text x="24" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--slate-400)" fontFamily="Inter">{tk.label}</text>
+                    </g>
+                  ))}
+                  {tAuto.lines[1] && <path d={tAuto.lines[1].path} fill="none" stroke="var(--slate-300)" strokeWidth="1.5" strokeDasharray="5 4" />}
+                  <path d={tAuto.lines[0].path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  {D.YEARS.map((y, i) => (
+                    <text key={y} x={Math.round(44 + (i * (trW - 18 - 44)) / 5)} y="189" textAnchor="middle" fontSize="10.5" fill="var(--slate-500)" fontFamily="Inter">{yearLabel(y, state.yearFmt)}</text>
+                  ))}
+                  <ChartDots pts={tAuto.lines[0].pts} dec={mcol.dec} unit={mcol.unit || ''} yearFmt={state.yearFmt} chartW={trW} topFlip={40} />
+                </svg>
+              </div>
             </Card>
           </div>
 

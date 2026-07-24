@@ -5,7 +5,7 @@ import { saveUserFields, saveMeasurement } from '../lib/realdata.js'
 import { eraOf } from '../lib/helpers.js'
 import { Modal, ModalHead, Select } from '../ui/kit.jsx'
 
-const CARE_OPTS = [
+export const CARE_OPTS = [
   { v: '', l: '（自立・未設定）' }, { v: '要支援1', l: '要支援1' }, { v: '要支援2', l: '要支援2' },
   { v: '要介護1', l: '要介護1' }, { v: '要介護2', l: '要介護2' }, { v: '要介護3', l: '要介護3' },
 ]

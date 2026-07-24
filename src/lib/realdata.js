@@ -30,9 +30,22 @@ function scoreOf(sex, v) {
 function toEngineUser(u, measList) {
   const meas = {}, inbody = {}
   for (const m of measList) {
+    // InBody(体組成): ETL(etl-inbody.py)が突合して測定に付与した inbody を読む。旧 inbodySmi も後方互換。
+    if (m.inbody) {
+      const ib = m.inbody
+      inbody[m.year] = {
+        smm: ib.smm ?? null, smi: ib.smi ?? null, fatPct: ib.fatPct ?? null,
+        score: ib.score ?? null, weight: ib.weight ?? (m.values ? m.values.weight : null) ?? null,
+        date: ib.testDate || m.date || null,
+      }
+    } else if (m.inbodySmi != null) {
+      inbody[m.year] = { smi: m.inbodySmi, smm: null, fatPct: null, score: null }
+    }
+    // InBody 単独の記録（その年の体力測定が台帳に無い。例: 令和5年度）は
+    // 参加履歴・スコアには入れず、InBody 欄にのみ表示する。
+    if (m.inbodyOnly) continue
     const s = scoreOf(u.sex, m.values || {})
     meas[m.year] = { ...s, date: m.date || null, review: !!m.review }
-    if (m.inbodySmi != null) inbody[m.year] = { smi: m.inbodySmi, smm: null, fatPct: null, score: null }
   }
   const years = Object.keys(meas).map(Number)
   return {
@@ -74,6 +87,21 @@ export async function saveUserFields(id, patch) {
     if (u && u.birth != null) doc.birth = u.birth
     await fs.setDoc(fs.doc(db, 'users', id), doc, { merge: true })
   }
+}
+
+// 新規利用者を Firestore に保存（メモリへの追加は呼び出し側で実施済み）。
+// venueName＝行政区。muni はメモリの id と一致させる（再読込後もフィルタが揃うように）。
+export async function createUserDoc(u) {
+  if (!dbEnabled()) return
+  const { fs, db } = await getFs()
+  const doc = {
+    name: u.name || '', kana: u.kana || '', sex: u.sex || 'F',
+    birth: u.birth ?? null, birthDate: u.birthDate || '',
+    muni: u.muni || '', muniName: u.muniName || '', region: u.region || '',
+    ward: u.venueName || '', venueCode: u.venueCode ?? null,
+    phone: u.phone || '', careLevel: u.careLevel || '',
+  }
+  await fs.setDoc(fs.doc(db, 'users', u.id), doc, { merge: true })
 }
 
 // 年度の測定値を更新（5領域・総合スコアを再計算 + Firestore 保存）

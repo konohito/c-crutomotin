@@ -2,8 +2,18 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { eraOf, frailtyOf, FRAIL_LEVELS, commentFor } from '../lib/helpers.js'
 import { kclScore, KCL_QUESTIONS, KCL_DOMAINS } from '../data/kihon.js'
+import { wardLabel, dbEnabled } from '../lib/db.js'
 import { Card, Select, CheckRow, Overline, Segmented } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
+
+const distinctSort = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
+// 対象地域スコープ（圏域/市町村）に属する利用者だけを返す。行政区の選択肢作成にも使う。
+const inScopeArea = (u, scope) => {
+  if (scope === 'all') return true
+  if (scope.startsWith('region:')) return u.region === scope.slice(7)
+  if (scope.startsWith('muni:')) return u.muni === scope.slice(5)
+  return true
+}
 
 // ---- 県報告用 CSV の列定義 -----------------------------------------------------
 // 列構成は県の指定様式に合わせてここで調整する
@@ -11,7 +21,7 @@ const BASE_COLS = [
   ['年度', (u, y) => eraOf(y) + '年度'],
   ['圏域', (u) => u.region],
   ['市町村', (u) => u.muniName],
-  ['会場', (u) => u.venueName],
+  [wardLabel(), (u) => u.venueName],
   ['参加者ID', (u) => u.id],
   ['氏名', (u) => u.name],
   ['ふりがな', (u) => u.kana],
@@ -63,7 +73,10 @@ function esc(v) {
 const hira = (kana) => String(kana || '').replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60)).replace(/[\s　]/g, '')
 const regionCode = (u) => String((D.REGIONS.indexOf(u.region) + 1) * 10)
 const muniCode = (u) => String(D.MUNIS.findIndex(mu => mu.id === u.muni) + 1).padStart(2, '0')
-const careLevel = (u) => (u.theta < -1.7 ? '要支援2' : u.theta < -1.3 ? '要支援1' : 'なし')
+// 実データの介護度（careLevel）を優先。無ければ従来の推定にフォールバック。
+const careLevel = (u) => (u.careLevel && u.careLevel !== '自立')
+  ? u.careLevel
+  : (u.theta < -1.7 ? '要支援2' : u.theta < -1.3 ? '要支援1' : 'なし')
 const bestOf = (a, b) => (a === null || a === undefined ? b : (b === null || b === undefined ? a : Math.max(a, b)))
 function ageAt(u, y, m) {
   // 評価日時点の満年齢（誕生日前後を考慮。日付が読めない場合は年度差で代用）
@@ -114,7 +127,7 @@ GOV_COLS.push(
   }],
   ['評価日_開始時', (u, y, m) => m ? m.date : ''],
   ['評価日_終了時', () => ''],
-  ['測定者', (u, y, m) => m ? D.STAFF[u.venueCode % D.STAFF.length].name : ''],
+  ['測定者', (u, y, m) => (m && !dbEnabled()) ? D.STAFF[u.venueCode % D.STAFF.length].name : ''],
   ['訓練方法', (u, y, m) => m ? '集団' : ''],
   ['自己訓練有無', () => ''],
   ['補装具_開始時', (u, y, m) => m ? (u.note && u.note.includes('杖') ? '杖' : 'なし') : ''],
@@ -144,12 +157,8 @@ GOV_COLS.push(
 export function buildExport(state) {
   const y = state.expYear
   const scope = state.expScope
-  const inScope = (u) => {
-    if (scope === 'all') return true
-    if (scope.startsWith('region:')) return u.region === scope.slice(7)
-    if (scope.startsWith('muni:')) return u.muni === scope.slice(5)
-    return true
-  }
+  const ward = state.expWard || 'all'
+  const inScope = (u) => inScopeArea(u, scope) && (ward === 'all' || u.venueName === ward)
   let users = D.users.filter(inScope)
   if (state.expMeasuredOnly) users = users.filter(u => u.meas[y])
   users = users.slice().sort((a, b) => a.id.localeCompare(b.id))
@@ -168,10 +177,11 @@ export function buildExport(state) {
 }
 
 export function scopeLabel(state) {
-  if (state.expScope === 'all') return '全地域'
-  if (state.expScope.startsWith('region:')) return state.expScope.slice(7)
+  const ward = state.expWard && state.expWard !== 'all' ? ' · ' + state.expWard : ''
+  if (state.expScope === 'all') return '全地域' + ward
+  if (state.expScope.startsWith('region:')) return state.expScope.slice(7) + ward
   const mu = D.MUNIS.find(m => m.id === state.expScope.slice(5))
-  return mu ? mu.name : '全地域'
+  return (mu ? mu.name : '全地域') + ward
 }
 
 export function fileNameOf(state) {
@@ -201,6 +211,9 @@ export default function CsvExport() {
   const scopeOpts = [opt('all', '全地域（すべての圏域・市町村）')]
     .concat(D.REGIONS.map(r => opt('region:' + r, '圏域: ' + r)))
     .concat(D.MUNIS.map(m => opt('muni:' + m.id, '市町村: ' + m.name)))
+  // 選択中の地域スコープに属する行政区の選択肢
+  const scopeWards = distinctSort(D.users.filter(u => inScopeArea(u, state.expScope)).map(u => u.venueName))
+  const expWard = state.expWard || 'all'
 
   const previewCols = Math.min(header.length, 12)
 
@@ -225,7 +238,7 @@ export default function CsvExport() {
             <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>ファイルメーカー取込形式 — 列名・列順は提出様式と同一です</span>
           )}
         </div>
-        <div className="form-duo" style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr 1fr', gap: 14, marginTop: 14 }}>
+        <div className="form-duo" style={{ display: 'grid', gridTemplateColumns: scopeWards.length ? '0.9fr 1.3fr 1fr 1fr' : '1fr 1.4fr 1fr', gap: 14, marginTop: 14 }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div className="form-label">年度</div>
             <Select value={state.expYear} onChange={(e) => set({ expYear: Number(e.target.value) })}
@@ -233,8 +246,15 @@ export default function CsvExport() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div className="form-label">対象地域</div>
-            <Select value={state.expScope} onChange={(e) => set({ expScope: e.target.value })} options={scopeOpts} style={{ height: 40 }} />
+            <Select value={state.expScope} onChange={(e) => set({ expScope: e.target.value, expWard: 'all' })} options={scopeOpts} style={{ height: 40 }} />
           </div>
+          {scopeWards.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div className="form-label">{wardLabel()}</div>
+              <Select value={expWard} onChange={(e) => set({ expWard: e.target.value })}
+                options={[opt('all', 'すべての' + wardLabel())].concat(scopeWards.map(w => opt(w, w)))} style={{ height: 40 }} />
+            </div>
+          )}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div className="form-label">対象者</div>
             <Select value={state.expMeasuredOnly ? 'measured' : 'everyone'} onChange={(e) => set({ expMeasuredOnly: e.target.value === 'measured' })}
