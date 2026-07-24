@@ -99,13 +99,15 @@ function SheetPage({ p }) {
             </div>
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.7fr 0.6fr', gridTemplateRows: 'auto 1fr' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.55fr 0.5fr 0.9fr', gridTemplateRows: 'auto 1fr' }}>
           <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>生年月日</div>
           <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>年齢</div>
-          <div style={CELL_LABEL}>性別</div>
+          <div style={{ ...CELL_LABEL, borderRight: '1px solid var(--slate-300)' }}>性別</div>
+          <div style={CELL_LABEL}>{wardLabel()}</div>
           <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.birth}</div>
           <div className="t-num" style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.age}</div>
-          <div style={{ padding: '8px 10px', alignSelf: 'center', fontSize: 17 }}>{p.sex}</div>
+          <div style={{ padding: '8px 10px', borderRight: '1px solid var(--slate-300)', alignSelf: 'center', fontSize: 17 }}>{p.sex}</div>
+          <div style={{ padding: '8px 10px', alignSelf: 'center', fontSize: p.ward.length > 5 ? 12.5 : 15, lineHeight: 1.3 }}>{p.ward}</div>
         </div>
       </div>
 
@@ -232,6 +234,7 @@ export default function SheetMaker() {
     strip: u ? stripOf(u.id) : Array.from({ length: 20 }, () => 'transparent'),
     name: u ? u.name : '', kana: u ? u.kana : '',
     birth: u ? u.birthDate : '', age: u ? String(u.age) : '', sex: u ? u.sexLabel : '',
+    ward: u ? (u.venueName || '') : '',
     muniVenue: (muni || '') + (venue ? ' · ' + venue : ''), dateLabel: dateLabel || '　　　/　　/　　',
     rows: sheetRowsFor(u),
   })
