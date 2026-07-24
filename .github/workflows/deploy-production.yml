@@ -1,14 +1,15 @@
 name: Deploy production (app + backend)
 
-# production ブランチへの push で、本番一式（Hosting + Functions + Firestore/Storage ルール・
-# インデックス）を GitHub のサーバーから自動デプロイする。
-# チャット(Claude)から「デプロイして」→ production へ push → このワークフローが全部やる、が想定運用。
+# main または production への push で、本番一式（Hosting + Functions + Firestore/Storage
+# ルール・インデックス）を GitHub のサーバーから自動デプロイする。
+# 運用: main へのマージ＝本番デプロイ（公開デモの Pages デプロイも main で並走する）。
+# production ブランチはチャット(Claude)からのマージ無しデプロイ用。
 # 認証は Workload Identity Federation（鍵レス）。必要な Variables は deploy-functions.yml と共通:
 #   GCP_WIF_PROVIDER / GCP_DEPLOY_SA / FIREBASE_PROJECT_ID / DOCAI_PROCESSOR_ID
 
 on:
   push:
-    branches: [production]
+    branches: [main, production]
   workflow_dispatch:
 
 permissions:
