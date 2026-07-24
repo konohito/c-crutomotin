@@ -61,6 +61,17 @@ jobs:
           npm ci
           npm test
 
+      # functions/.env は gitignore のため、ランタイム環境変数を Variables から生成する
+      # (DOCAI_PROCESSOR_ID はリポジトリ Variables に設定。未設定なら OCR はエラーを返すだけで安全)
+      - if: steps.guard.outputs.ready == 'true'
+        working-directory: functions
+        run: |
+          {
+            echo "DOCAI_LOCATION=${{ vars.DOCAI_LOCATION || 'us' }}"
+            echo "DOCAI_PROCESSOR_ID=${{ vars.DOCAI_PROCESSOR_ID }}"
+            echo "OCR_ALLOW_ORIGIN=${{ vars.OCR_ALLOW_ORIGIN || 'https://cruto-motion.web.app' }}"
+          } > .env
+
       # サービスアカウントで GCP 認証(ADC を設定)
       - if: steps.guard.outputs.ready == 'true'
         uses: google-github-actions/auth@v2
