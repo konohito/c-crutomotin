@@ -51,6 +51,20 @@ export async function uploadSheetImage(file, { batchId, no }) {
   return path
 }
 
+// 取り込みバッチ一覧（新しい順）をリアルタイム購読する。unsubscribe 関数を返す。
+export async function watchBatches(cb) {
+  if (!dbEnabled()) return () => {}
+  const { firestore, db } = await sdk()
+  const q = firestore.query(
+    firestore.collection(db, 'batches'),
+    firestore.orderBy('updatedAt', 'desc'),
+    firestore.limit(30),
+  )
+  return firestore.onSnapshot(q, (snap) => {
+    cb(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  })
+}
+
 // 読み取りキュー(recognitions)をリアルタイム購読する。unsubscribe 関数を返す。
 export async function watchRecognitions(batchId, cb) {
   if (!dbEnabled()) return () => {}

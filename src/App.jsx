@@ -81,9 +81,8 @@ function Sidebar() {
       </div>
       <nav className="sidebar-nav">
         <div className="t-overline" style={{ padding: '4px 12px 6px' }}>業務</div>
-        {/* 本番(実データ)は PC 側の OCR 確認画面(取り込み)がまだダミーのため隠す。用紙アップロードは実機能。 */}
-        {NAV_MAIN.filter(([id]) => !(dbEnabled() && id === 'imp')).map(([id, label]) => (
-          <NavItem key={id} id={id} label={label} badge={id === 'imp' && pending.length > 0 ? pending.length : 0} />
+        {NAV_MAIN.map(([id, label]) => (
+          <NavItem key={id} id={id} label={label} badge={!dbEnabled() && id === 'imp' && pending.length > 0 ? pending.length : 0} />
         ))}
         <div className="t-overline" style={{ padding: '14px 12px 6px' }}>分析</div>
         {NAV_ANA.map(([id, label]) => <NavItem key={id} id={id} label={label} badge={0} />)}
