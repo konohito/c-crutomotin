@@ -42,21 +42,33 @@ export function linePts(series, years, x0, x1, vTop, vBot, yTop, yBot) {
 export const pathOf = (pts) => (pts.length ? pts.map((p, i) => (i ? 'L' : 'M') + p.x + ' ' + p.y).join(' ') : '')
 export const dotsOf = (pts) => pts.map(p => ({ x: p.x, y: p.y, ly: p.y < 34 ? p.y + 18 : p.y - 9, v: p.v, year: p.year }))
 
-// 値域を自動決定してポリラインを作る
+// 値域を自動決定してポリラインを作る。
+// 縦軸の目盛りは「きりのいい値」（10/5/2/1、狭い範囲のみ 0.5/0.1）に揃えて整数表示にする。
 export function autoLines(seriesList, years, x0, x1, yTop, yBot) {
   const vals = []
   seriesList.forEach(sr => sr.pts.forEach(p => { if (p.v !== null && p.v !== undefined) vals.push(p.v) }))
   if (!vals.length) return { lines: seriesList.map(sr => ({ ...sr, path: '', pts: [] })), ticks: [] }
   let lo = Math.min(...vals), hi = Math.max(...vals)
   if (lo === hi) { lo -= 1; hi += 1 }
-  const pad = (hi - lo) * 0.14; lo -= pad; hi += pad
+  const pad = (hi - lo) * 0.14
+  const canNeg = lo < 0
+  lo -= pad; hi += pad
+  if (!canNeg && lo < 0) lo = 0
+  const span = hi - lo
+  const step = span >= 30 ? 10 : span >= 12 ? 5 : span >= 6 ? 2 : span >= 2.5 ? 1 : span >= 1.2 ? 0.5 : 0.1
+  lo = Math.floor(lo / step) * step
+  hi = Math.ceil(hi / step) * step
   const xs = (i) => x0 + (years.length > 1 ? (i * (x1 - x0)) / (years.length - 1) : 0)
   const ys = (v) => yTop + ((hi - v) * (yBot - yTop)) / (hi - lo)
   const lines = seriesList.map(sr => {
     const pts = sr.pts.filter(p => p.v !== null && p.v !== undefined).map(p => ({ x: Math.round(xs(years.indexOf(p.year))), y: Math.round(ys(p.v)), v: p.v, year: p.year }))
     return { ...sr, path: pathOf(pts), pts }
   })
-  const ticks = [0, 1, 2, 3].map(i => { const v = lo + ((hi - lo) * i) / 3; return { y: Math.round(ys(v)), v: Math.round(v * 10) / 10 } })
+  const ticks = []
+  for (let v = lo; v <= hi + step / 2; v += step) {
+    const vv = Math.round(v * 10) / 10
+    ticks.push({ y: Math.round(ys(vv)), v: vv, label: step >= 1 ? String(Math.round(vv)) : vv.toFixed(1) })
+  }
   return { lines, ticks }
 }
 

@@ -45,6 +45,8 @@ const initialState = {
   memos: {}, memoDraft: '', csvMuni: 'sakuragawa', csvDrag: false,
   regOpen: false, regName: '', regKana: '', regBirth: '', regSex: 'F', regMuni: 'sakuragawa', regWard: '', regPhone: '', regError: '',
   toast: null,
+  // グラフの年表示（era=令和 / west=西暦）
+  yearFmt: 'era',
   // データ変更カウンタ（D を直接ミューテートした際の再描画用）
   rev: 0,
 }

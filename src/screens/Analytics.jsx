@@ -3,6 +3,7 @@ import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, itemAvg, autoLines, betterNote, frailtyOf, FRAIL_ITEMS, FRAIL_LEVELS } from '../lib/helpers.js'
 import { kclScore, KCL_DOMAINS, KCL_CRITERIA_NOTE } from '../data/kihon.js'
 import { wardLabel, dbEnabled } from '../lib/db.js'
+import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel } from '../ui/chart.jsx'
 import { Card, Select, Segmented } from '../ui/kit.jsx'
 
 const distinctSort = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
@@ -52,8 +53,9 @@ export default function Analytics() {
     const n = state.exCohort === 'cohort' ? pool.length : pool.filter(u => u.meas[D.CUR]).length
     return { pts: exYears.map(yy => ({ year: yy, v: itemAvg(pool, yy, exCol.id) })), color: colors[D.REGIONS.indexOf(r)] || colors[0], label: dbEnabled() ? '全体' : r, n }
   })
-  const exAuto = autoLines(seriesList, exYears, 46, 820, 18, 190)
-  const exXs = (i) => Math.round(46 + (exYears.length > 1 ? (i * (820 - 46)) / (exYears.length - 1) : 0))
+  const [exRef, exW] = useChartWidth(880)
+  const exAuto = autoLines(seriesList, exYears, 46, exW - 62, 18, 190)
+  const exXs = (i) => Math.round(46 + (exYears.length > 1 ? (i * (exW - 62 - 46)) / (exYears.length - 1) : 0))
 
   const heatRows = [{ name: '全体', fw: 700, agg: scopeAgg }].concat(groups.map(g => ({ name: g.name, fw: 500, agg: D.agg(g.filter, y) })))
   const totals = D.users.filter(u => inScope(u) && u.meas[y]).map(u => u.meas[y].total).sort((a, b) => a - b)
@@ -131,6 +133,7 @@ export default function Analytics() {
       <Card pad>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div className="t-h4" style={{ flex: 1, minWidth: 170 }}>運動機能の年次推移（{dbEnabled() ? '全体' : '区域別'}）</div>
+          <YearFmtSwitch />
           <Select sm value={state.exItem} onChange={(e) => set({ exItem: e.target.value })} options={cbm.map(c => ({ v: c.id, l: c.label }))} />
           <Select sm value={state.exSex} onChange={(e) => set({ exSex: e.target.value })} options={[opt('all', '男女計'), opt('F', '女性のみ'), opt('M', '男性のみ')]} />
           <Select sm value={state.exAge} onChange={(e) => set({ exAge: e.target.value })} options={[opt('all', '全年代'), opt('u75', '〜74歳'), opt('a75', '75〜84歳'), opt('a85', '85歳〜')]} />
@@ -148,27 +151,34 @@ export default function Analytics() {
           <span style={{ flex: 1 }} />
           <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>{betterNote(exCol) ? '※ ' + exCol.label + ' は' + betterNote(exCol) + 'です' : ''}</span>
         </div>
-        <svg width="100%" height="228" viewBox="0 0 880 228" preserveAspectRatio="none" style={{ display: 'block', marginTop: 6 }}>
-          {exAuto.ticks.map((tk, i) => (
-            <g key={i}>
-              <line x1="46" y1={tk.y} x2="828" y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
-              <text x="40" y={tk.y + 3.5} textAnchor="end" fontSize="10" fill="var(--slate-400)" fontFamily="Inter">{fmtD(tk.v, exCol.dec)}</text>
-            </g>
-          ))}
-          {exAuto.lines.map((ln, i) => (
-            <g key={i}>
-              <path d={ln.path} fill="none" stroke={ln.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
-              {ln.pts.length > 0 && (
-                <text x={ln.pts[ln.pts.length - 1].x + 7} y={endLabelY[i]} fontSize="11" fontWeight="700" fill={ln.color} fontFamily="Inter">
-                  {fmtD(Math.round(ln.pts[ln.pts.length - 1].v * 10) / 10, exCol.dec)}
-                </text>
-              )}
-            </g>
-          ))}
-          {exYears.map((yy, i) => (
-            <text key={yy} x={exXs(i)} y="220" textAnchor="middle" fontSize="10" fill="var(--slate-500)" fontFamily="Inter">{eraOf(yy)}</text>
-          ))}
-        </svg>
+        <div ref={exRef}>
+          <svg width="100%" height="228" viewBox={`0 0 ${exW} 228`} style={{ display: 'block', marginTop: 6 }}>
+            {exAuto.ticks.map((tk, i) => (
+              <g key={i}>
+                <line x1="46" y1={tk.y} x2={exW - 56} y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
+                <text x="40" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--slate-400)" fontFamily="Inter">{tk.label}</text>
+              </g>
+            ))}
+            {exAuto.lines.map((ln, i) => (
+              <g key={i}>
+                <path d={ln.path} fill="none" stroke={ln.color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                {exAuto.lines.length > 1 && ln.pts.length > 0 && (
+                  <text x={ln.pts[ln.pts.length - 1].x + 7} y={endLabelY[i]} fontSize="11" fontWeight="700" fill={ln.color} fontFamily="Inter">
+                    {fmtD(Math.round(ln.pts[ln.pts.length - 1].v * 10) / 10, exCol.dec)}
+                  </text>
+                )}
+              </g>
+            ))}
+            {exYears.map((yy, i) => (
+              <text key={yy} x={exXs(i)} y="220" textAnchor="middle" fontSize="10.5" fill="var(--slate-500)" fontFamily="Inter">{yearLabel(yy, state.yearFmt)}</text>
+            ))}
+            {/* プロットとホバーは線の上に重ねる。系列が複数のときは常時ラベルを省き、ホバーで表示 */}
+            {exAuto.lines.map((ln, i) => (
+              <ChartDots key={'d' + i} pts={ln.pts} color={ln.color} dec={exCol.dec} unit={exCol.unit}
+                yearFmt={state.yearFmt} chartW={exW} showLabels={exAuto.lines.length === 1} />
+            ))}
+          </svg>
+        </div>
         <div style={{ marginTop: 10, padding: '10px 14px', borderRadius: 8, background: 'var(--slate-25)', border: '1px solid var(--border-subtle)', fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7 }}>
           {cohortNote}
         </div>

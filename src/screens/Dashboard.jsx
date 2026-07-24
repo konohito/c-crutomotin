@@ -1,9 +1,9 @@
-import { useRef, useState, useEffect } from 'react'
 import D from '../data/engine.js'
 import { useStore, pendingSheets, allEvents, staffNames, flagsFor, batchN, openSheetVals } from '../store.jsx'
-import { mdw, addDays, eraOf, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
+import { mdw, addDays, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
 import { dbEnabled } from '../lib/db.js'
 import { useAuth } from '../ui/AuthGate.jsx'
+import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel } from '../ui/chart.jsx'
 import { Card, Pill, Overline, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -60,15 +60,7 @@ export default function Dashboard() {
   const dSeries = D.YEARS.map(y => ({ year: y, v: itemAvg(D.users, y, dcol.id) })).filter(p => p.v != null)
   const dYears = dSeries.map(p => p.year)
   // コンテナ幅を実測し、viewBox 幅と一致させて文字の引き伸ばし（潰れ）を防ぐ
-  const chartRef = useRef(null)
-  const [chartW, setChartW] = useState(560)
-  useEffect(() => {
-    const el = chartRef.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(([e]) => setChartW(Math.max(320, Math.round(e.contentRect.width))))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+  const [chartRef, chartW] = useChartWidth(560)
   const CH = 176
   const dAuto = autoLines([{ pts: dSeries }], dYears, 46, chartW - 24, 26, CH - 44)
   const dLine = dAuto.lines[0] || { path: '', pts: [] }
@@ -289,7 +281,8 @@ export default function Dashboard() {
         <Card pad>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
             <div className="t-h4">運動機能の推移（全体平均）</div>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <YearFmtSwitch />
               <Select sm value={state.dashItem} onChange={(e) => set({ dashItem: e.target.value })} options={cbm.map(c => ({ v: c.id, l: c.label }))} />
               <button className="btn btn-outline btn-sm" onClick={() => set({ screen: 'ana' })}>詳しく分析</button>
             </div>
@@ -302,17 +295,14 @@ export default function Dashboard() {
                 {dAuto.ticks.map((tk, i) => (
                   <g key={i}>
                     <line x1="40" y1={tk.y} x2={chartW - 12} y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
-                    <text x="34" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--slate-400)" fontFamily="Inter">{fmtD(tk.v, dcol.dec)}</text>
+                    <text x="34" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--slate-400)" fontFamily="Inter">{tk.label}</text>
                   </g>
                 ))}
                 <path d={dLine.path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                 {dLine.pts.map((p, i) => (
-                  <g key={i}>
-                    <circle cx={p.x} cy={p.y} r="4" fill="var(--bg-surface)" stroke="var(--brand-500)" strokeWidth="2.5" />
-                    <text x={p.x} y={p.y < 46 ? p.y + 18 : p.y - 10} textAnchor="middle" fontSize="12" fontWeight="700" fill="var(--slate-700)" fontFamily="Inter">{fmtD(Math.round(p.v * 10) / 10, dcol.dec)}</text>
-                    <text x={p.x} y={CH - 8} textAnchor="middle" fontSize="11" fill="var(--slate-500)" fontFamily="Inter">{eraOf(p.year)}</text>
-                  </g>
+                  <text key={i} x={p.x} y={CH - 8} textAnchor="middle" fontSize="11" fill="var(--slate-500)" fontFamily="Inter">{yearLabel(p.year, state.yearFmt)}</text>
                 ))}
+                <ChartDots pts={dLine.pts} dec={dcol.dec} unit={dcol.unit} yearFmt={state.yearFmt} chartW={chartW} />
               </svg>
             )}
           </div>
