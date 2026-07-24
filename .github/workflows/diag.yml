@@ -32,30 +32,25 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
 
-      - name: Firestore / Storage の状態
+      # 権限修正(datastore.user 付与)後の検証: 既存画像をコピーして関数を再発火させる
+      - name: 既存画像をコピーして再処理をトリガー
+        run: |
+          SRC="gs://cruto-motion.firebasestorage.app/sheets/20260724-z7gub/1-1784874135336-KH.jpg"
+          gcloud storage cp "$SRC" "gs://cruto-motion.firebasestorage.app/sheets/20260724-z7gub/9-retrigger.jpg" \
+            && echo "COPY OK" || echo "COPY FAILED"
+          sleep 60
+
+      - name: キューに載ったか確認
         working-directory: functions
         env:
           GCLOUD_PROJECT: ${{ vars.FIREBASE_PROJECT_ID }}
         run: node scripts/diag-ocr.cjs
 
-      - name: onSheetImageUpload の関数ログ (7日分)
+      - name: 直近の関数ログ (10分)
         run: >-
           gcloud logging read
           'resource.type="cloud_run_revision" AND resource.labels.service_name="onsheetimageupload"'
           --project "${{ vars.FIREBASE_PROJECT_ID }}"
-          --freshness=7d --limit=60 --order=desc
-          --format='value(timestamp,severity,textPayload,jsonPayload.message)'
+          --freshness=10m --limit=30 --order=desc
+          --format='value(timestamp,severity,textPayload)'
           || echo "LOGS FAILED"
-
-      - name: Eventarc トリガー一覧
-        run: >-
-          gcloud eventarc triggers list
-          --location=asia-northeast1
-          --project "${{ vars.FIREBASE_PROJECT_ID }}"
-          || echo "TRIGGERS FAILED"
-
-      - name: Firestore 単一フィールドインデックス設定
-        run: >-
-          curl -sS -H "Authorization: Bearer $(gcloud auth print-access-token)"
-          "https://firestore.googleapis.com/v1/projects/${{ vars.FIREBASE_PROJECT_ID }}/databases/(default)/collectionGroups/recognitions/fields/status"
-          || echo "FIELDS API FAILED"
