@@ -1,11 +1,10 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { deltaOf } from '../lib/helpers.js'
 import { wardLabel } from '../lib/db.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
-const GRID = '72px 1.5fr 92px 1.2fr 116px 96px 170px 30px'
+const GRID = '76px 1.5fr 96px 1.3fr 128px 110px 30px'
 const PER = 12
 
 // フィルタ選択肢は実データ（D.users）から動的に作る。編集で市町村・行政区を追加すれば自動で増える。
@@ -27,10 +26,7 @@ export function filteredUsers(state) {
     if (q && !(u.name.toLowerCase().includes(q) || u.kana.toLowerCase().includes(q) || u.id.includes(q))) return false
     return true
   })
-  const latest = (u) => { const ys = Object.keys(u.meas); return ys.length ? u.meas[ys[ys.length - 1]] : null }
-  const dlt = (u) => { const ys = Object.keys(u.meas); return ys.length > 1 ? u.meas[ys[ys.length - 1]].total - u.meas[ys[ys.length - 2]].total : 999 }
-  if (state.rosSort === 'score') list = list.slice().sort((a, b) => ((latest(b) || {}).total || -1) - ((latest(a) || {}).total || -1))
-  else if (state.rosSort === 'decline') list = list.slice().sort((a, b) => dlt(a) - dlt(b))
+  if (state.rosSort === 'kana') list = list.slice().sort((a, b) => a.kana.localeCompare(b.kana, 'ja'))
   else if (state.rosSort === 'age') list = list.slice().sort((a, b) => b.age - a.age)
   else list = list.slice().sort((a, b) => a.id.localeCompare(b.id))
   return list
@@ -55,7 +51,7 @@ export default function Roster() {
         <Select value={state.rosStatus} onChange={(e) => set({ rosStatus: e.target.value, rosPage: 0 })}
           options={[opt('all', 'すべての状態'), opt('measured', '令和7年度 測定済'), opt('unmeasured', '令和7年度 未測定'), opt('new', '今年度の新規')]} />
         <Select value={state.rosSort} onChange={(e) => set({ rosSort: e.target.value, rosPage: 0 })}
-          options={[opt('id', 'ID 順'), opt('score', '総合スコアが高い順'), opt('decline', '低下が大きい順'), opt('age', '年齢が高い順')]} />
+          options={[opt('id', 'ID 順'), opt('kana', 'ふりがな順'), opt('age', '年齢が高い順')]} />
         <div style={{ flex: 1 }} />
         <div style={{ fontSize: 12.5, color: 'var(--fg-3)' }}>
           <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{list.length}</span> 名
@@ -72,18 +68,11 @@ export default function Roster() {
             <div className="t-overline">市町村・{wardLabel()}</div>
             <div className="t-overline">電話番号</div>
             <div className="t-overline">最新測定</div>
-            <div className="t-overline">総合スコア・推移</div>
             <div />
           </div>
           {rows.map(u => {
             const ys = Object.keys(u.meas)
             const last = ys.length ? u.meas[ys[ys.length - 1]] : null
-            const prev = ys.length > 1 ? u.meas[ys[ys.length - 2]] : null
-            const d = deltaOf(last ? last.total : null, prev ? prev.total : null, 0, 'high')
-            const totals = ys.map(y => u.meas[y].total)
-            const spark = totals.length > 1
-              ? totals.map((v, i) => (4 + (i * 56) / (totals.length - 1)).toFixed(1) + ',' + (19 - ((Math.max(20, Math.min(95, v)) - 20) * 16) / 75).toFixed(1)).join(' ')
-              : ''
             return (
               <div key={u.id} className="tbl-row clickable" onClick={() => set({ screen: 'det', detId: u.id })}
                 style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '8px 16px', alignItems: 'center' }}>
@@ -104,13 +93,6 @@ export default function Roster() {
                 </div>
                 <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{u.phone || '—'}</div>
                 <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-2)' }}>{last ? last.date : '未測定'}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span className="t-num" style={{ fontSize: 15, fontWeight: 600, width: 30, textAlign: 'right' }}>{last ? last.total : '—'}</span>
-                  <svg width="64" height="22" viewBox="0 0 64 22" style={{ flexShrink: 0 }}>
-                    {spark && <polyline points={spark} fill="none" stroke="var(--brand-400)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />}
-                  </svg>
-                  <span className="t-num" style={{ fontSize: 11.5, fontWeight: 600, color: d.fg }}>{d.txt}</span>
-                </div>
                 <Icon name="chevR" size={16} style={{ color: 'var(--slate-400)' }} />
               </div>
             )

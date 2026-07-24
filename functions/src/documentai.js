@@ -2,13 +2,15 @@
 /* Document AI クライアントのラッパー。記録用紙の画像 or Cloud Storage 上のファイルを
    1 回 processDocument して document を返す。認証は Cloud Functions の
    サービスアカウント(ADC)を利用するため、コード内に鍵は持たない。 */
-const { DocumentProcessorServiceClient } = require('@google-cloud/documentai').v1
 const cfg = require('./config')
 const { mockDocument } = require('./mockdoc')
 
 let client
 function getClient() {
   if (!client) {
+    // @google-cloud/documentai は重いため、初回呼び出し時に遅延ロードする
+    // (デプロイ時のコード解析タイムアウトとコールドスタートの短縮)
+    const { DocumentProcessorServiceClient } = require('@google-cloud/documentai').v1
     // ロケーション別エンドポイント(例: us-documentai.googleapis.com)
     client = new DocumentProcessorServiceClient({ apiEndpoint: `${cfg.location}-documentai.googleapis.com` })
   }
