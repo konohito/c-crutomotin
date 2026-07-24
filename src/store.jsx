@@ -47,6 +47,8 @@ const initialState = {
   toast: null,
   // グラフの年表示（era=令和 / west=西暦）
   yearFmt: 'era',
+  // パスワード変更モーダル
+  pwOpen: false,
   // データ変更カウンタ（D を直接ミューテートした際の再描画用）
   rev: 0,
 }

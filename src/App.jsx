@@ -22,6 +22,7 @@ import ReviewModal from './modals/ReviewModal.jsx'
 import RegisterModal from './modals/RegisterModal.jsx'
 import EventModal from './modals/EventModal.jsx'
 import { EditUserModal, EditMeasModal } from './modals/EditModals.jsx'
+import PasswordModal from './modals/PasswordModal.jsx'
 import { staffAdminEnabled } from './lib/staffAdmin.js'
 
 const BASE = import.meta.env.BASE_URL
@@ -112,6 +113,7 @@ function Sidebar() {
 
 // ログイン中の職員（Firebase 認証時）。未設定のデモではダミーの職員名を表示する。
 function SidebarUser() {
+  const { set } = useStore()
   const { user, enabled, profile, signOut } = useAuth()
   const email = user && (user.email || '')
   const name = enabled ? ((profile && profile.name) || (user && user.displayName) || (email ? email.split('@')[0] : '職員')) : '相馬 直樹'
@@ -125,9 +127,14 @@ function SidebarUser() {
         <div style={{ fontSize: 11, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</div>
       </div>
       {enabled && (
-        <button className="icon-btn" title="ログアウト" aria-label="ログアウト" onClick={() => signOut()} style={{ flexShrink: 0 }}>
-          <Icon name="logout" size={17} />
-        </button>
+        <>
+          <button className="icon-btn" title="パスワード変更" aria-label="パスワード変更" onClick={() => set({ pwOpen: true })} style={{ flexShrink: 0 }}>
+            <Icon name="key" size={16} />
+          </button>
+          <button className="icon-btn" title="ログアウト" aria-label="ログアウト" onClick={() => signOut()} style={{ flexShrink: 0 }}>
+            <Icon name="logout" size={17} />
+          </button>
+        </>
       )}
     </div>
   )
@@ -206,6 +213,7 @@ function AppInner() {
       {state.evOpen && <EventModal />}
       {state.editUser && <EditUserModal />}
       {state.editMeas && <EditMeasModal />}
+      {state.pwOpen && <PasswordModal />}
       <Toast msg={state.toast} />
     </div>
   )

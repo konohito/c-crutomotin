@@ -382,10 +382,36 @@ def main():
         hw = sum(1 for m in mm if m['height'] is not None and m['weight'] is not None)
         print(f'  {y}: {ib_year.get(y, 0)} / {len(mm)} / {hw}')
 
-    stats = {'id': 0, 'name': 0, 'person': 0, 'ambiguous': 0, 'conflict': 0, 'none': 0}
-    n_attach = n_stub = n_fill = 0
-    unmatched, writes = [], 0
-    assigned = set()  # (userId, year) — 同じ人の同じ年に2行が刺さるのを防ぐ
+    # --- Pass 1: 各InBody行を利用者に解決 ---
+    CONF = {'id': 3, 'name': 2, 'person': 1}
+    method_count = {'id': 0, 'name': 0, 'person': 0, 'none': 0}
+    resolved, none_rows = [], []
+    for ib in rows:
+        uid, how = resolve_user(ib, users, name_index, profiles)
+        method_count[how] += 1
+        if uid:
+            resolved.append((ib, uid, how))
+        else:
+            none_rows.append(ib)
+
+    # --- Pass 2: (利用者, 年) ごとに最も確度の高い1行だけ採用 ---
+    # ID/氏名で確定した行があればそれを優先（残りは同一人物の重複として破棄）。
+    # 候補が身体属性マッチだけの競合は、誤紐付けを避けるため全て保留する。
+    by_key = {}
+    for ib, uid, how in resolved:
+        by_key.setdefault((uid, ib['year']), []).append((ib, how))
+    winners, dup_dropped, phys_conflict = [], 0, []
+    for (uid, year), cl in by_key.items():
+        cl.sort(key=lambda c: CONF[c[1]], reverse=True)
+        if len(cl) == 1 or CONF[cl[0][1]] >= 2:
+            winners.append((cl[0][0], uid, year))
+            dup_dropped += len(cl) - 1
+        else:
+            phys_conflict += [ib for ib, _ in cl]
+    unmatched = none_rows + phys_conflict
+
+    # --- 書き込み ---
+    n_attach = n_stub = n_fill = writes = 0
     batch, n_in_batch = db.batch(), 0
 
     def flush(force=False):
@@ -394,22 +420,10 @@ def main():
             batch.commit()
             batch, n_in_batch = db.batch(), 0
 
-    for ib in rows:
-        uid, how = resolve_user(ib, users, name_index, profiles)
-        stats[how] += 1
-        if not uid:
-            unmatched.append(ib)
-            continue
-        key = (uid, ib['year'])
-        if key in assigned:
-            stats[how] -= 1
-            stats['conflict'] += 1
-            unmatched.append(ib)
-            continue
-        assigned.add(key)
+    for ib, uid, year in winners:
         inbody = {k: ib[k] for k in ('smm', 'smi', 'fatPct', 'score', 'height', 'weight', 'ibId', 'district', 'testDate')}
         inbody['source'] = 'lookinbody'
-        m = meas_by_key.get(key)
+        m = meas_by_key.get((uid, year))
         if m:
             # 既存の測定に InBody を付与。台帳側に身長体重が無ければ InBody 実測で補完
             payload = {'inbody': inbody}
@@ -426,9 +440,7 @@ def main():
             n_attach += 1
             if args.commit:
                 batch.set(m['ref'], payload, merge=True)
-                n_in_batch += 1
-                writes += 1
-                flush()
+                n_in_batch += 1; writes += 1; flush()
         else:
             # その年の測定が台帳に無い（例: 令和5年度シート欠落）→ InBody 単独の記録として登録。
             # 体力測定値をでっち上げないよう inbodyOnly を立て、アプリは InBody 欄にだけ表示する。
@@ -437,24 +449,22 @@ def main():
                 vals['bmi'] = round(ib['weight'] / (ib['height'] / 100) ** 2, 1)
             n_stub += 1
             if args.commit:
-                ref = db.collection('measurements').document(f"{uid}_{ib['year']}")
-                batch.set(ref, {'userId': uid, 'year': ib['year'], 'date': ib['testDate'],
+                ref = db.collection('measurements').document(f'{uid}_{year}')
+                batch.set(ref, {'userId': uid, 'year': year, 'date': ib['testDate'],
                                 'inbodyOnly': True, 'values': vals, 'inbody': inbody,
                                 'source': 'lookinbody'}, merge=True)
-                n_in_batch += 1
-                writes += 1
-                flush()
+                n_in_batch += 1; writes += 1; flush()
     flush(force=True)
 
-    matched = stats['id'] + stats['name'] + stats['person']
-    print('\n=== 突合結果 ===')
-    print(f'  台帳IDで確定  : {stats["id"]}')
-    print(f'  氏名で確定    : {stats["name"]}')
-    print(f'  身体属性で確定: {stats["person"]}（性別+年齢+身長は全年度から照合+地区）')
-    print(f'  曖昧(保留)    : {stats["ambiguous"]}')
-    print(f'  重複衝突      : {stats["conflict"]}')
-    print(f'  未一致        : {stats["none"]}')
-    print(f'  → 本人特定 {matched} / {len(rows)} 件')
+    print('\n=== 突合結果（本人特定の方法別）===')
+    print(f'  台帳IDで確定  : {method_count["id"]}')
+    print(f'  氏名で確定    : {method_count["name"]}')
+    print(f'  身体属性で確定: {method_count["person"]}（性別+年齢+身長を全年度から照合+地区）')
+    print(f'  未一致        : {method_count["none"]}')
+    print('  --- 取り込み内訳 ---')
+    print(f'  同一人物の重複行を除外: {dup_dropped}')
+    print(f'  身体属性の競合で保留  : {len(phys_conflict)}（どの人か確証が持てないため書き込まない）')
+    print(f'  → 取り込む 利用者×年度: {len(winners)} 件')
     print(f'     ├ 既存の測定に付与       : {n_attach} 件（うち身長体重を補完 {n_fill} 件）')
     print(f'     └ InBody単独の記録を作成 : {n_stub} 件（台帳にその年の測定が無い分。例: 令和5年度）')
     print('  ' + (f'{writes} 件書き込みました' if args.commit else '（ドライラン・未書込）'))
