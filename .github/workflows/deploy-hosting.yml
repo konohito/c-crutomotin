@@ -1,26 +1,12 @@
 name: Deploy production app (Firebase Hosting)
 
-# 本番アプリ（ログイン必須・実データ）を Firebase Hosting へ自動デプロイする。
-# 公開デモ（GitHub Pages / deploy.yml）とは別物で、本番は cruto-motion.web.app に出る。
-# フロント変更のマージで走る。Secrets/Variables 未設定の間はスキップするだけで失敗しない。
-#
-# 事前準備:
-#   1. リポジトリ Variables: FIREBASE_PROJECT_ID = cruto-motion
-#   2. リポジトリ Secrets: FIREBASE_SERVICE_ACCOUNT = デプロイ権限を持つ SA の JSON 鍵
-#      （Firebase Hosting 管理者 等。deploy-functions.yml と同じものを流用可）
+# 本番アプリ（Hosting のみ）を手動でデプロイする予備の窓口。
+# 通常のデプロイは deploy-production.yml(main / production への push で本番一式)が担うため、
+# こちらは workflow_dispatch(Actions 画面の Run workflow)専用にしてある。
+# ※SA 鍵(FIREBASE_SERVICE_ACCOUNT)前提の旧方式。組織ポリシーで鍵作成が禁止のため
+#   現在は guard でスキップされる。WIF 対応の deploy-production.yml を使うこと。
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'src/**'
-      - 'index.html'
-      - 'vite.config.js'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.env.hosting'
-      - 'firebase.json'
-      - '.github/workflows/deploy-hosting.yml'
   workflow_dispatch:
 
 permissions:
