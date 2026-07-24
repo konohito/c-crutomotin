@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write # Workload Identity Federation(鍵レス認証)に必要
 
 concurrency:
   group: deploy-functions
@@ -34,17 +35,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Secrets/Variables が揃っているかを確認(シークレットは展開せず存在だけ判定)
+      # 認証は Workload Identity Federation(鍵レス)。組織ポリシーで SA 鍵作成が
+      # 禁止されていても使える。旧方式(FIREBASE_SERVICE_ACCOUNT 鍵)も後方互換で残す。
       - id: guard
         env:
-          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          WIF: ${{ vars.GCP_WIF_PROVIDER }}
+          WSA: ${{ vars.GCP_DEPLOY_SA }}
+          KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           PID: ${{ vars.FIREBASE_PROJECT_ID }}
         run: |
-          if [ -n "$SA" ] && [ -n "$PID" ]; then
+          if [ -n "$PID" ] && { { [ -n "$WIF" ] && [ -n "$WSA" ]; } || [ -n "$KEY" ]; }; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
+            if [ -n "$WIF" ] && [ -n "$WSA" ]; then echo "mode=wif" >> "$GITHUB_OUTPUT"; else echo "mode=key" >> "$GITHUB_OUTPUT"; fi
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice title=バックエンド未設定::FIREBASE_SERVICE_ACCOUNT / FIREBASE_PROJECT_ID が未設定のためデプロイをスキップしました（docs/OCR-BACKEND.md 参照）。"
+            echo "::notice title=バックエンド未設定::GCP_WIF_PROVIDER+GCP_DEPLOY_SA(または FIREBASE_SERVICE_ACCOUNT)と FIREBASE_PROJECT_ID が未設定のためスキップしました（docs/OCR-BACKEND.md 参照）。"
           fi
 
       - if: steps.guard.outputs.ready == 'true'
@@ -72,8 +77,13 @@ jobs:
             echo "OCR_ALLOW_ORIGIN=${{ vars.OCR_ALLOW_ORIGIN || 'https://cruto-motion.web.app' }}"
           } > .env
 
-      # サービスアカウントで GCP 認証(ADC を設定)
-      - if: steps.guard.outputs.ready == 'true'
+      # GCP 認証: WIF(鍵レス・推奨) または SA 鍵(後方互換)
+      - if: steps.guard.outputs.ready == 'true' && steps.guard.outputs.mode == 'wif'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - if: steps.guard.outputs.ready == 'true' && steps.guard.outputs.mode == 'key'
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
