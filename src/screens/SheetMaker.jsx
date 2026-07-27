@@ -38,11 +38,11 @@ const CELL_LABEL = { padding: '4px 10px', background: 'var(--slate-50)', borderB
 function SheetPage({ p }) {
   return (
     <div className="pdf-page" style={{ padding: '44px 52px 40px' }}>
-      {/* 四隅の位置合わせマーカー */}
-      <div style={{ position: 'absolute', left: 22, top: 22, width: 17, height: 17, background: 'var(--slate-900)' }} />
-      <div style={{ position: 'absolute', right: 22, top: 22, width: 17, height: 17, background: 'var(--slate-900)' }} />
-      <div style={{ position: 'absolute', left: 22, bottom: 22, width: 17, height: 17, background: 'var(--slate-900)' }} />
-      <div style={{ position: 'absolute', right: 22, bottom: 22, width: 17, height: 17, background: 'var(--slate-900)', borderRadius: '50%' }} />
+      {/* 四隅の位置合わせマーカー(端から約 8mm。これ以上外だとプリンタの印字不可領域で欠ける) */}
+      <div style={{ position: 'absolute', left: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
+      <div style={{ position: 'absolute', right: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
+      <div style={{ position: 'absolute', left: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
+      <div style={{ position: 'absolute', right: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)', borderRadius: '50%' }} />
 
       {/* ヘッダー(右はスタッフ記入欄。利用者が記載しないよう明記) */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
@@ -142,8 +142,8 @@ function SheetPage({ p }) {
               {r.boxes.map((bx, i) => bx.d
                 ? (
                   <div key={i} style={{ width: 38, height: 46, border: '2px solid var(--slate-800)', borderRadius: 2, background: '#fff', display: 'grid', placeItems: 'center' }}>
-                    {/* 文字サイズのガイド(薄いグレー・枠いっぱいに) */}
-                    <span className="t-num" style={{ fontSize: 36, fontWeight: 700, color: 'var(--slate-200)', lineHeight: 1 }}>8</span>
+                    {/* 文字サイズのガイド(印刷では画面より濃く出るため、かなり薄いグレーに) */}
+                    <span className="t-num" style={{ fontSize: 36, fontWeight: 700, color: 'var(--slate-100)', lineHeight: 1 }}>8</span>
                   </div>
                 )
                 : <div key={i} style={{ fontSize: 22, fontWeight: 900, paddingBottom: 2, width: 10, textAlign: 'center' }}>.</div>
