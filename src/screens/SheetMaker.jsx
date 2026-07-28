@@ -141,10 +141,8 @@ function SheetPage({ p }) {
             <div style={{ display: 'flex', gap: 5, alignItems: 'flex-end', justifyContent: 'flex-end' }}>
               {r.boxes.map((bx, i) => bx.d
                 ? (
-                  <div key={i} style={{ width: 38, height: 46, border: '2px solid var(--slate-800)', borderRadius: 2, background: '#fff', display: 'grid', placeItems: 'center' }}>
-                    {/* 文字サイズのガイド(印刷では画面より濃く出るため、かなり薄いグレーに) */}
-                    <span className="t-num" style={{ fontSize: 36, fontWeight: 700, color: 'var(--slate-100)', lineHeight: 1 }}>8</span>
-                  </div>
+                  // 枠内は空欄のままにする(ガイド数字を印字すると OCR が読み取ってしまう)
+                  <div key={i} style={{ width: 38, height: 46, border: '2px solid var(--slate-800)', borderRadius: 2, background: '#fff' }} />
                 )
                 : <div key={i} style={{ fontSize: 22, fontWeight: 900, paddingBottom: 2, width: 10, textAlign: 'center' }}>.</div>
               )}
