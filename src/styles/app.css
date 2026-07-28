@@ -468,7 +468,11 @@ select.field, select.select {
   .print-screen { display: block !important; padding: 0 !important; height: auto !important; overflow: visible !important; background: #fff !important; }
   .pdf-stage { overflow: visible !important; background: #fff !important; }
   .pdf-pages { zoom: 1 !important; padding: 0 !important; display: block !important; }
-  .pdf-page { margin: 0 auto !important; box-shadow: none !important; page-break-after: always; break-after: page; }
+  /* A4(210×297mm) より僅かに小さくしないと端数の溢れで 1 人 2 枚(白紙)になる */
+  .pdf-page { margin: 0 auto !important; box-shadow: none !important; width: 210mm !important; height: 296.5mm !important; overflow: hidden; page-break-after: always; break-after: page; }
+  .pdf-page:last-child { page-break-after: auto; break-after: auto; }
+  /* 四隅マーカー・ID ストリップ等の背景色を「背景のグラフィック」設定に関わらず印刷する */
+  .pdf-page, .pdf-page * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   .screen { animation: none !important; }
 }
 
