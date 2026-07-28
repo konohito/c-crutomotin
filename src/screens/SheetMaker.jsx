@@ -125,7 +125,7 @@ function SheetPage({ p }) {
           <div style={{ textAlign: 'right' }}>訂正欄</div>
         </div>
         {p.rows.map(r => (
-          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '140px 170px auto 44px 1fr', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '140px 170px auto 44px 1fr', gap: 10, padding: '5px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
             {/* 2 回測定の項目は下書きスペース(①は線の上・②は線の下に書く。線は 1 本だけ) */}
             {r.draft ? (
               <div style={{ display: 'flex', flexDirection: 'column', paddingRight: 10, alignSelf: 'center' }}>
@@ -187,7 +187,7 @@ function SheetPage({ p }) {
               </div>
               <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--slate-900)' }}>25.0</span>
             </div>
-            <div style={{ fontSize: 11.5, lineHeight: 1.7, marginTop: 7, color: 'var(--slate-800)' }}>
+            <div style={{ fontSize: 11, lineHeight: 1.6, marginTop: 6, color: 'var(--slate-800)' }}>
               ①太枠の中に 1 マス 1 桁ではっきりと記入（枠線に触れない大きさで）。<br />
               ②途中の計測値は左の下書き欄へ。太枠には確定値のみを記入。<br />
               ③訂正時は二重線を引き、右端の訂正欄に書き直す。<br />
@@ -222,20 +222,20 @@ const circled = (n) => n <= 20 ? String.fromCharCode(0x245F + n) : String.fromCh
 
 function CheckOpt({ label, filled }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, lineHeight: 1 }}>
       <span style={{ width: 15, height: 15, border: '2px solid #000', borderRadius: 2, display: 'inline-block', background: filled ? '#000' : '#fff' }} />
-      <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1 }}>{label}</span>
     </span>
   )
 }
 
 function KclRow({ no, text }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '26px 1fr 158px', gap: 8, alignItems: 'center', padding: '4.5px 0', borderBottom: '1px solid var(--slate-200)' }}>
-      <div style={{ fontSize: 14, fontWeight: 700 }}>{circled(no)}</div>
-      <div style={{ fontSize: 13, lineHeight: 1.35 }}>{text}</div>
+    <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 152px', gap: 8, alignItems: 'center', padding: '4.5px 0', borderBottom: '1px solid var(--slate-200)' }}>
+      <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.3 }}>{circled(no)}</div>
+      <div style={{ fontSize: 13, lineHeight: 1.3 }}>{text}</div>
       {/* 回答欄は全行で同じ x 位置に揃える(スキャン時の位置推定を安定させる) */}
-      <div style={{ display: 'flex', gap: 18, justifyContent: 'flex-end', paddingRight: 4 }}>
+      <div style={{ display: 'flex', gap: 16, justifyContent: 'flex-end', paddingRight: 4 }}>
         <CheckOpt label="はい" />
         <CheckOpt label="いいえ" />
       </div>
@@ -260,10 +260,10 @@ function KclPage({ p }) {
             <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 R7-03</div>
             <div style={{ fontSize: 9.5, color: 'var(--slate-500)', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
-          <div style={{ fontSize: 23, fontWeight: 700, letterSpacing: '0.03em', marginTop: 6 }}>令和7年度 からだデータ測定会 問診票</div>
-          <div style={{ fontSize: 12.5, color: 'var(--slate-600)', marginTop: 2 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
-          <div style={{ display: 'inline-block', border: '1.5px solid var(--slate-900)', padding: '3px 10px', fontSize: 12, fontWeight: 700, marginTop: 6 }}>
-            事前に記入をして、測定<span style={{ fontSize: 14 }}>当日</span>に受付にお渡しください。
+          <div style={{ fontSize: 21, fontWeight: 700, letterSpacing: '0.03em', marginTop: 5 }}>令和7年度 からだデータ測定会 問診票</div>
+          <div style={{ fontSize: 12, color: 'var(--slate-600)', marginTop: 1 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
+          <div style={{ display: 'inline-block', border: '1.5px solid var(--slate-900)', padding: '2px 10px', fontSize: 11.5, fontWeight: 700, marginTop: 5 }}>
+            事前に記入をして、測定<span style={{ fontSize: 13 }}>当日</span>に受付にお渡しください。
           </div>
         </div>
         {/* 参加者 ID・氏名(記録用紙と同じ罫線テーブル構成) */}
@@ -294,7 +294,7 @@ function KclPage({ p }) {
       </div>
 
       {/* 記入例 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 9 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 7 }}>
         <span style={{ background: 'var(--slate-900)', color: '#fff', fontSize: 11.5, fontWeight: 700, padding: '2px 9px' }}>記入例</span>
         <CheckOpt label="はい" filled />
         <CheckOpt label="いいえ" />
@@ -320,8 +320,8 @@ function KclPage({ p }) {
 
       <div style={{ flex: 1 }} />
 
-      <div style={{ borderTop: '2.5px solid var(--brand-500)', paddingTop: 6, display: 'flex', alignItems: 'baseline', gap: 10 }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700 }}>ご回答ありがとうございました。当日はこの用紙を忘れずにお持ちください。</span>
+      <div style={{ borderTop: '2.5px solid var(--brand-500)', paddingTop: 5, display: 'flex', alignItems: 'baseline', gap: 10 }}>
+        <span style={{ fontSize: 12, fontWeight: 700 }}>ご回答ありがとうございました。当日はこの用紙を忘れずにお持ちください。</span>
         <span style={{ flex: 1 }} />
         <span className="t-num" style={{ fontSize: 10, color: 'var(--slate-500)' }}>{p.pageNo} / {p.total}</span>
       </div>
