@@ -77,7 +77,7 @@ function SheetPage({ p }) {
             <div style={{ padding: '6px 10px 5px' }}>
               <div style={{ display: 'flex', gap: 4 }}>
                 {p.uidDigits.map((dg, i) => (
-                  <div key={i} className="t-num" style={{ width: 28, height: 34, border: '2px solid var(--slate-900)', display: 'grid', placeItems: 'center', fontSize: 19, fontWeight: 700 }}>{dg}</div>
+                  <div key={i} className="t-num" style={{ width: 28, height: 34, border: '2px solid #000', display: 'grid', placeItems: 'center', fontSize: 19, fontWeight: 700 }}>{dg}</div>
                 ))}
               </div>
               <div style={{ display: 'flex', gap: 1, marginTop: 4 }}>
@@ -110,21 +110,24 @@ function SheetPage({ p }) {
         </div>
       </div>
 
-      {/* 記入欄(書き直し用に右余白を広めに設ける) */}
+      {/* 記入欄。OCR の読み取り品質を最大化するための列配置:
+          ・下書き(①②)は項目名より左 → ラベルの右にある手書き数字を値と誤ペアリングする事故と、
+            座標フォールバック(ラベルより右だけを探す)の誤検出の両方を構造的に防ぐ
+          ・記入枠は項目名の直後に隣接 → Form Parser のラベル:値ペアリングが効きやすい
+          ・訂正欄は右端 → 訂正値は行内の最も右の数字クラスタとして正しく読まれる */}
       <div style={{ marginTop: 11, borderTop: '2px solid var(--slate-900)', paddingTop: 2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '164px 1fr auto 44px 58px', gap: 10, padding: '4px 0 3px', borderBottom: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)', alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '140px 170px auto 44px 1fr', gap: 10, padding: '4px 0 3px', borderBottom: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)', alignItems: 'end' }}>
+          <div>下書き（メモ）</div>
           <div>測定項目</div>
-          <div />
-          <div style={{ textAlign: 'right' }}>記入枠</div>
+          <div>記入枠</div>
           <div>単位</div>
-          <div />
+          <div style={{ textAlign: 'right' }}>訂正欄</div>
         </div>
         {p.rows.map(r => (
-          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '164px 1fr auto 44px 58px', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.label}</div>
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '140px 170px auto 44px 1fr', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
             {/* 2 回測定の項目は下書きスペース(①は線の上・②は線の下に書く。線は 1 本だけ) */}
             {r.draft ? (
-              <div style={{ display: 'flex', flexDirection: 'column', paddingRight: 14, alignSelf: 'center' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', paddingRight: 10, alignSelf: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--slate-300)' }}>
                   <span style={{ fontSize: 11, color: 'var(--slate-500)', lineHeight: 1, padding: '0 0 2px 2px' }}>①</span>
                   <span style={{ flex: 1, height: 16 }} />
@@ -135,17 +138,18 @@ function SheetPage({ p }) {
                 </div>
               </div>
             ) : <div />}
-            <div style={{ display: 'flex', gap: 5, alignItems: 'flex-end', justifyContent: 'flex-end' }}>
+            <div style={{ fontSize: 20, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.label}</div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
               {r.boxes.map((bx, i) => bx.d
                 ? (
-                  // 枠内は空欄のままにする(ガイド数字を印字すると OCR が読み取ってしまう)
-                  <div key={i} style={{ width: 38, height: 46, border: '2px solid var(--slate-800)', borderRadius: 2, background: '#fff' }} />
+                  // 枠内は空欄のままにする(ガイド数字を印字すると OCR が読み取ってしまう)。枠線は純黒でコントラスト最大に
+                  <div key={i} style={{ width: 38, height: 46, border: '2.5px solid #000', borderRadius: 2, background: '#fff' }} />
                 )
-                : <div key={i} style={{ fontSize: 22, fontWeight: 900, paddingBottom: 2, width: 10, textAlign: 'center' }}>.</div>
+                : <div key={i} style={{ fontSize: 24, fontWeight: 900, color: '#000', paddingBottom: 2, width: 12, textAlign: 'center' }}>.</div>
               )}
             </div>
             <div style={{ fontSize: 15, color: 'var(--slate-600)' }}>{r.unit}</div>
-            {/* 書き直し用の右余白 */}
+            {/* 訂正時の書き直し欄(右端。二重線で消してここに書く) */}
             <div />
           </div>
         ))}
@@ -183,9 +187,10 @@ function SheetPage({ p }) {
               <span style={{ fontSize: 20, fontWeight: 900, color: 'var(--slate-900)' }}>25.0</span>
             </div>
             <div style={{ fontSize: 11.5, lineHeight: 1.7, marginTop: 7, color: 'var(--slate-800)' }}>
-              ①太枠の中に 1 マス 1 桁ではっきりと記入。<br />
-              ②訂正時は二重線を引き、枠の右の余白に書き直す。<br />
-              ③未実施の項目は空欄のままに。
+              ①太枠の中に 1 マス 1 桁ではっきりと記入（枠線に触れない大きさで）。<br />
+              ②途中の計測値は左の下書き欄へ。太枠には確定値のみを記入。<br />
+              ③訂正時は二重線を引き、右端の訂正欄に書き直す。<br />
+              ④未実施の項目は空欄のままに。
             </div>
           </div>
           <div>
