@@ -35,6 +35,7 @@ function buildRecognitionDoc(document, meta = {}) {
     fields: sheet.fields,
     lowConfFields: lowConf,          // フロントの要確認振り分けの補助
     needsReview: lowConf.length > 0 || sheet.nameConf < threshold,
+    ocrDebug: sheet.debug || null,   // 読み取り失敗時の原因調査用(ペアリング結果と補完項目)
   }
 }
 
