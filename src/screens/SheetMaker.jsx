@@ -12,8 +12,8 @@ const SHEET_BOXES = { walk5: [1, 1], walk5max: [1, 1], balR: [2, 1], balL: [2, 1
 // 2 回測定する項目は下書きスペース(①②)を設ける
 const DRAFT_COLS = ['gripR', 'gripL', 'walk5', 'walk5max', 'tug', 'balR', 'balL']
 
-function sheetRowsFor(u) {
-  const last = u ? Object.keys(u.meas).map(Number).sort((a, b) => b - a)[0] : null
+// 前回値は印字しない(OCR が記入枠の値と誤認して読み取るのを防ぐため、用紙には数字を刷らない)
+function sheetRowsFor() {
   return D.SHEET_COLS.map(cid => {
     const col = D.COLS.find(c => c.id === cid)
     const def = SHEET_BOXES[cid]
@@ -21,8 +21,7 @@ function sheetRowsFor(u) {
     for (let i = 0; i < def[0]; i++) boxes.push({ d: true })
     boxes.push({ dot: true })
     for (let i = 0; i < def[1]; i++) boxes.push({ d: true })
-    const pv = last && u.meas[last].values[cid] !== null && u.meas[last].values[cid] !== undefined ? D.fmt(u.meas[last].values[cid], col.dec) : null
-    return { id: cid, label: col.label, unit: col.unit, boxes, prev: pv ? '前回 ' + pv : '初回', draft: DRAFT_COLS.includes(cid) }
+    return { id: cid, label: col.label, unit: col.unit, boxes, draft: DRAFT_COLS.includes(cid) }
   })
 }
 
@@ -113,16 +112,15 @@ function SheetPage({ p }) {
 
       {/* 記入欄(書き直し用に右余白を広めに設ける) */}
       <div style={{ marginTop: 11, borderTop: '2px solid var(--slate-900)', paddingTop: 2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '164px 1fr 80px auto 44px 58px', gap: 10, padding: '4px 0 3px', borderBottom: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)', alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '164px 1fr auto 44px 58px', gap: 10, padding: '4px 0 3px', borderBottom: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)', alignItems: 'end' }}>
           <div>測定項目</div>
           <div />
-          <div style={{ whiteSpace: 'nowrap' }}>前回値</div>
           <div style={{ textAlign: 'right' }}>記入枠</div>
           <div>単位</div>
           <div />
         </div>
         {p.rows.map(r => (
-          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '164px 1fr 80px auto 44px 58px', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
+          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '164px 1fr auto 44px 58px', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--slate-200)', alignItems: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.label}</div>
             {/* 2 回測定の項目は下書きスペース(①は線の上・②は線の下に書く。線は 1 本だけ) */}
             {r.draft ? (
@@ -137,7 +135,6 @@ function SheetPage({ p }) {
                 </div>
               </div>
             ) : <div />}
-            <div className="t-num" style={{ fontSize: 14, color: 'var(--slate-500)' }}>{r.prev}</div>
             <div style={{ display: 'flex', gap: 5, alignItems: 'flex-end', justifyContent: 'flex-end' }}>
               {r.boxes.map((bx, i) => bx.d
                 ? (
@@ -234,7 +231,7 @@ export default function SheetMaker() {
     birth: u ? u.birthDate : '', age: u ? String(u.age) : '', sex: u ? u.sexLabel : '',
     ward: u ? (u.venueName || '') : '',
     muniVenue: (muni || '') + (venue ? ' · ' + venue : ''), dateLabel: dateLabel || '　　　/　　/　　',
-    rows: sheetRowsFor(u),
+    rows: sheetRowsFor(),
   })
   const withBlanks = parts.slice(0, Math.max(0, 30 - state.shBlank))
   const total = withBlanks.length + state.shBlank
