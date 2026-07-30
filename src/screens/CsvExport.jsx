@@ -59,6 +59,22 @@ const KCL_COLS = [
   'CL_' + d.label, (u, y, m, fr, ib, kc) => kc ? kc.domainCounts[d.id] : '',
 ]))
 
+// ---- ID・氏名シール差し込み用 -------------------------------------------------
+// 問診票の右上に貼るシール(38.1×21.2mm)を Excel/Word の差し込み印刷で作るためのデータ。
+// シール台紙のテンプレートに 1 桁ずつ配置できるよう、ID は 1 桁 = 1 列(ID 01〜ID 05)に分割する
+// (1 マス 1 桁の活字になり、スキャン時の ID 読み取りが安定する)。
+const idDigit = (u, i) => String(u.id || '').padStart(5, ' ')[i].trim()
+const SEAL_COLS = [
+  ['ID 01', (u) => idDigit(u, 0)],
+  ['ID 02', (u) => idDigit(u, 1)],
+  ['ID 03', (u) => idDigit(u, 2)],
+  ['ID 04', (u) => idDigit(u, 3)],
+  ['ID 05', (u) => idDigit(u, 4)],
+  ['名前', (u) => u.name],
+  ['ふりがな', (u) => u.kana],
+  [wardLabel() + '_参考', (u) => u.venueName],
+]
+
 function fmtCsv(v, dec) {
   return v === null || v === undefined ? '' : Number(v).toFixed(dec)
 }
@@ -164,7 +180,9 @@ export function buildExport(state) {
   users = users.slice().sort((a, b) => a.id.localeCompare(b.id))
   const cols = state.expFormat === 'gov'
     ? GOV_COLS
-    : BASE_COLS.concat(state.expFrail ? FRAIL_COLS : [], state.expKcl ? KCL_COLS : [], state.expInbody ? INBODY_COLS : [])
+    : state.expFormat === 'seal'
+      ? SEAL_COLS
+      : BASE_COLS.concat(state.expFrail ? FRAIL_COLS : [], state.expKcl ? KCL_COLS : [], state.expInbody ? INBODY_COLS : [])
   const header = cols.map(c => c[0])
   const rows = users.map(u => {
     const m = u.meas[y] || null
@@ -185,7 +203,7 @@ export function scopeLabel(state) {
 }
 
 export function fileNameOf(state) {
-  const base = state.expFormat === 'gov' ? '行政提出用データ' : '体力測定データ'
+  const base = state.expFormat === 'gov' ? '行政提出用データ' : state.expFormat === 'seal' ? 'シール差し込み用データ' : '体力測定データ'
   return `${base}_${eraOf(state.expYear)}年度_${scopeLabel(state)}.csv`
 }
 
@@ -233,9 +251,12 @@ export default function CsvExport() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
           <Overline>書式</Overline>
           <Segmented value={state.expFormat} onChange={(v) => set({ expFormat: v })}
-            options={[{ v: 'std', l: '標準形式（集計・確認用）' }, { v: 'gov', l: '行政提出書式（79 列）' }]} />
+            options={[{ v: 'std', l: '標準形式（集計・確認用）' }, { v: 'gov', l: '行政提出書式（79 列）' }, { v: 'seal', l: 'シール差し込み用（ID・氏名）' }]} />
           {state.expFormat === 'gov' && (
             <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>ファイルメーカー取込形式 — 列名・列順は提出様式と同一です</span>
+          )}
+          {state.expFormat === 'seal' && (
+            <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>問診票に貼る ID・氏名シール用 — ID は 1 桁 = 1 列（ID 01〜ID 05）で差し込み印刷に使えます</span>
           )}
         </div>
         <div className="form-duo" style={{ display: 'grid', gridTemplateColumns: scopeWards.length ? '0.9fr 1.3fr 1fr 1fr' : '1fr 1.4fr 1fr', gap: 14, marginTop: 14 }}>
@@ -268,9 +289,13 @@ export default function CsvExport() {
             <CheckRow on={state.expKcl} label="基本チェックリスト（合計点・事業対象者判定・領域別）" onClick={() => set({ expKcl: !state.expKcl })} />
             <CheckRow on={state.expInbody} label="InBody（骨格筋量・体脂肪率・SMI・点数）" onClick={() => set({ expInbody: !state.expInbody })} />
           </div>
-        ) : (
+        ) : state.expFormat === 'gov' ? (
           <div style={{ marginTop: 12, fontSize: 12, color: 'var(--fg-3)' }}>
             列構成は提出様式で固定です（基本チェックリスト 25 問の回答 0/1 と分類 1〜8 を含む 79 列）
+          </div>
+        ) : (
+          <div style={{ marginTop: 12, fontSize: 12, color: 'var(--fg-3)' }}>
+            シール台紙（例: 38.1 × 21.2mm · A4 24 面）に Word の差し込み印刷で流し込んでください。1 行 = 1 名 = シール 1 枚です
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-subtle)', flexWrap: 'wrap' }}>

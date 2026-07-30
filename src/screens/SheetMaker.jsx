@@ -293,11 +293,20 @@ function KclExample() {
   )
 }
 
-function KclSectionHead({ title }) {
+function KclSectionHead({ title, example }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0 3px', borderBottom: '1px solid #000' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0 4px', borderBottom: '1px solid #000' }}>
       <span style={{ fontSize: 20, fontWeight: 700 }}>{title}</span>
-      <span style={{ fontSize: 12, color: '#000', letterSpacing: '0.04em' }}>回答欄</span>
+      {example ? (
+        /* 塗りつぶし済みの見本を回答欄の真上に置く(MarkOpt を使い、設問行の回答欄と列位置を揃える) */
+        <span style={{ display: 'flex', alignItems: 'center', gap: 12, paddingRight: 4 }}>
+          <span style={{ background: '#000', color: '#fff', fontSize: 12.5, fontWeight: 700, padding: '2px 8px' }}>記入例</span>
+          <MarkOpt label="はい" filled />
+          <MarkOpt label="いいえ" />
+        </span>
+      ) : (
+        <span style={{ fontSize: 12, color: '#000', letterSpacing: '0.04em' }}>回答欄</span>
+      )}
     </div>
   )
 }
@@ -330,14 +339,14 @@ function KclPageFront() {
 
       <KclExample />
 
-      <div style={{ marginTop: 8, borderTop: '2px solid #000', paddingTop: 1 }}>
-        <KclSectionHead title="【基本チェックリスト】" />
+      <div style={{ marginTop: 8 }}>
+        <KclSectionHead title="【基本チェックリスト】" example />
         {KCL_PRINT_QS.slice(0, KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} no={i + 1} text={q.text} />)}
       </div>
 
       <div style={{ flex: 1 }} />
 
-      <div style={{ borderTop: '2px solid #000', paddingTop: 6, display: 'flex', alignItems: 'baseline', gap: 10 }}>
+      <div style={{ paddingTop: 6, display: 'flex', alignItems: 'baseline', gap: 10 }}>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 20, fontWeight: 700 }}>うら面につづきます ➡</span>
         <span style={{ flex: 1 }} />
@@ -359,8 +368,8 @@ function KclPageBack() {
 
       <KclExample />
 
-      <div style={{ marginTop: 8, borderTop: '2px solid #000', paddingTop: 1 }}>
-        <KclSectionHead title="【基本チェックリスト（つづき）】" />
+      <div style={{ marginTop: 8 }}>
+        <KclSectionHead title="【基本チェックリスト（つづき）】" example />
         {KCL_PRINT_QS.slice(KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} no={KCL_PAGE1_COUNT + i + 1} text={q.text} />)}
       </div>
 
@@ -374,7 +383,7 @@ function KclPageBack() {
       <div style={{ textAlign: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.5 }}>
         ご回答ありがとうございました。<br />当日はこの用紙を<span style={{ textDecoration: 'underline' }}>忘れずにお持ちください</span>。
       </div>
-      <div style={{ marginTop: 8, borderTop: '2px solid #000', paddingTop: 5, display: 'flex' }}>
+      <div style={{ marginTop: 8, paddingTop: 5, display: 'flex' }}>
         <span style={{ flex: 1 }} />
         <span className="t-num" style={{ fontSize: 10, color: '#555' }}>2 / 2</span>
       </div>
