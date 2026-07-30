@@ -35,14 +35,20 @@ const stripOf = (id) => String(id || '').split('').reduce((acc, ch) => {
 
 const CELL_LABEL = { padding: '4px 10px', background: 'var(--slate-50)', borderBottom: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)' }
 
+{/* 四隅の位置合わせマーカー(端から約 8mm。これ以上外だとプリンタの印字不可領域で欠ける) */}
+function Markers() {
+  return (<>
+    <div style={{ position: 'absolute', left: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
+    <div style={{ position: 'absolute', right: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
+    <div style={{ position: 'absolute', left: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
+    <div style={{ position: 'absolute', right: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)', borderRadius: '50%' }} />
+  </>)
+}
+
 function SheetPage({ p }) {
   return (
     <div className="pdf-page" style={{ padding: '44px 52px 40px' }}>
-      {/* 四隅の位置合わせマーカー(端から約 8mm。これ以上外だとプリンタの印字不可領域で欠ける) */}
-      <div style={{ position: 'absolute', left: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
-      <div style={{ position: 'absolute', right: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
-      <div style={{ position: 'absolute', left: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
-      <div style={{ position: 'absolute', right: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)', borderRadius: '50%' }} />
+      <Markers />
 
       {/* ヘッダー(右はスタッフ記入欄。利用者が記載しないよう明記) */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
@@ -208,34 +214,38 @@ function SheetPage({ p }) {
 }
 
 /* ==== 基本チェックリスト 問診票(様式 R7-03) ====================================
-   紙の問診票をアプリから参加者ごとに印刷できるようにした OCR 読み取り対応版。
-   ・回答は「はい/いいえ に○」ではなく「□の塗りつぶし」方式
-     (○囲みは Form Parser が構造化できないが、チェックボックスの選択状態は返せる)
-   ・ヘッダーの参加者 ID・氏名は記録用紙と同じ罫線テーブル構成(既存のペアリングで読める)
-   ・BMI 項目(基本チェックリスト No.12)は測定値から自動判定するため用紙には載せず連番を振り直す */
+   嘉島町が全員へ郵送するため、個人情報(ID・氏名)は刷らない全員共通の様式。
+   ID・氏名は当日受付で印刷済みシール(38.1×21.2mm)を右上の破線枠に貼る運用
+   (郵送の宛名合わせ作業を無くし、手書き氏名の旧字体が読めない問題も回避する)。
+   ・後期高齢者向けに設問・選択肢は 16pt(≒21.3px)以上。ロゴは載せない(文字を優先)
+   ・16pt では A4 片面に 26 問が収まらないため、両面印刷前提の 2 ページ構成(用紙 1 枚)
+   ・回答は「□の塗りつぶし」方式(○囲みは Form Parser が構造化できないため)
+   ・BMI 項目(基本チェックリスト No.12)は測定値から自動判定するため載せず連番を振り直す */
 const KCL_PRINT_QS = KCL_QUESTIONS.filter(q => !q.derived)
 const EXERCISE_QS = [
   '週1回程度の定期的な運動・スポーツをしていますか',
   '自宅や自宅外で、ストレッチや筋トレなどの運動を週1回以上は行なっていますか',
 ]
+// おもて面は 13 問まで(長文設問の折り返しを見込んだ配分)。残りとうら面に運動習慣。
+const KCL_PAGE1_COUNT = 13
 const circled = (n) => n <= 20 ? String.fromCharCode(0x245F + n) : String.fromCharCode(0x3251 + n - 21)
 
 function CheckOpt({ label, filled }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, lineHeight: 1 }}>
-      <span style={{ width: 15, height: 15, border: '2px solid #000', borderRadius: 2, display: 'inline-block', background: filled ? '#000' : '#fff' }} />
-      <span style={{ fontSize: 13, fontWeight: 600, lineHeight: 1 }}>{label}</span>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, lineHeight: 1, flexShrink: 0 }}>
+      <span style={{ width: 19, height: 19, border: '2.5px solid #000', borderRadius: 2, display: 'inline-block', background: filled ? '#000' : '#fff', flexShrink: 0 }} />
+      <span style={{ fontSize: 21, fontWeight: 700, lineHeight: 1, whiteSpace: 'nowrap' }}>{label}</span>
     </span>
   )
 }
 
 function KclRow({ no, text }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '24px 1fr 152px', gap: 8, alignItems: 'center', padding: '4.5px 0', borderBottom: '1px solid var(--slate-200)' }}>
-      <div style={{ fontSize: 13.5, fontWeight: 700, lineHeight: 1.3 }}>{circled(no)}</div>
-      <div style={{ fontSize: 13, lineHeight: 1.3 }}>{text}</div>
+    <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr 176px', gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--slate-200)' }}>
+      <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.3 }}>{circled(no)}</div>
+      <div style={{ fontSize: 21.5, lineHeight: 1.3 }}>{text}</div>
       {/* 回答欄は全行で同じ x 位置に揃える(スキャン時の位置推定を安定させる) */}
-      <div style={{ display: 'flex', gap: 16, justifyContent: 'flex-end', paddingRight: 4 }}>
+      <div style={{ display: 'flex', gap: 14, justifyContent: 'flex-end', paddingRight: 4, alignSelf: 'center' }}>
         <CheckOpt label="はい" />
         <CheckOpt label="いいえ" />
       </div>
@@ -243,87 +253,102 @@ function KclRow({ no, text }) {
   )
 }
 
-function KclPage({ p }) {
+// 記入例(おもて・うら両面に載せ、めくった後も書き方が分かるようにする)
+function KclExample() {
   return (
-    <div className="pdf-page" style={{ padding: '40px 52px 34px' }}>
-      {/* 四隅の位置合わせマーカー(記録用紙と共通デザイン) */}
-      <div style={{ position: 'absolute', left: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
-      <div style={{ position: 'absolute', right: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
-      <div style={{ position: 'absolute', left: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
-      <div style={{ position: 'absolute', right: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)', borderRadius: '50%' }} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
+      <span style={{ background: 'var(--slate-900)', color: '#fff', fontSize: 13, fontWeight: 700, padding: '3px 10px', flexShrink: 0 }}>記入例</span>
+      <CheckOpt label="はい" filled />
+      <CheckOpt label="いいえ" />
+      <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--danger-500)', whiteSpace: 'nowrap' }}>※あてはまる方の□を黒くぬりつぶす</span>
+    </div>
+  )
+}
 
+function KclSectionHead({ title }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0 3px', borderBottom: '1px solid var(--slate-300)' }}>
+      <span style={{ fontSize: 20, fontWeight: 700 }}>{title}</span>
+      <span style={{ fontSize: 12, color: 'var(--slate-600)', letterSpacing: '0.04em' }}>回答欄</span>
+    </div>
+  )
+}
+
+// おもて面: タイトル・シール貼付欄・記入例・設問 1〜13
+function KclPageFront() {
+  return (
+    <div className="pdf-page" style={{ padding: '40px 48px 34px' }}>
+      <Markers />
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 24, display: 'block' }} />
-            <span className="t-display" style={{ fontSize: 12.5, letterSpacing: '0.05em', color: 'var(--slate-800)' }}>motion</span>
             <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 R7-03</div>
             <div style={{ fontSize: 9.5, color: 'var(--slate-500)', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
-          <div style={{ fontSize: 21, fontWeight: 700, letterSpacing: '0.03em', marginTop: 5 }}>令和7年度 からだデータ測定会 問診票</div>
-          <div style={{ fontSize: 12, color: 'var(--slate-600)', marginTop: 1 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
-          <div style={{ display: 'inline-block', border: '1.5px solid var(--slate-900)', padding: '2px 10px', fontSize: 11.5, fontWeight: 700, marginTop: 5 }}>
-            事前に記入をして、測定<span style={{ fontSize: 13 }}>当日</span>に受付にお渡しください。
-          </div>
+          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.03em', marginTop: 8 }}>令和7年度 からだデータ測定会 問診票</div>
         </div>
-        {/* 参加者 ID・氏名(記録用紙と同じ罫線テーブル構成) */}
-        <div style={{ border: '2px solid var(--slate-900)', flexShrink: 0, width: 236 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', borderBottom: '1px solid var(--slate-300)' }}>
-            <div style={{ padding: '5px 8px', background: 'var(--slate-50)', borderRight: '1px solid var(--slate-300)', fontSize: 11.5, letterSpacing: '0.04em', color: 'var(--slate-600)', display: 'flex', alignItems: 'center' }}>参加者 ID</div>
-            <div style={{ padding: '5px 8px 4px' }}>
-              <div style={{ display: 'flex', gap: 3 }}>
-                {p.uidDigits.map((dg, i) => (
-                  <div key={i} className="t-num" style={{ width: 24, height: 30, border: '2px solid #000', display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: 700 }}>{dg}</div>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: 1, marginTop: 3 }}>
-                {p.strip.map((bg, i) => (
-                  <div key={i} style={{ width: 6, height: 8, border: '0.5px solid var(--slate-300)', background: bg }} />
-                ))}
-              </div>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr' }}>
-            <div style={{ padding: '5px 8px', background: 'var(--slate-50)', borderRight: '1px solid var(--slate-300)', fontSize: 11.5, letterSpacing: '0.04em', color: 'var(--slate-600)', display: 'flex', alignItems: 'center' }}>氏名</div>
-            <div style={{ padding: '3px 8px 5px' }}>
-              <span style={{ fontSize: 10.5, color: 'var(--slate-500)' }}>{p.kana ? '（' + p.kana + '）' : ''}</span><br />
-              <span style={{ fontSize: 17, fontWeight: 700 }}>{p.name}</span>
-            </div>
-          </div>
+        {/* ID・氏名シール貼付欄(シール 38.1×21.2mm + 貼りズレ余白 約2mm。
+            設問と誤認しないようグレー破線・受付スタッフが当日貼る) */}
+        <div style={{ width: 160, height: 92, border: '2px dashed var(--slate-400)', borderRadius: 4, flexShrink: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--slate-500)', lineHeight: 1.6 }}>ID・氏名シール貼付欄<br />（受付で貼ります）</div>
         </div>
       </div>
 
-      {/* 記入例 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 7 }}>
-        <span style={{ background: 'var(--slate-900)', color: '#fff', fontSize: 11.5, fontWeight: 700, padding: '2px 9px' }}>記入例</span>
-        <CheckOpt label="はい" filled />
-        <CheckOpt label="いいえ" />
-        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--danger-500)' }}>※必ず、あてはまる方の□をマッキーで塗りつぶしてください</span>
+      <div style={{ border: '2px solid var(--slate-900)', padding: '7px 12px', marginTop: 9, lineHeight: 1.5 }}>
+        <span style={{ fontSize: 21, fontWeight: 700 }}>事前にご記入のうえ、測定<span style={{ textDecoration: 'underline' }}>当日</span>に受付へお渡しください。</span><br />
+        <span style={{ fontSize: 16.5, fontWeight: 700, color: 'var(--danger-600)' }}>あてはまる方の□は、濃いペンで黒くぬりつぶしてください。</span><br />
+        <span style={{ fontSize: 16.5, fontWeight: 600, color: 'var(--slate-700)' }}>ID・氏名を書く必要はありません（受付でシールを貼ります）。</span>
       </div>
 
-      {/* 基本チェックリスト(BMI 項目を除く 24 問) */}
-      <div style={{ marginTop: 7, borderTop: '2px solid var(--slate-900)', paddingTop: 1 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0 2px', borderBottom: '1px solid var(--slate-300)' }}>
-          <span style={{ fontSize: 13.5, fontWeight: 700 }}>【基本チェックリスト】</span>
-          <span style={{ fontSize: 11, color: 'var(--slate-600)', letterSpacing: '0.04em' }}>回答欄</span>
-        </div>
-        {KCL_PRINT_QS.map((q, i) => <KclRow key={q.no} no={i + 1} text={q.text} />)}
+      <KclExample />
+
+      <div style={{ marginTop: 8, borderTop: '2px solid var(--slate-900)', paddingTop: 1 }}>
+        <KclSectionHead title="【基本チェックリスト】" />
+        {KCL_PRINT_QS.slice(0, KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} no={i + 1} text={q.text} />)}
       </div>
 
-      {/* 運動習慣 */}
-      <div style={{ marginTop: 7 }}>
-        <div style={{ padding: '0 0 2px', borderBottom: '1px solid var(--slate-300)' }}>
-          <span style={{ fontSize: 13.5, fontWeight: 700 }}>【運動習慣について】</span>
-        </div>
+      <div style={{ flex: 1 }} />
+
+      <div style={{ borderTop: '2.5px solid var(--brand-500)', paddingTop: 6, display: 'flex', alignItems: 'baseline', gap: 10 }}>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 20, fontWeight: 700 }}>うら面につづきます ➡</span>
+        <span style={{ flex: 1 }} />
+        <span className="t-num" style={{ fontSize: 10, color: 'var(--slate-500)' }}>1 / 2</span>
+      </div>
+    </div>
+  )
+}
+
+// うら面: 設問 14〜24・運動習慣・結びの一文
+function KclPageBack() {
+  return (
+    <div className="pdf-page" style={{ padding: '40px 48px 34px' }}>
+      <Markers />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 R7-03</div>
+        <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: '0.03em' }}>問診票（うら面・つづき）</span>
+      </div>
+
+      <KclExample />
+
+      <div style={{ marginTop: 8, borderTop: '2px solid var(--slate-900)', paddingTop: 1 }}>
+        <KclSectionHead title="【基本チェックリスト（つづき）】" />
+        {KCL_PRINT_QS.slice(KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} no={KCL_PAGE1_COUNT + i + 1} text={q.text} />)}
+      </div>
+
+      <div style={{ marginTop: 10 }}>
+        <KclSectionHead title="【運動習慣について】" />
         {EXERCISE_QS.map((t, i) => <KclRow key={i} no={i + 1} text={t} />)}
       </div>
 
       <div style={{ flex: 1 }} />
 
-      <div style={{ borderTop: '2.5px solid var(--brand-500)', paddingTop: 5, display: 'flex', alignItems: 'baseline', gap: 10 }}>
-        <span style={{ fontSize: 12, fontWeight: 700 }}>ご回答ありがとうございました。当日はこの用紙を忘れずにお持ちください。</span>
+      <div style={{ textAlign: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.5 }}>
+        ご回答ありがとうございました。<br />当日はこの用紙を<span style={{ textDecoration: 'underline' }}>忘れずにお持ちください</span>。
+      </div>
+      <div style={{ marginTop: 8, borderTop: '2.5px solid var(--brand-500)', paddingTop: 5, display: 'flex' }}>
         <span style={{ flex: 1 }} />
-        <span className="t-num" style={{ fontSize: 10, color: 'var(--slate-500)' }}>{p.pageNo} / {p.total}</span>
+        <span className="t-num" style={{ fontSize: 10, color: 'var(--slate-500)' }}>2 / 2</span>
       </div>
     </div>
   )
@@ -377,6 +402,18 @@ export default function SheetMaker() {
             <RadioCard on={kind === 'kcl'} label="基本チェックリスト 問診票" desc="はい/いいえを塗りつぶす問診票（様式 R7-03）" onClick={() => set({ shKind: 'kcl' })} />
           </div>
         </div>
+        {kind === 'kcl' && (
+          <div>
+            <Overline style={{ marginBottom: 8 }}>この様式について</Overline>
+            <div style={{ fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7 }}>
+              ID・氏名を刷らない<b>全員共通</b>の様式です（嘉島町がそのまま郵送できます）。
+              必要部数はプリンタの部数で指定してください。<br />
+              2 ページ構成のため<b>両面印刷（長辺とじ）</b>で 1 枚に収まります。<br />
+              ID・氏名は当日受付で、右上の破線枠にシール（38.1 × 21.2mm）を貼ります。
+            </div>
+          </div>
+        )}
+        {kind === 'meas' && (
         <div>
           <Overline style={{ marginBottom: 8 }}>作成対象</Overline>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -384,7 +421,8 @@ export default function SheetMaker() {
             <RadioCard on={state.shMode === 'muni'} label="市町村から選ぶ" desc="市町村の登録者全員分を作成" onClick={() => set({ shMode: 'muni' })} />
           </div>
         </div>
-        {state.shMode === 'event' && (
+        )}
+        {kind === 'meas' && state.shMode === 'event' && (
           <div>
             <Overline style={{ marginBottom: 8 }}>測定会</Overline>
             <Select value={evKey} onChange={(e) => set({ shEvent: e.target.value })}
@@ -392,14 +430,14 @@ export default function SheetMaker() {
             <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}>会場の参加者 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{parts.length}</span> 名（五十音順）</div>
           </div>
         )}
-        {state.shMode === 'muni' && (
+        {kind === 'meas' && state.shMode === 'muni' && (
           <div>
             <Overline style={{ marginBottom: 8 }}>市町村</Overline>
             <Select value={state.shMuni} onChange={(e) => set({ shMuni: e.target.value, shWard: 'all' })} options={D.MUNIS.map(m => ({ v: m.id, l: m.name }))} style={{ width: '100%' }} />
             <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}>登録者 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{muniUsers.length}</span> 名</div>
           </div>
         )}
-        {state.shMode === 'muni' && wardOpts.length > 0 && (
+        {kind === 'meas' && state.shMode === 'muni' && wardOpts.length > 0 && (
           <div>
             <Overline style={{ marginBottom: 8 }}>{wardLabel()}</Overline>
             <Select value={ward} onChange={(e) => set({ shWard: e.target.value })}
@@ -407,15 +445,19 @@ export default function SheetMaker() {
             <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}>{ward === 'all' ? '全' + wardLabel() : ward} · 対象 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{parts.length}</span> 名（五十音順）</div>
           </div>
         )}
+        {kind === 'meas' && (
         <div>
           <Overline style={{ marginBottom: 8 }}>予備の空欄用紙</Overline>
           <Select value={String(state.shBlank)} onChange={(e) => set({ shBlank: +e.target.value })}
             options={[{ v: '0', l: '追加しない' }, { v: '3', l: '3 枚追加' }, { v: '5', l: '5 枚追加' }, { v: '10', l: '10 枚追加' }]} style={{ width: '100%' }} />
           <div style={{ fontSize: 11.5, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>当日の新規参加の方用に、氏名・ID が空欄の用紙を末尾に追加します</div>
         </div>
+        )}
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
-            <span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{total}</span> 枚 · A4 縦 · 1 名 1 枚
+            {kind === 'kcl'
+              ? <>2 ページ · A4 縦 · <b>両面で 1 枚</b> · 全員共通</>
+              : <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{total}</span> 枚 · A4 縦 · 1 名 1 枚</>}
           </div>
           <button className="btn btn-primary btn-lg" onClick={() => window.print()}>
             <Icon name="printer" size={17} strokeWidth={1.8} />
@@ -423,16 +465,18 @@ export default function SheetMaker() {
           </button>
           <div style={{ fontSize: 11.5, color: 'var(--fg-3)', lineHeight: 1.6 }}>
             {kind === 'kcl'
-              ? '四隅の黒マーカーと □ の塗りつぶし回答欄が、スキャン時の位置合わせと回答認識の基準になります。'
+              ? '受付で貼るシールには「参加者ID 12345」「氏名 ○○」のようにラベル語も一緒に印字すると、スキャン時にそのまま読み取れます。'
               : '四隅の黒マーカーと 1 マス 1 桁の記入枠が、スキャン時の位置合わせと数字認識の基準になります。'}
           </div>
         </div>
       </div>
 
-      {/* プレビュー */}
+      {/* プレビュー(問診票は全員共通のため 2 ページ固定。部数はプリンタ側で指定) */}
       <div className="pdf-stage">
         <div className="pdf-pages">
-          {pages.map((p, i) => kind === 'kcl' ? <KclPage key={i} p={p} /> : <SheetPage key={i} p={p} />)}
+          {kind === 'kcl'
+            ? <><KclPageFront /><KclPageBack /></>
+            : pages.map((p, i) => <SheetPage key={i} p={p} />)}
         </div>
       </div>
     </div>
