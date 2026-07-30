@@ -236,7 +236,8 @@ const circled = (n) => n <= 20 ? String.fromCharCode(0x245F + n) : String.fromCh
 function MarkOpt({ label, filled }) {
   return (
     <span style={{ display: 'inline-grid', placeItems: 'center', padding: '0 13px', height: 30, border: '2.5px solid #000', borderRadius: 999, background: filled ? '#000' : '#fff', flexShrink: 0 }}>
-      <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '0.04em', color: filled ? '#fff' : '#000' }}>{label}</span>
+      {/* 塗りつぶすと文字は見えなくなるため、塗り済みの見本も文字が消えた全黒で示す(文字はサイズ確保のため黒で残す) */}
+      <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '0.04em', color: '#000' }}>{label}</span>
     </span>
   )
 }
