@@ -123,7 +123,7 @@ function SheetPage({ p }) {
           ・記入枠は項目名の直後に隣接 → Form Parser のラベル:値ペアリングが効きやすい
           ・訂正欄は右端 → 訂正値は行内の最も右の数字クラスタとして正しく読まれる */}
       <div style={{ marginTop: 11, borderTop: '2px solid var(--slate-900)', paddingTop: 2 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '140px 170px auto 44px 1fr', gap: 10, padding: '4px 0 3px', borderBottom: '1px solid var(--slate-300)', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)', alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '140px 170px auto 44px 1fr', gap: 10, padding: '4px 0 3px', borderBottom: '1px solid #000', fontSize: 12.5, letterSpacing: '0.06em', color: 'var(--slate-600)', alignItems: 'end' }}>
           <div>下書き（メモ）</div>
           <div>測定項目</div>
           <div>記入枠</div>
@@ -219,7 +219,9 @@ function SheetPage({ p }) {
    (郵送の宛名合わせ作業を無くし、手書き氏名の旧字体が読めない問題も回避する)。
    ・後期高齢者向けに設問・選択肢は 16pt(≒21.3px)以上。ロゴは載せない(文字を優先)
    ・16pt では A4 片面に 26 問が収まらないため、両面印刷前提の 2 ページ構成(用紙 1 枚)
-   ・回答は「□の塗りつぶし」方式(○囲みは Form Parser が構造化できないため)
+   ・回答はマークシート式(「はい」「いいえ」を印字した楕円を塗りつぶす)。
+     ○囲みは Form Parser が構造化できない。塗りつぶしは四隅マーカー基準の
+     位置照合(濃度判定)で読み取れるため、回答欄は全行で同じ x 位置に揃える
    ・BMI 項目(基本チェックリスト No.12)は測定値から自動判定するため載せず連番を振り直す */
 const KCL_PRINT_QS = KCL_QUESTIONS.filter(q => !q.derived)
 const EXERCISE_QS = [
@@ -230,46 +232,72 @@ const EXERCISE_QS = [
 const KCL_PAGE1_COUNT = 13
 const circled = (n) => n <= 20 ? String.fromCharCode(0x245F + n) : String.fromCharCode(0x3251 + n - 21)
 
-function CheckOpt({ label, filled }) {
+// マークシート式の回答枠。語を印字した楕円をペンで塗りつぶす(記入例では白抜きで塗った状態を示す)
+function MarkOpt({ label, filled }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, lineHeight: 1, flexShrink: 0 }}>
-      <span style={{ width: 19, height: 19, border: '2.5px solid #000', borderRadius: 2, display: 'inline-block', background: filled ? '#000' : '#fff', flexShrink: 0 }} />
-      <span style={{ fontSize: 21, fontWeight: 700, lineHeight: 1, whiteSpace: 'nowrap' }}>{label}</span>
+    <span style={{ display: 'inline-grid', placeItems: 'center', padding: '0 13px', height: 30, border: '2.5px solid #000', borderRadius: 999, background: filled ? '#000' : '#fff', flexShrink: 0 }}>
+      <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '0.04em', color: filled ? '#fff' : '#000' }}>{label}</span>
     </span>
   )
 }
 
 function KclRow({ no, text }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr 176px', gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--slate-200)' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr 196px', gap: 8, alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #000' }}>
       <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.3 }}>{circled(no)}</div>
       <div style={{ fontSize: 21.5, lineHeight: 1.3 }}>{text}</div>
       {/* 回答欄は全行で同じ x 位置に揃える(スキャン時の位置推定を安定させる) */}
-      <div style={{ display: 'flex', gap: 14, justifyContent: 'flex-end', paddingRight: 4, alignSelf: 'center' }}>
-        <CheckOpt label="はい" />
-        <CheckOpt label="いいえ" />
+      <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', paddingRight: 4, alignSelf: 'center' }}>
+        <MarkOpt label="はい" />
+        <MarkOpt label="いいえ" />
       </div>
     </div>
   )
 }
 
-// 記入例(おもて・うら両面に載せ、めくった後も書き方が分かるようにする)
+// 悪い例のミニ楕円(線・レ点・中黒・○囲み・はみ出し・うすい)。白黒コピーでも成立するよう黒のみで描く
+function BadMark({ kind, label }) {
+  return (
+    <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+      <span style={{ position: 'relative', width: 44, height: 21, border: '2px solid #000', borderRadius: 999, display: 'grid', placeItems: 'center', background: kind === 'thin' ? '#bbb' : kind === 'over' ? '#000' : '#fff' }}>
+        {kind === 'line' && <span style={{ position: 'absolute', left: 4, right: 4, top: '46%', borderTop: '2px solid #000', transform: 'rotate(-12deg)' }} />}
+        {kind === 'check' && <span style={{ fontSize: 15, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+        {kind === 'dot' && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#000' }} />}
+        {kind === 'circle' && <span style={{ position: 'absolute', inset: '-5px -7px', border: '2px solid #000', borderRadius: 999 }} />}
+        {kind === 'over' && <span style={{ position: 'absolute', inset: '-4px -7px', background: '#000', borderRadius: 999 }} />}
+      </span>
+      <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>{label}</span>
+    </span>
+  )
+}
+
+// 記入例(良い例/悪い例)。おもて・うら両面に載せ、めくった後も書き方が分かるようにする
 function KclExample() {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8 }}>
-      <span style={{ background: 'var(--slate-900)', color: '#fff', fontSize: 13, fontWeight: 700, padding: '3px 10px', flexShrink: 0 }}>記入例</span>
-      <CheckOpt label="はい" filled />
-      <CheckOpt label="いいえ" />
-      <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--danger-500)', whiteSpace: 'nowrap' }}>※あてはまる方の□を黒くぬりつぶす</span>
+    <div style={{ border: '1.5px solid #000', marginTop: 8, display: 'grid', gridTemplateColumns: '92px 1fr' }}>
+      <div style={{ borderRight: '1.5px solid #000', display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: 700 }}>良い例</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '5px 12px' }}>
+        <span style={{ width: 44, height: 21, background: '#000', borderRadius: 999, flexShrink: 0 }} />
+        <span style={{ fontSize: 14.5, fontWeight: 700 }}>わくの中を、すきまなく黒くぬりつぶす</span>
+      </div>
+      <div style={{ borderTop: '1.5px dashed #000', borderRight: '1.5px solid #000', display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: 700 }}>悪い例</div>
+      <div style={{ borderTop: '1.5px dashed #000', display: 'flex', alignItems: 'flex-start', gap: 18, padding: '9px 12px 5px' }}>
+        <BadMark kind="line" label="線" />
+        <BadMark kind="check" label="レ点" />
+        <BadMark kind="dot" label="中黒" />
+        <BadMark kind="circle" label="○囲み" />
+        <BadMark kind="over" label="はみ出し" />
+        <BadMark kind="thin" label="うすい" />
+      </div>
     </div>
   )
 }
 
 function KclSectionHead({ title }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0 3px', borderBottom: '1px solid var(--slate-300)' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0 3px', borderBottom: '1px solid #000' }}>
       <span style={{ fontSize: 20, fontWeight: 700 }}>{title}</span>
-      <span style={{ fontSize: 12, color: 'var(--slate-600)', letterSpacing: '0.04em' }}>回答欄</span>
+      <span style={{ fontSize: 12, color: '#000', letterSpacing: '0.04em' }}>回答欄</span>
     </div>
   )
 }
@@ -282,38 +310,38 @@ function KclPageFront() {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 R7-03</div>
-            <div style={{ fontSize: 9.5, color: 'var(--slate-500)', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
+            <div style={{ fontSize: 10.5, border: '1px solid #000', padding: '2px 8px', fontWeight: 600 }}>様式 R7-03</div>
+            <div style={{ fontSize: 9.5, color: '#444', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
           <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.03em', marginTop: 8 }}>令和7年度 からだデータ測定会 問診票</div>
         </div>
         {/* ID・氏名シール貼付欄(シール 38.1×21.2mm + 貼りズレ余白 約2mm。
-            設問と誤認しないようグレー破線・受付スタッフが当日貼る) */}
-        <div style={{ width: 160, height: 92, border: '2px dashed var(--slate-400)', borderRadius: 4, flexShrink: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
-          <div style={{ fontSize: 11.5, color: 'var(--slate-500)', lineHeight: 1.6 }}>ID・氏名シール貼付欄<br />（受付で貼ります）</div>
+            回答楕円と誤認しないよう破線・受付スタッフが当日貼る) */}
+        <div style={{ width: 160, height: 92, border: '2px dashed #000', borderRadius: 4, flexShrink: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+          <div style={{ fontSize: 11.5, color: '#333', lineHeight: 1.6 }}>ID・氏名シール貼付欄<br />（受付で貼ります）</div>
         </div>
       </div>
 
-      <div style={{ border: '2px solid var(--slate-900)', padding: '7px 12px', marginTop: 9, lineHeight: 1.5 }}>
+      <div style={{ border: '2px solid #000', padding: '7px 12px', marginTop: 9, lineHeight: 1.5 }}>
         <span style={{ fontSize: 21, fontWeight: 700 }}>事前にご記入のうえ、測定<span style={{ textDecoration: 'underline' }}>当日</span>に受付へお渡しください。</span><br />
-        <span style={{ fontSize: 16.5, fontWeight: 700, color: 'var(--danger-600)' }}>あてはまる方の□は、濃いペンで黒くぬりつぶしてください。</span><br />
-        <span style={{ fontSize: 16.5, fontWeight: 600, color: 'var(--slate-700)' }}>ID・氏名を書く必要はありません（受付でシールを貼ります）。</span>
+        <span style={{ fontSize: 16.5, fontWeight: 700, textDecoration: 'underline' }}>あてはまる方（はい・いいえ）を、濃いペンで黒くぬりつぶしてください。</span><br />
+        <span style={{ fontSize: 16.5, fontWeight: 600 }}>ID・氏名を書く必要はありません（受付でシールを貼ります）。</span>
       </div>
 
       <KclExample />
 
-      <div style={{ marginTop: 8, borderTop: '2px solid var(--slate-900)', paddingTop: 1 }}>
+      <div style={{ marginTop: 8, borderTop: '2px solid #000', paddingTop: 1 }}>
         <KclSectionHead title="【基本チェックリスト】" />
         {KCL_PRINT_QS.slice(0, KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} no={i + 1} text={q.text} />)}
       </div>
 
       <div style={{ flex: 1 }} />
 
-      <div style={{ borderTop: '2.5px solid var(--brand-500)', paddingTop: 6, display: 'flex', alignItems: 'baseline', gap: 10 }}>
+      <div style={{ borderTop: '2px solid #000', paddingTop: 6, display: 'flex', alignItems: 'baseline', gap: 10 }}>
         <span style={{ flex: 1 }} />
         <span style={{ fontSize: 20, fontWeight: 700 }}>うら面につづきます ➡</span>
         <span style={{ flex: 1 }} />
-        <span className="t-num" style={{ fontSize: 10, color: 'var(--slate-500)' }}>1 / 2</span>
+        <span className="t-num" style={{ fontSize: 10, color: '#555' }}>1 / 2</span>
       </div>
     </div>
   )
@@ -325,13 +353,13 @@ function KclPageBack() {
     <div className="pdf-page" style={{ padding: '40px 48px 34px' }}>
       <Markers />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 R7-03</div>
+        <div style={{ fontSize: 10.5, border: '1px solid #000', padding: '2px 8px', fontWeight: 600 }}>様式 R7-03</div>
         <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: '0.03em' }}>問診票（うら面・つづき）</span>
       </div>
 
       <KclExample />
 
-      <div style={{ marginTop: 8, borderTop: '2px solid var(--slate-900)', paddingTop: 1 }}>
+      <div style={{ marginTop: 8, borderTop: '2px solid #000', paddingTop: 1 }}>
         <KclSectionHead title="【基本チェックリスト（つづき）】" />
         {KCL_PRINT_QS.slice(KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} no={KCL_PAGE1_COUNT + i + 1} text={q.text} />)}
       </div>
@@ -346,9 +374,9 @@ function KclPageBack() {
       <div style={{ textAlign: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.5 }}>
         ご回答ありがとうございました。<br />当日はこの用紙を<span style={{ textDecoration: 'underline' }}>忘れずにお持ちください</span>。
       </div>
-      <div style={{ marginTop: 8, borderTop: '2.5px solid var(--brand-500)', paddingTop: 5, display: 'flex' }}>
+      <div style={{ marginTop: 8, borderTop: '2px solid #000', paddingTop: 5, display: 'flex' }}>
         <span style={{ flex: 1 }} />
-        <span className="t-num" style={{ fontSize: 10, color: 'var(--slate-500)' }}>2 / 2</span>
+        <span className="t-num" style={{ fontSize: 10, color: '#555' }}>2 / 2</span>
       </div>
     </div>
   )
@@ -399,7 +427,7 @@ export default function SheetMaker() {
           <Overline style={{ marginBottom: 8 }}>用紙の種類</Overline>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <RadioCard on={kind === 'meas'} label="体力測定 記録用紙" desc="測定値を記入する用紙（様式 R7-02）" onClick={() => set({ shKind: 'meas' })} />
-            <RadioCard on={kind === 'kcl'} label="基本チェックリスト 問診票" desc="はい/いいえを塗りつぶす問診票（様式 R7-03）" onClick={() => set({ shKind: 'kcl' })} />
+            <RadioCard on={kind === 'kcl'} label="基本チェックリスト 問診票" desc="マークシート式の問診票（様式 R7-03）" onClick={() => set({ shKind: 'kcl' })} />
           </div>
         </div>
         {kind === 'kcl' && (
