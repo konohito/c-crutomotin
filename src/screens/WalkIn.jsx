@@ -6,8 +6,8 @@ import { createUserDoc, saveMeasurement } from '../lib/realdata.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
-/* 飛び込み読み込み — 台帳に登録の無い当日参加者の受付キュー。
-   飛び込み用記録用紙(様式 R7-02W)をスキャンすると、通常の取り込みではなくここに届く。
+/* 飛び込み取り込み — 台帳に登録の無い当日参加者の受付キュー。
+   飛び込み用の記録用紙・問診票(様式 R7-02W / R7-03W)をスキャンすると、通常の取り込みではなくここに届く。
    流れ: pending(受付待ち)
      → 仮登録して取り込み(利用者を walkIn フラグ付きで作成 + 測定値を本登録。台帳一覧にはまだ出ない)
      → この時点で結果用紙(PDF 出力)が使える
@@ -137,9 +137,9 @@ export default function WalkIn() {
           <Icon name="imp" size={22} />
         </div>
         <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>飛び込み読み込み</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>飛び込み取り込み</div>
           <div style={{ fontSize: 12.5, color: 'var(--fg-3)', marginTop: 2 }}>
-            飛び込み用記録用紙（様式 R7-02W）のスキャン結果がここに届きます。仮登録 → 結果用紙出力 → 正式登録の順に進めます
+            飛び込み用の記録用紙・問診票（様式 R7-02W / R7-03W）のスキャン結果がここに届きます。仮登録 → 結果用紙出力 → 正式登録の順に進めます
           </div>
         </div>
         <div style={{ fontSize: 13, color: 'var(--fg-2)' }}>受付待ち <b className="t-num" style={{ fontSize: 18 }}>{nPending}</b> 件</div>
@@ -147,13 +147,13 @@ export default function WalkIn() {
 
       {!dbEnabled() && (
         <Card pad style={{ fontSize: 12.5, color: 'var(--fg-3)', lineHeight: 1.7 }}>
-          デモ環境のためサンプル 1 件を表示しています。本番では、様式 R7-02W をアップロードすると自動でここに振り分けられます。
+          デモ環境のためサンプル 1 件を表示しています。本番では、様式 R7-02W / R7-03W をアップロードすると自動でここに振り分けられます。
         </Card>
       )}
 
       {list.length === 0 && (
         <Card pad style={{ textAlign: 'center', color: 'var(--fg-3)', fontSize: 13, padding: 40 }}>
-          飛び込みの読み取りはまだありません。用紙作成の「飛び込み用 記録用紙」を印刷し、記入後にアップロードしてください。
+          飛び込みの読み取りはまだありません。用紙作成の「飛び込み用 記録用紙」（R7-02W / R7-03W）を印刷し、記入後にアップロードしてください。
         </Card>
       )}
 

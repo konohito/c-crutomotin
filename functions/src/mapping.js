@@ -227,9 +227,11 @@ function mapDocumentToSheet(document) {
     else if (isKana(label) && !ocrKana) { ocrKana = value }
     else if (isId(label) && !ocrId) { ocrId = value.replace(/[^\d]/g, '') }
   }
-  // 飛び込み用紙(様式 R7-02W)の判定: 用紙に刷った様式番号の文字で機械判別する
+  // 飛び込み用紙(様式 R7-02W=記録用紙 / R7-03W=問診票)の判定:
+  // 用紙に刷った様式番号の文字で機械判別する
   // (norm は空白・ハイフンを除去し小文字化するため R7-02W → r702w)
-  const walkIn = norm(document.text || '').includes('r702w')
+  const nt = norm(document.text || '')
+  const walkIn = nt.includes('r702w') || nt.includes('r703w')
   // ペアリングで数値が取れなかった項目を座標ベースで補完する
   const fallback = spatialFallback(document, fields)
   // 読み取り失敗時の原因調査用(取り込みキューの ocrDebug に保存される)

@@ -248,7 +248,7 @@ function ProdImport() {
   }, [batchId])
 
   // 却下済みは一覧から隠す（文書は監査のため Firestore に残る）
-  // 飛び込み用紙(R7-02W)は専用の「飛び込み読み込み」画面で扱うため、通常キューには出さない
+  // 飛び込み用紙(R7-02W)は専用の「飛び込み取り込み」画面で扱うため、通常キューには出さない
   const nWalkIn = queue.filter(r => r.walkIn && r.status !== 'rejected').length
   const enriched = queue.filter(r => r.status !== 'rejected' && !r.walkIn).map(rec => ({ rec, u: matchUser(rec) }))
   const nDone = enriched.filter(x => x.rec.status === 'committed').length
@@ -299,7 +299,7 @@ function ProdImport() {
           <div style={{ fontSize: 15, fontWeight: 600 }}>読み取りキュー</div>
           <div style={{ fontSize: 12.5, color: 'var(--fg-3)', marginTop: 2 }}>
             スマホの「用紙アップロード」から送信すると、自動読み取りの結果がここに届きます
-            {nWalkIn > 0 && <span style={{ color: 'var(--brand-600)', fontWeight: 600 }}>　·　飛び込み用紙 {nWalkIn} 件は「飛び込み読み込み」に振り分けました</span>}
+            {nWalkIn > 0 && <span style={{ color: 'var(--brand-600)', fontWeight: 600 }}>　·　飛び込み用紙 {nWalkIn} 件は「飛び込み取り込み」に振り分けました</span>}
           </div>
         </div>
         {batches && batches.length > 0 && (

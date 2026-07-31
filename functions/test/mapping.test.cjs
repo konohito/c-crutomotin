@@ -137,6 +137,13 @@ check('fb walk5max stays null', r3.fields.walk5max.value === null)
 check('fb debug lists filled cids', Array.isArray(r3.debug.fallback) && r3.debug.fallback.includes('height') && !r3.debug.fallback.includes('gripR'))
 check('fb debug pairs recorded', Array.isArray(r3.debug.pairs) && r3.debug.pairs.length === 3)
 
+// --- 3.5 飛び込み用紙(R7-02W / R7-03W)の判定 ---
+const wdoc = (t) => ({ text: t, pages: [] })
+check('walkIn R7-02W', mapDocumentToSheet(wdoc('様式 R7-02W 令和7年度')).walkIn === true)
+check('walkIn R7-03W', mapDocumentToSheet(wdoc('様式R7-03W 問診票')).walkIn === true)
+check('walkIn normal sheet false', mapDocumentToSheet(wdoc('様式 R7-02 記録用紙')).walkIn === false)
+check('walkIn kcl false', mapDocumentToSheet(wdoc('様式 R7-03 問診票')).walkIn === false)
+
 // --- 4. 補助関数 ---
 check('digitsToValue with dot', digitsToValue('154.3', [3, 1]) === 154.3)
 check('digitsToValue insert dot', digitsToValue('240', [2, 1]) === 24.0)
