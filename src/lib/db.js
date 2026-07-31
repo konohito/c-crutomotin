@@ -111,7 +111,7 @@ export async function watchRecognitions(batchId, cb) {
   })
 }
 
-// 飛び込み読み込みキュー(walkins)をリアルタイム購読する。unsubscribe 関数を返す。
+// 飛び込み取り込みキュー(walkins)をリアルタイム購読する。unsubscribe 関数を返す。
 export async function watchWalkins(cb) {
   if (!dbEnabled()) return () => {}
   const { firestore, db } = await sdk()

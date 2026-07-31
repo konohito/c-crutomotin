@@ -323,6 +323,9 @@ function KclExampleRow() {
   )
 }
 
+// 飛び込み用の空欄 ID 表(採番後に受付で手書きする)
+const BLANK_P = { uidDigits: ['', '', '', '', ''], strip: Array.from({ length: 20 }, () => 'transparent'), name: '', kana: '' }
+
 // 県提出スタイル用: 参加者 ID・氏名を印字(記録用紙と同じ罫線テーブル構成で既存の OCR ペアリングが効く)
 function KclIdTable({ p }) {
   return (
@@ -355,20 +358,22 @@ function KclIdTable({ p }) {
 
 // おもて面: タイトル・ID 欄・記入例・設問 1〜13。
 // p を渡すと ID・氏名を印字する県提出スタイル、無しなら全員共通のシール運用スタイル。
-function KclPageFront({ p }) {
+function KclPageFront({ p, walkIn }) {
   return (
     <div className="pdf-page" style={{ padding: '40px 48px 34px' }}>
       <Markers />
+      {/* 飛び込み用の識別マーク(記録用紙 R7-02W と共通の◆) */}
+      {walkIn && <div style={{ position: 'absolute', right: 56, bottom: 32, width: 13, height: 13, background: 'var(--slate-900)', transform: 'rotate(45deg)' }} />}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ fontSize: 10.5, border: '1px solid #000', padding: '2px 8px', fontWeight: 600 }}>様式 R7-03</div>
+            <div style={{ fontSize: 10.5, border: '1px solid #000', padding: '2px 8px', fontWeight: 600 }}>様式 {walkIn ? 'R7-03W' : 'R7-03'}</div>
             <div style={{ fontSize: 9.5, color: '#444', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
           {/* 印字スタイルは右の ID 表が広いぶんタイトルを少し縮めて 1 行に収める */}
-          <div style={{ fontSize: p ? 23 : 26, fontWeight: 700, letterSpacing: '0.02em', marginTop: 8, whiteSpace: 'nowrap' }}>令和7年度 からだデータ測定会 問診票</div>
+          <div style={{ fontSize: (p || walkIn) ? 23 : 26, fontWeight: 700, letterSpacing: '0.02em', marginTop: 8, whiteSpace: 'nowrap' }}>令和7年度 からだデータ測定会 問診票</div>
         </div>
-        {p ? <KclIdTable p={p} /> : (
+        {(p || walkIn) ? <KclIdTable p={p || BLANK_P} /> : (
           /* ID・氏名シール貼付欄(シール 38.1×21.2mm + 貼りズレ余白 約2mm。
              回答楕円と誤認しないよう破線・受付スタッフが当日貼る) */
           <div style={{ width: 160, height: 92, border: '2px dashed #000', borderRadius: 4, flexShrink: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
@@ -380,7 +385,9 @@ function KclPageFront({ p }) {
       <div style={{ border: '2px solid #000', padding: '7px 12px', marginTop: 9, lineHeight: 1.5 }}>
         <span style={{ fontSize: 21, fontWeight: 700 }}>事前にご記入のうえ、測定<span style={{ textDecoration: 'underline' }}>当日</span>に受付へお渡しください。</span><br />
         <span style={{ fontSize: 16.5, fontWeight: 700, textDecoration: 'underline' }}>あてはまる方（はい・いいえ）を、濃いペンで黒くぬりつぶしてください。</span><br />
-        {p
+        {walkIn
+          ? <span style={{ fontSize: 16.5, fontWeight: 600 }}>氏名とふりがなを、右上のわくにご記入ください（ID は受付で書きます）。</span>
+          : p
           ? <span style={{ fontSize: 16.5, fontWeight: 600 }}>ID・氏名は印字済みです（ご自身で書く必要はありません）。</span>
           : <span style={{ fontSize: 16.5, fontWeight: 600 }}>ID・氏名を書く必要はありません（受付でシールを貼ります）。</span>}
       </div>
@@ -406,12 +413,13 @@ function KclPageFront({ p }) {
 }
 
 // うら面: 設問 14〜24・運動習慣・結びの一文
-function KclPageBack() {
+function KclPageBack({ walkIn }) {
   return (
     <div className="pdf-page" style={{ padding: '40px 48px 34px' }}>
       <Markers />
+      {walkIn && <div style={{ position: 'absolute', right: 56, bottom: 32, width: 13, height: 13, background: 'var(--slate-900)', transform: 'rotate(45deg)' }} />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ fontSize: 10.5, border: '1px solid #000', padding: '2px 8px', fontWeight: 600 }}>様式 R7-03</div>
+        <div style={{ fontSize: 10.5, border: '1px solid #000', padding: '2px 8px', fontWeight: 600 }}>様式 {walkIn ? 'R7-03W' : 'R7-03'}</div>
         <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: '0.03em' }}>問診票（うら面・つづき）</span>
       </div>
 
@@ -447,6 +455,7 @@ export default function SheetMaker() {
   const kclId = state.shKclId || 'seal'
   const perUser = kind === 'meas' || (kind === 'kcl' && kclId === 'print')
   const walkN = state.shWalkN || 5
+  const walkDoc = state.shWalkDoc || 'both' // 飛び込み用の内訳: both(記録+問診) / meas / kcl
   const evs = allEvents(state).filter(e => e.kind === 'meas' && e.code && e.date.slice(0, 4) === '2025').sort((a, b) => a.date.localeCompare(b.date))
   const defEv = evs.find(e => e.date >= D.TODAY) || evs[0]
   const evKey = state.shEvent || (defEv ? defEv.code + '@' + defEv.date : '')
@@ -495,14 +504,19 @@ export default function SheetMaker() {
         </div>
         {kind === 'walkin' && (
           <div>
-            <Overline style={{ marginBottom: 8 }}>枚数</Overline>
-            <Select value={String(walkN)} onChange={(e) => set({ shWalkN: +e.target.value })}
-              options={[{ v: '3', l: '3 枚' }, { v: '5', l: '5 枚' }, { v: '10', l: '10 枚' }, { v: '20', l: '20 枚' }]} style={{ width: '100%' }} />
+            <Overline style={{ marginBottom: 8 }}>用紙の内訳</Overline>
+            <Select value={walkDoc} onChange={(e) => set({ shWalkDoc: e.target.value })}
+              options={[{ v: 'both', l: '記録用紙 + 問診票（セット）' }, { v: 'meas', l: '記録用紙のみ' }, { v: 'kcl', l: '基本チェックリスト 問診票のみ' }]} style={{ width: '100%' }} />
+            <div style={{ marginTop: 12 }}>
+              <Overline style={{ marginBottom: 8 }}>人数分</Overline>
+              <Select value={String(walkN)} onChange={(e) => set({ shWalkN: +e.target.value })}
+                options={[{ v: '3', l: '3 名分' }, { v: '5', l: '5 名分' }, { v: '10', l: '10 名分' }, { v: '20', l: '20 名分' }]} style={{ width: '100%' }} />
+            </div>
             <div style={{ fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7, marginTop: 10 }}>
-              台帳に登録の無い当日参加（飛び込み）の方専用の記録用紙です。
+              台帳に登録の無い当日参加（飛び込み）の方専用の用紙です。
               ID は空欄のまま、氏名・ふりがな等を受付で手書きします。<br />
-              様式番号 <b>R7-02W</b> と右下の小さな <b>◆</b> が飛び込み識別マークで、
-              スキャンすると通常の取り込みではなく<b>「飛び込み読み込み」</b>に自動で振り分けられます。
+              様式番号 <b>R7-02W / R7-03W</b> と右下の小さな <b>◆</b> が飛び込み識別マークで、
+              スキャンすると通常の取り込みではなく<b>「飛び込み取り込み」</b>に自動で振り分けられます。
             </div>
           </div>
         )}
@@ -569,7 +583,7 @@ export default function SheetMaker() {
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
             {kind === 'walkin'
-              ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{walkN}</span> 枚 · A4 縦 · 飛び込み用</>
+              ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{walkN}</span> 名分 · {walkDoc === 'both' ? '記録用紙 + 問診票（両面）' : walkDoc === 'meas' ? '記録用紙' : '問診票（両面）'} · 飛び込み用</>
               : kind === 'kcl'
               ? (kclId === 'print'
                 ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{total}</span> 名 · A4 縦 · <b>両面で 1 名 1 枚</b></>
@@ -597,7 +611,12 @@ export default function SheetMaker() {
       <div className="pdf-stage">
         <div className="pdf-pages">
           {kind === 'walkin'
-            ? Array.from({ length: walkN }, (_, i) => <SheetPage key={i} p={mk(null, i, walkN)} walkIn />)
+            ? Array.from({ length: walkN }, (_, i) => i).flatMap(i => {
+              const out = []
+              if (walkDoc !== 'kcl') out.push(<SheetPage key={'m' + i} p={mk(null, i, walkN)} walkIn />)
+              if (walkDoc !== 'meas') out.push(<KclPageFront key={'kf' + i} walkIn />, <KclPageBack key={'kb' + i} walkIn />)
+              return out
+            })
             : kind === 'kcl'
             ? (kclId === 'print'
               ? pages.flatMap((p, i) => [<KclPageFront key={'f' + i} p={p} />, <KclPageBack key={'b' + i} />])
