@@ -85,6 +85,15 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '512MiB', timeoutSecond
       no: parsed.no, storagePath: name, threshold: cfg.reviewThreshold,
     })
     await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: FieldValue.serverTimestamp() })
+    // 飛び込み用紙(様式 R7-02W)はトップレベルの walkins にも複製し、
+    // 「飛び込み読み込み」画面が索引なしの単純クエリで購読できるようにする
+    if (rec.walkIn) {
+      await db.collection('walkins').doc(ref.id).set({
+        ...rec, batchId: parsed.batchId, bucket,
+        walkinStatus: 'pending', // pending(受付待ち) → committed(仮登録・取り込み済) → registered(台帳登録済)
+        recognizedAt: FieldValue.serverTimestamp(),
+      })
+    }
     await touchBatch()
   } catch (err) {
     console.error('onSheetImageUpload error:', name, err)

@@ -16,6 +16,7 @@ import Analytics from './screens/Analytics.jsx'
 import Calendar from './screens/Calendar.jsx'
 import PdfExport from './screens/PdfExport.jsx'
 import SheetMaker from './screens/SheetMaker.jsx'
+import WalkIn from './screens/WalkIn.jsx'
 import Mobile from './screens/Mobile.jsx'
 import Staff from './screens/Staff.jsx'
 import ReviewModal from './modals/ReviewModal.jsx'
@@ -30,6 +31,7 @@ const BASE = import.meta.env.BASE_URL
 const TITLES = {
   dash: ['ダッシュボード', '令和7年度 介護予防・体力測定の状況'],
   imp: ['取り込み', '記録用紙のスキャン読み取りと本登録'],
+  walkin: ['飛び込み読み込み', '台帳未登録の当日参加者の受付・登録（様式 R7-02W）'],
   csv: ['利用者情報取り込み', '名簿・記録 CSV からの一括登録'],
   ros: ['利用者台帳', () => `登録 ${D.users.length} 名 · ${D.MUNIS.length} 市町村`],
   det: ['個人詳細', '時系列の測定結果と評価'],
@@ -45,6 +47,7 @@ const TITLES = {
 const NAV_MAIN = [
   ['dash', 'ダッシュボード'],
   ['imp', '取り込み'],
+  ['walkin', '飛び込み読み込み'],
   ['csv', '利用者情報取り込み'],
   ['cal', 'カレンダー'],
   ['sheet', '用紙作成'],
@@ -205,7 +208,7 @@ function Header() {
 
 const SCREENS = {
   dash: Dashboard, imp: ImportScreen, csv: CsvImport, ros: Roster, det: Detail,
-  ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, mob: Mobile, exp: CsvExport, staff: Staff,
+  ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, mob: Mobile, exp: CsvExport, staff: Staff, walkin: WalkIn,
 }
 
 function AppInner() {

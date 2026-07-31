@@ -111,6 +111,34 @@ export async function watchRecognitions(batchId, cb) {
   })
 }
 
+// 飛び込み読み込みキュー(walkins)をリアルタイム購読する。unsubscribe 関数を返す。
+export async function watchWalkins(cb) {
+  if (!dbEnabled()) return () => {}
+  const { firestore, db } = await sdk()
+  const q = firestore.query(
+    firestore.collection(db, 'walkins'),
+    firestore.orderBy('recognizedAt', 'desc'),
+    firestore.limit(200),
+  )
+  return firestore.onSnapshot(q, (snap) => {
+    cb(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  })
+}
+
+// 飛び込みエントリのステータス更新(pending → committed → registered)
+export async function updateWalkin(walkinId, patch) {
+  if (!dbEnabled()) return
+  const { firestore, db } = await sdk()
+  await firestore.updateDoc(firestore.doc(db, 'walkins', walkinId), patch)
+}
+
+// 利用者の walkIn フラグを外す(正式登録 = 台帳に出す)
+export async function clearWalkInFlag(userId) {
+  if (!dbEnabled()) return
+  const { firestore, db } = await sdk()
+  await firestore.setDoc(firestore.doc(db, 'users', userId), { walkIn: false }, { merge: true })
+}
+
 // 記録用紙の値 → measurement ドキュメント（engine.commitSheet と同じ算出。純粋）
 export function buildMeasurementDoc(user, finalValues, meta = {}) {
   const v = {}
