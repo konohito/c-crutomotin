@@ -227,6 +227,9 @@ function mapDocumentToSheet(document) {
     else if (isKana(label) && !ocrKana) { ocrKana = value }
     else if (isId(label) && !ocrId) { ocrId = value.replace(/[^\d]/g, '') }
   }
+  // 飛び込み用紙(様式 R7-02W)の判定: 用紙に刷った様式番号の文字で機械判別する
+  // (norm は空白・ハイフンを除去し小文字化するため R7-02W → r702w)
+  const walkIn = norm(document.text || '').includes('r702w')
   // ペアリングで数値が取れなかった項目を座標ベースで補完する
   const fallback = spatialFallback(document, fields)
   // 読み取り失敗時の原因調査用(取り込みキューの ocrDebug に保存される)
@@ -234,7 +237,7 @@ function mapDocumentToSheet(document) {
     fallback,
     pairs: pairs.slice(0, 40).map(p => ({ label: String(p.label).slice(0, 40), value: String(p.value).slice(0, 40), conf: p.conf })),
   }
-  return { ocrName, ocrKana, ocrId, nameConf, fields, debug }
+  return { ocrName, ocrKana, ocrId, nameConf, fields, walkIn, debug }
 }
 
 module.exports = {

@@ -39,6 +39,16 @@ service cloud.firestore {
       allow read: if isStaff();
     }
 
+    // 飛び込み読み込みキュー(様式 R7-02W)。作成はバックエンドのみ。
+    // 職員は閲覧と、仮登録・台帳登録に伴うステータス更新のみ許可する。
+    match /walkins/{walkinId} {
+      allow read: if isStaff();
+      allow update: if isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['walkinStatus', 'userId', 'userName', 'registeredAt', 'reviewedBy']);
+      allow create, delete: if false;
+    }
+
     // 利用者台帳。承認職員が閲覧・編集可（氏名・市町村/行政区・介護度・電話 等）。削除は不可。
     match /users/{userId} {
       allow read: if isStaff();

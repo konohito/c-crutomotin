@@ -45,10 +45,13 @@ function Markers() {
   </>)
 }
 
-function SheetPage({ p }) {
+function SheetPage({ p, walkIn }) {
   return (
     <div className="pdf-page" style={{ padding: '44px 52px 40px' }}>
       <Markers />
+      {/* 飛び込み用の識別マーク: 右下マーカーの左に小さな◆(45°回転の正方形)。
+          見た目はさりげないが、スキャン時はこの様式番号(R7-02W)の文字で機械判別する */}
+      {walkIn && <div style={{ position: 'absolute', right: 56, bottom: 32, width: 13, height: 13, background: 'var(--slate-900)', transform: 'rotate(45deg)' }} />}
 
       {/* ヘッダー(右はスタッフ記入欄。利用者が記載しないよう明記) */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
@@ -56,7 +59,7 @@ function SheetPage({ p }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 26, display: 'block' }} />
             <span className="t-display" style={{ fontSize: 13, letterSpacing: '0.05em', color: 'var(--slate-800)' }}>motion</span>
-            <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 R7-02</div>
+            <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 {walkIn ? 'R7-02W' : 'R7-02'}</div>
             <div style={{ fontSize: 9.5, color: 'var(--slate-500)', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
           <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.04em', marginTop: 7 }}>令和7年度 体力測定 記録用紙</div>
@@ -232,14 +235,17 @@ const EXERCISE_QS = [
 const KCL_PAGE1_COUNT = 13
 const circled = (n) => n <= 20 ? String.fromCharCode(0x245F + n) : String.fromCharCode(0x3251 + n - 21)
 
-// マークシート式の回答枠。語を印字した楕円をペンで塗りつぶす(記入例では白抜きで塗った状態を示す)
-function MarkOpt({ label, filled }) {
-  return (
-    <span style={{ display: 'inline-grid', placeItems: 'center', padding: '0 13px', height: 30, border: '2.5px solid #000', borderRadius: 999, background: filled ? '#000' : '#fff', flexShrink: 0 }}>
-      {/* 塗りつぶすと文字は見えなくなるため、塗り済みの見本も文字が消えた全黒で示す(文字はサイズ確保のため黒で残す) */}
-      <span style={{ fontSize: 20, fontWeight: 700, lineHeight: 1, whiteSpace: 'nowrap', letterSpacing: '0.04em', color: '#000' }}>{label}</span>
-    </span>
-  )
+/* マークシート方式の回答欄。列見出し(はい/いいえ)をセクション上部に隣接して置き、
+   各設問行にはその真下に空の楕円だけを並べる(試験のマークシートと同じ構成)。
+   列の x 位置を全行・全ページで固定し、読み取りは四隅マーカー基準の濃度判定で行う。 */
+const KCL_BUBBLE_W = 66
+const KCL_BUBBLE_GAP = 22
+function KclBubble({ filled }) {
+  return <span style={{ width: KCL_BUBBLE_W, height: 26, border: '2.5px solid #000', borderRadius: 999, background: filled ? '#000' : '#fff', flexShrink: 0, display: 'inline-block' }} />
+}
+// 回答 2 列(はい/いいえ)を同じ x 位置で並べる共通ラッパ
+function KclAnsCols({ children }) {
+  return <div style={{ display: 'flex', gap: KCL_BUBBLE_GAP, justifyContent: 'flex-end', paddingRight: 6, alignItems: 'center' }}>{children}</div>
 }
 
 function KclRow({ no, text }) {
@@ -247,11 +253,7 @@ function KclRow({ no, text }) {
     <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr 196px', gap: 8, alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #000' }}>
       <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.3 }}>{circled(no)}</div>
       <div style={{ fontSize: 21.5, lineHeight: 1.3 }}>{text}</div>
-      {/* 回答欄は全行で同じ x 位置に揃える(スキャン時の位置推定を安定させる) */}
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', paddingRight: 4, alignSelf: 'center' }}>
-        <MarkOpt label="はい" />
-        <MarkOpt label="いいえ" />
-      </div>
+      <KclAnsCols><KclBubble /><KclBubble /></KclAnsCols>
     </div>
   )
 }
@@ -294,20 +296,29 @@ function KclExample() {
   )
 }
 
-function KclSectionHead({ title, example }) {
+function KclSectionHead({ title }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0 4px', borderBottom: '1px solid #000' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', padding: '3px 0 4px', borderBottom: '1px solid #000' }}>
       <span style={{ fontSize: 20, fontWeight: 700 }}>{title}</span>
-      {example ? (
-        /* 塗りつぶし済みの見本を回答欄の真上に置く(MarkOpt を使い、設問行の回答欄と列位置を揃える) */
-        <span style={{ display: 'flex', alignItems: 'center', gap: 12, paddingRight: 4 }}>
-          <span style={{ background: '#000', color: '#fff', fontSize: 12.5, fontWeight: 700, padding: '2px 8px' }}>記入例</span>
-          <MarkOpt label="はい" filled />
-          <MarkOpt label="いいえ" />
-        </span>
-      ) : (
-        <span style={{ fontSize: 12, color: '#000', letterSpacing: '0.04em' }}>回答欄</span>
-      )}
+      {/* 回答列の見出し。バブルと同じ幅・間隔で真上に隣接させる */}
+      <KclAnsCols>
+        <span style={{ width: KCL_BUBBLE_W, textAlign: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}>はい</span>
+        <span style={{ width: KCL_BUBBLE_W, textAlign: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}>いいえ</span>
+      </KclAnsCols>
+    </div>
+  )
+}
+
+// 記入例の行(「はい」と答える場合の塗り方を、実際の回答行と同じ列位置で示す)
+function KclExampleRow() {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr 176px', gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #000' }}>
+      <div />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ background: '#000', color: '#fff', fontSize: 13, fontWeight: 700, padding: '2px 9px' }}>記入例</span>
+        <span style={{ fontSize: 16, fontWeight: 600 }}>「はい」と答えるとき</span>
+      </div>
+      <KclAnsCols><KclBubble filled /><KclBubble /></KclAnsCols>
     </div>
   )
 }
@@ -377,7 +388,8 @@ function KclPageFront({ p }) {
       <KclExample />
 
       <div style={{ marginTop: 8 }}>
-        <KclSectionHead title="【基本チェックリスト】" example />
+        <KclSectionHead title="【基本チェックリスト】" />
+        <KclExampleRow />
         {KCL_PRINT_QS.slice(0, KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} no={i + 1} text={q.text} />)}
       </div>
 
@@ -406,7 +418,7 @@ function KclPageBack() {
       <KclExample />
 
       <div style={{ marginTop: 8 }}>
-        <KclSectionHead title="【基本チェックリスト（つづき）】" example />
+        <KclSectionHead title="【基本チェックリスト（つづき）】" />
         {KCL_PRINT_QS.slice(KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} no={KCL_PAGE1_COUNT + i + 1} text={q.text} />)}
       </div>
 
@@ -433,7 +445,8 @@ export default function SheetMaker() {
   const kind = state.shKind || 'meas'
   // 問診票の ID・氏名: シール運用(全員共通・介護予防健診) / 用紙に印字(1 名 1 枚・県提出用)
   const kclId = state.shKclId || 'seal'
-  const perUser = kind === 'meas' || kclId === 'print'
+  const perUser = kind === 'meas' || (kind === 'kcl' && kclId === 'print')
+  const walkN = state.shWalkN || 5
   const evs = allEvents(state).filter(e => e.kind === 'meas' && e.code && e.date.slice(0, 4) === '2025').sort((a, b) => a.date.localeCompare(b.date))
   const defEv = evs.find(e => e.date >= D.TODAY) || evs[0]
   const evKey = state.shEvent || (defEv ? defEv.code + '@' + defEv.date : '')
@@ -477,8 +490,22 @@ export default function SheetMaker() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <RadioCard on={kind === 'meas'} label="体力測定 記録用紙" desc="測定値を記入する用紙（様式 R7-02）" onClick={() => set({ shKind: 'meas' })} />
             <RadioCard on={kind === 'kcl'} label="基本チェックリスト 問診票" desc="マークシート式の問診票（様式 R7-03）" onClick={() => set({ shKind: 'kcl' })} />
+            <RadioCard on={kind === 'walkin'} label="飛び込み用 記録用紙" desc="台帳未登録の当日参加者用（様式 R7-02W）" onClick={() => set({ shKind: 'walkin' })} />
           </div>
         </div>
+        {kind === 'walkin' && (
+          <div>
+            <Overline style={{ marginBottom: 8 }}>枚数</Overline>
+            <Select value={String(walkN)} onChange={(e) => set({ shWalkN: +e.target.value })}
+              options={[{ v: '3', l: '3 枚' }, { v: '5', l: '5 枚' }, { v: '10', l: '10 枚' }, { v: '20', l: '20 枚' }]} style={{ width: '100%' }} />
+            <div style={{ fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7, marginTop: 10 }}>
+              台帳に登録の無い当日参加（飛び込み）の方専用の記録用紙です。
+              ID は空欄のまま、氏名・ふりがな等を受付で手書きします。<br />
+              様式番号 <b>R7-02W</b> と右下の小さな <b>◆</b> が飛び込み識別マークで、
+              スキャンすると通常の取り込みではなく<b>「飛び込み読み込み」</b>に自動で振り分けられます。
+            </div>
+          </div>
+        )}
         {kind === 'kcl' && (
           <div>
             <Overline style={{ marginBottom: 8 }}>ID・氏名の表示</Overline>
@@ -541,7 +568,9 @@ export default function SheetMaker() {
         )}
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
-            {kind === 'kcl'
+            {kind === 'walkin'
+              ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{walkN}</span> 枚 · A4 縦 · 飛び込み用</>
+              : kind === 'kcl'
               ? (kclId === 'print'
                 ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{total}</span> 名 · A4 縦 · <b>両面で 1 名 1 枚</b></>
                 : <>2 ページ · A4 縦 · <b>両面で 1 枚</b> · 全員共通</>)
@@ -552,7 +581,9 @@ export default function SheetMaker() {
             印刷する
           </button>
           <div style={{ fontSize: 11.5, color: 'var(--fg-3)', lineHeight: 1.6 }}>
-            {kind === 'kcl'
+            {kind === 'walkin'
+              ? '氏名はできるだけ丁寧に、ふりがなも必ず記入してもらってください（読み取り後の登録で使います）。'
+              : kind === 'kcl'
               ? (kclId === 'print'
                 ? '両面印刷（長辺とじ）で 1 名 1 枚になります。ID・氏名は台帳から印字されるため、スキャン時にそのまま読み取れます。'
                 : '受付で貼るシールには「参加者ID 12345」「氏名 ○○」のようにラベル語も一緒に印字すると、スキャン時にそのまま読み取れます。')
@@ -565,7 +596,9 @@ export default function SheetMaker() {
           印字スタイルなら 1 名につき おもて+うら の 2 ページ */}
       <div className="pdf-stage">
         <div className="pdf-pages">
-          {kind === 'kcl'
+          {kind === 'walkin'
+            ? Array.from({ length: walkN }, (_, i) => <SheetPage key={i} p={mk(null, i, walkN)} walkIn />)
+            : kind === 'kcl'
             ? (kclId === 'print'
               ? pages.flatMap((p, i) => [<KclPageFront key={'f' + i} p={p} />, <KclPageBack key={'b' + i} />])
               : <><KclPageFront /><KclPageBack /></>)

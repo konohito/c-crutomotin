@@ -57,7 +57,7 @@ function toEngineUser(u, measList) {
     venueCode: u.venueCode || 900, venueName: u.ward || u.venueName || '',
     phone: u.phone || '', careLevel: u.careLevel || '',
     joined: years.length ? Math.min(...years) : D.CUR, theta: 0,
-    note: u.note || '', flags: u.flags || [],
+    note: u.note || '', flags: u.flags || [], walkIn: !!u.walkIn,
     meas, inbody, kcl: {},
   }
 }
@@ -100,6 +100,7 @@ export async function createUserDoc(u) {
     muni: u.muni || '', muniName: u.muniName || '', region: u.region || '',
     ward: u.venueName || '', venueCode: u.venueCode ?? null,
     phone: u.phone || '', careLevel: u.careLevel || '',
+    walkIn: !!u.walkIn, // 飛び込み仮登録(正式登録で false に。true の間は台帳一覧に出さない)
   }
   await fs.setDoc(fs.doc(db, 'users', u.id), doc, { merge: true })
 }
