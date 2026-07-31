@@ -312,8 +312,39 @@ function KclSectionHead({ title, example }) {
   )
 }
 
-// おもて面: タイトル・シール貼付欄・記入例・設問 1〜13
-function KclPageFront() {
+// 県提出スタイル用: 参加者 ID・氏名を印字(記録用紙と同じ罫線テーブル構成で既存の OCR ペアリングが効く)
+function KclIdTable({ p }) {
+  return (
+    <div style={{ border: '2px solid #000', flexShrink: 0, width: 236 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr', borderBottom: '1px solid #000' }}>
+        <div style={{ padding: '5px 8px', borderRight: '1px solid #000', fontSize: 11.5, letterSpacing: '0.04em', display: 'flex', alignItems: 'center' }}>参加者 ID</div>
+        <div style={{ padding: '5px 8px 4px' }}>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {p.uidDigits.map((dg, i) => (
+              <div key={i} className="t-num" style={{ width: 24, height: 30, border: '2px solid #000', display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: 700 }}>{dg}</div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 1, marginTop: 3 }}>
+            {p.strip.map((bg, i) => (
+              <div key={i} style={{ width: 6, height: 8, border: '0.5px solid #999', background: bg }} />
+            ))}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '72px 1fr' }}>
+        <div style={{ padding: '5px 8px', borderRight: '1px solid #000', fontSize: 11.5, letterSpacing: '0.04em', display: 'flex', alignItems: 'center' }}>氏名</div>
+        <div style={{ padding: '3px 8px 5px' }}>
+          <span style={{ fontSize: 10.5, color: '#444' }}>{p.kana ? '（' + p.kana + '）' : ''}</span><br />
+          <span style={{ fontSize: 17, fontWeight: 700 }}>{p.name}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// おもて面: タイトル・ID 欄・記入例・設問 1〜13。
+// p を渡すと ID・氏名を印字する県提出スタイル、無しなら全員共通のシール運用スタイル。
+function KclPageFront({ p }) {
   return (
     <div className="pdf-page" style={{ padding: '40px 48px 34px' }}>
       <Markers />
@@ -323,19 +354,24 @@ function KclPageFront() {
             <div style={{ fontSize: 10.5, border: '1px solid #000', padding: '2px 8px', fontWeight: 600 }}>様式 R7-03</div>
             <div style={{ fontSize: 9.5, color: '#444', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.03em', marginTop: 8 }}>令和7年度 からだデータ測定会 問診票</div>
+          {/* 印字スタイルは右の ID 表が広いぶんタイトルを少し縮めて 1 行に収める */}
+          <div style={{ fontSize: p ? 23 : 26, fontWeight: 700, letterSpacing: '0.02em', marginTop: 8, whiteSpace: 'nowrap' }}>令和7年度 からだデータ測定会 問診票</div>
         </div>
-        {/* ID・氏名シール貼付欄(シール 38.1×21.2mm + 貼りズレ余白 約2mm。
-            回答楕円と誤認しないよう破線・受付スタッフが当日貼る) */}
-        <div style={{ width: 160, height: 92, border: '2px dashed #000', borderRadius: 4, flexShrink: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
-          <div style={{ fontSize: 11.5, color: '#333', lineHeight: 1.6 }}>ID・氏名シール貼付欄<br />（受付で貼ります）</div>
-        </div>
+        {p ? <KclIdTable p={p} /> : (
+          /* ID・氏名シール貼付欄(シール 38.1×21.2mm + 貼りズレ余白 約2mm。
+             回答楕円と誤認しないよう破線・受付スタッフが当日貼る) */
+          <div style={{ width: 160, height: 92, border: '2px dashed #000', borderRadius: 4, flexShrink: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+            <div style={{ fontSize: 11.5, color: '#333', lineHeight: 1.6 }}>ID・氏名シール貼付欄<br />（受付で貼ります）</div>
+          </div>
+        )}
       </div>
 
       <div style={{ border: '2px solid #000', padding: '7px 12px', marginTop: 9, lineHeight: 1.5 }}>
         <span style={{ fontSize: 21, fontWeight: 700 }}>事前にご記入のうえ、測定<span style={{ textDecoration: 'underline' }}>当日</span>に受付へお渡しください。</span><br />
         <span style={{ fontSize: 16.5, fontWeight: 700, textDecoration: 'underline' }}>あてはまる方（はい・いいえ）を、濃いペンで黒くぬりつぶしてください。</span><br />
-        <span style={{ fontSize: 16.5, fontWeight: 600 }}>ID・氏名を書く必要はありません（受付でシールを貼ります）。</span>
+        {p
+          ? <span style={{ fontSize: 16.5, fontWeight: 600 }}>ID・氏名は印字済みです（ご自身で書く必要はありません）。</span>
+          : <span style={{ fontSize: 16.5, fontWeight: 600 }}>ID・氏名を書く必要はありません（受付でシールを貼ります）。</span>}
       </div>
 
       <KclExample />
@@ -395,6 +431,9 @@ function KclPageBack() {
 export default function SheetMaker() {
   const { state, set } = useStore()
   const kind = state.shKind || 'meas'
+  // 問診票の ID・氏名: シール運用(全員共通・介護予防健診) / 用紙に印字(1 名 1 枚・県提出用)
+  const kclId = state.shKclId || 'seal'
+  const perUser = kind === 'meas' || kclId === 'print'
   const evs = allEvents(state).filter(e => e.kind === 'meas' && e.code && e.date.slice(0, 4) === '2025').sort((a, b) => a.date.localeCompare(b.date))
   const defEv = evs.find(e => e.date >= D.TODAY) || evs[0]
   const evKey = state.shEvent || (defEv ? defEv.code + '@' + defEv.date : '')
@@ -442,6 +481,15 @@ export default function SheetMaker() {
         </div>
         {kind === 'kcl' && (
           <div>
+            <Overline style={{ marginBottom: 8 }}>ID・氏名の表示</Overline>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <RadioCard on={kclId === 'seal'} label="シール運用（全員共通）" desc="右上に貼付欄を印刷。受付でシールを貼る" onClick={() => set({ shKclId: 'seal' })} />
+              <RadioCard on={kclId === 'print'} label="用紙に印字（1名1枚）" desc="参加者ごとに ID・氏名を印字（県提出用など）" onClick={() => set({ shKclId: 'print' })} />
+            </div>
+          </div>
+        )}
+        {kind === 'kcl' && kclId === 'seal' && (
+          <div>
             <Overline style={{ marginBottom: 8 }}>この様式について</Overline>
             <div style={{ fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7 }}>
               ID・氏名を刷らない<b>全員共通</b>の様式です（嘉島町がそのまま郵送できます）。
@@ -451,7 +499,7 @@ export default function SheetMaker() {
             </div>
           </div>
         )}
-        {kind === 'meas' && (
+        {perUser && (
         <div>
           <Overline style={{ marginBottom: 8 }}>作成対象</Overline>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -460,7 +508,7 @@ export default function SheetMaker() {
           </div>
         </div>
         )}
-        {kind === 'meas' && state.shMode === 'event' && (
+        {perUser && state.shMode === 'event' && (
           <div>
             <Overline style={{ marginBottom: 8 }}>測定会</Overline>
             <Select value={evKey} onChange={(e) => set({ shEvent: e.target.value })}
@@ -468,14 +516,14 @@ export default function SheetMaker() {
             <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}>会場の参加者 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{parts.length}</span> 名（五十音順）</div>
           </div>
         )}
-        {kind === 'meas' && state.shMode === 'muni' && (
+        {perUser && state.shMode === 'muni' && (
           <div>
             <Overline style={{ marginBottom: 8 }}>市町村</Overline>
             <Select value={state.shMuni} onChange={(e) => set({ shMuni: e.target.value, shWard: 'all' })} options={D.MUNIS.map(m => ({ v: m.id, l: m.name }))} style={{ width: '100%' }} />
             <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}>登録者 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{muniUsers.length}</span> 名</div>
           </div>
         )}
-        {kind === 'meas' && state.shMode === 'muni' && wardOpts.length > 0 && (
+        {perUser && state.shMode === 'muni' && wardOpts.length > 0 && (
           <div>
             <Overline style={{ marginBottom: 8 }}>{wardLabel()}</Overline>
             <Select value={ward} onChange={(e) => set({ shWard: e.target.value })}
@@ -483,7 +531,7 @@ export default function SheetMaker() {
             <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}>{ward === 'all' ? '全' + wardLabel() : ward} · 対象 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{parts.length}</span> 名（五十音順）</div>
           </div>
         )}
-        {kind === 'meas' && (
+        {perUser && (
         <div>
           <Overline style={{ marginBottom: 8 }}>予備の空欄用紙</Overline>
           <Select value={String(state.shBlank)} onChange={(e) => set({ shBlank: +e.target.value })}
@@ -494,7 +542,9 @@ export default function SheetMaker() {
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
             {kind === 'kcl'
-              ? <>2 ページ · A4 縦 · <b>両面で 1 枚</b> · 全員共通</>
+              ? (kclId === 'print'
+                ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{total}</span> 名 · A4 縦 · <b>両面で 1 名 1 枚</b></>
+                : <>2 ページ · A4 縦 · <b>両面で 1 枚</b> · 全員共通</>)
               : <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{total}</span> 枚 · A4 縦 · 1 名 1 枚</>}
           </div>
           <button className="btn btn-primary btn-lg" onClick={() => window.print()}>
@@ -503,17 +553,22 @@ export default function SheetMaker() {
           </button>
           <div style={{ fontSize: 11.5, color: 'var(--fg-3)', lineHeight: 1.6 }}>
             {kind === 'kcl'
-              ? '受付で貼るシールには「参加者ID 12345」「氏名 ○○」のようにラベル語も一緒に印字すると、スキャン時にそのまま読み取れます。'
+              ? (kclId === 'print'
+                ? '両面印刷（長辺とじ）で 1 名 1 枚になります。ID・氏名は台帳から印字されるため、スキャン時にそのまま読み取れます。'
+                : '受付で貼るシールには「参加者ID 12345」「氏名 ○○」のようにラベル語も一緒に印字すると、スキャン時にそのまま読み取れます。')
               : '四隅の黒マーカーと 1 マス 1 桁の記入枠が、スキャン時の位置合わせと数字認識の基準になります。'}
           </div>
         </div>
       </div>
 
-      {/* プレビュー(問診票は全員共通のため 2 ページ固定。部数はプリンタ側で指定) */}
+      {/* プレビュー。問診票はシール運用なら全員共通の 2 ページ固定(部数はプリンタ側で指定)、
+          印字スタイルなら 1 名につき おもて+うら の 2 ページ */}
       <div className="pdf-stage">
         <div className="pdf-pages">
           {kind === 'kcl'
-            ? <><KclPageFront /><KclPageBack /></>
+            ? (kclId === 'print'
+              ? pages.flatMap((p, i) => [<KclPageFront key={'f' + i} p={p} />, <KclPageBack key={'b' + i} />])
+              : <><KclPageFront /><KclPageBack /></>)
             : pages.map((p, i) => <SheetPage key={i} p={p} />)}
         </div>
       </div>
