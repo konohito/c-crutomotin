@@ -238,10 +238,15 @@ const circled = (n) => n <= 20 ? String.fromCharCode(0x245F + n) : String.fromCh
 /* マークシート方式の回答欄。列見出し(はい/いいえ)をセクション上部に隣接して置き、
    各設問行にはその真下に空の楕円だけを並べる(試験のマークシートと同じ構成)。
    列の x 位置を全行・全ページで固定し、読み取りは四隅マーカー基準の濃度判定で行う。 */
-const KCL_BUBBLE_W = 54
+const KCL_BUBBLE_W = 54  // 回答列のセル幅(はい/いいえの列見出しと楕円の中心を揃える基準)
 const KCL_BUBBLE_GAP = 20
+// 楕円本体はマークシート定番の縦長(22×30)。セルの中央に置いて列位置を固定する
 function KclBubble({ filled }) {
-  return <span style={{ width: KCL_BUBBLE_W, height: 22, border: '2px solid #000', borderRadius: 999, background: filled ? '#000' : '#fff', flexShrink: 0, display: 'inline-block' }} />
+  return (
+    <span style={{ width: KCL_BUBBLE_W, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+      <span style={{ width: 22, height: 30, border: '2px solid #000', borderRadius: 999, background: filled ? '#000' : '#fff', display: 'inline-block' }} />
+    </span>
+  )
 }
 // 回答 2 列(はい/いいえ)を同じ x 位置で並べる共通ラッパ
 function KclAnsCols({ children }) {
@@ -262,12 +267,12 @@ function KclRow({ no, text }) {
 function BadMark({ kind, label }) {
   return (
     <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-      <span style={{ position: 'relative', width: 44, height: 21, border: '2px solid #000', borderRadius: 999, display: 'grid', placeItems: 'center', background: kind === 'thin' ? '#bbb' : kind === 'over' ? '#000' : '#fff' }}>
-        {kind === 'line' && <span style={{ position: 'absolute', left: 4, right: 4, top: '46%', borderTop: '2px solid #000', transform: 'rotate(-12deg)' }} />}
+      <span style={{ position: 'relative', width: 22, height: 30, border: '2px solid #000', borderRadius: 999, display: 'grid', placeItems: 'center', background: kind === 'thin' ? '#bbb' : kind === 'over' ? '#000' : '#fff' }}>
+        {kind === 'line' && <span style={{ position: 'absolute', left: -2, right: -2, top: '46%', borderTop: '2px solid #000', transform: 'rotate(-55deg)' }} />}
         {kind === 'check' && <span style={{ fontSize: 15, fontWeight: 900, lineHeight: 1 }}>✓</span>}
         {kind === 'dot' && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#000' }} />}
-        {kind === 'circle' && <span style={{ position: 'absolute', inset: '-5px -7px', border: '2px solid #000', borderRadius: 999 }} />}
-        {kind === 'over' && <span style={{ position: 'absolute', inset: '-4px -7px', background: '#000', borderRadius: 999 }} />}
+        {kind === 'circle' && <span style={{ position: 'absolute', inset: '-6px -6px', border: '2px solid #000', borderRadius: 999 }} />}
+        {kind === 'over' && <span style={{ position: 'absolute', inset: '-5px -5px', background: '#000', borderRadius: 999 }} />}
       </span>
       <span style={{ fontSize: 12, fontWeight: 700, lineHeight: 1 }}>{label}</span>
     </span>
@@ -280,7 +285,7 @@ function KclExample() {
     <div style={{ border: '1.5px solid #000', marginTop: 8, display: 'grid', gridTemplateColumns: '92px 1fr' }}>
       <div style={{ borderRight: '1.5px solid #000', display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: 700 }}>良い例</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '5px 12px' }}>
-        <span style={{ width: 44, height: 21, background: '#000', borderRadius: 999, flexShrink: 0 }} />
+        <span style={{ width: 22, height: 30, background: '#000', borderRadius: 999, flexShrink: 0 }} />
         <span style={{ fontSize: 14.5, fontWeight: 700 }}>わくの中を、すきまなく黒くぬりつぶす</span>
       </div>
       <div style={{ borderTop: '1.5px dashed #000', borderRight: '1.5px solid #000', display: 'grid', placeItems: 'center', fontSize: 16, fontWeight: 700 }}>悪い例</div>
