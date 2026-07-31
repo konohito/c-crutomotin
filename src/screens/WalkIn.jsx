@@ -134,7 +134,7 @@ export default function WalkIn() {
     <div className="screen" style={{ maxWidth: 980 }}>
       <Card pad style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
         <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--brand-50)', color: 'var(--brand-600)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-          <Icon name="imp" size={22} />
+          <Icon name="walkin" size={22} />
         </div>
         <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ fontSize: 15, fontWeight: 600 }}>飛び込み取り込み</div>
