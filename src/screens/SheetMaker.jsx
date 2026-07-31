@@ -238,10 +238,10 @@ const circled = (n) => n <= 20 ? String.fromCharCode(0x245F + n) : String.fromCh
 /* マークシート方式の回答欄。列見出し(はい/いいえ)をセクション上部に隣接して置き、
    各設問行にはその真下に空の楕円だけを並べる(試験のマークシートと同じ構成)。
    列の x 位置を全行・全ページで固定し、読み取りは四隅マーカー基準の濃度判定で行う。 */
-const KCL_BUBBLE_W = 66
-const KCL_BUBBLE_GAP = 22
+const KCL_BUBBLE_W = 54
+const KCL_BUBBLE_GAP = 20
 function KclBubble({ filled }) {
-  return <span style={{ width: KCL_BUBBLE_W, height: 26, border: '2.5px solid #000', borderRadius: 999, background: filled ? '#000' : '#fff', flexShrink: 0, display: 'inline-block' }} />
+  return <span style={{ width: KCL_BUBBLE_W, height: 22, border: '2px solid #000', borderRadius: 999, background: filled ? '#000' : '#fff', flexShrink: 0, display: 'inline-block' }} />
 }
 // 回答 2 列(はい/いいえ)を同じ x 位置で並べる共通ラッパ
 function KclAnsCols({ children }) {
@@ -250,7 +250,7 @@ function KclAnsCols({ children }) {
 
 function KclRow({ no, text }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr 196px', gap: 8, alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #000' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr 152px', gap: 8, alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #000' }}>
       <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.3 }}>{circled(no)}</div>
       <div style={{ fontSize: 21.5, lineHeight: 1.3 }}>{text}</div>
       <KclAnsCols><KclBubble /><KclBubble /></KclAnsCols>
@@ -302,8 +302,8 @@ function KclSectionHead({ title }) {
       <span style={{ fontSize: 20, fontWeight: 700 }}>{title}</span>
       {/* 回答列の見出し。バブルと同じ幅・間隔で真上に隣接させる */}
       <KclAnsCols>
-        <span style={{ width: KCL_BUBBLE_W, textAlign: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}>はい</span>
-        <span style={{ width: KCL_BUBBLE_W, textAlign: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}>いいえ</span>
+        <span style={{ width: KCL_BUBBLE_W, display: 'inline-flex', justifyContent: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}>はい</span>
+        <span style={{ width: KCL_BUBBLE_W, display: 'inline-flex', justifyContent: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}>いいえ</span>
       </KclAnsCols>
     </div>
   )
@@ -312,7 +312,7 @@ function KclSectionHead({ title }) {
 // 記入例の行(「はい」と答える場合の塗り方を、実際の回答行と同じ列位置で示す)
 function KclExampleRow() {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr 176px', gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #000' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr 152px', gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid #000' }}>
       <div />
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ background: '#000', color: '#fff', fontSize: 13, fontWeight: 700, padding: '2px 9px' }}>記入例</span>
