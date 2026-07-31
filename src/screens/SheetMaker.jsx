@@ -460,7 +460,7 @@ export default function SheetMaker() {
   const kclId = state.shKclId || 'seal'
   const perUser = kind === 'meas' || (kind === 'kcl' && kclId === 'print')
   const walkN = state.shWalkN || 5
-  const walkDoc = state.shWalkDoc || 'both' // 飛び込み用の内訳: both(記録+問診) / meas / kcl
+  const isWalk = kind === 'walkin' || kind === 'walkinKcl'
   const evs = allEvents(state).filter(e => e.kind === 'meas' && e.code && e.date.slice(0, 4) === '2025').sort((a, b) => a.date.localeCompare(b.date))
   const defEv = evs.find(e => e.date >= D.TODAY) || evs[0]
   const evKey = state.shEvent || (defEv ? defEv.code + '@' + defEv.date : '')
@@ -505,22 +505,18 @@ export default function SheetMaker() {
             <RadioCard on={kind === 'meas'} label="体力測定 記録用紙" desc="測定値を記入する用紙（様式 R7-02）" onClick={() => set({ shKind: 'meas' })} />
             <RadioCard on={kind === 'kcl'} label="基本チェックリスト 問診票" desc="マークシート式の問診票（様式 R7-03）" onClick={() => set({ shKind: 'kcl' })} />
             <RadioCard on={kind === 'walkin'} label="飛び込み用 記録用紙" desc="台帳未登録の当日参加者用（様式 R7-02W）" onClick={() => set({ shKind: 'walkin' })} />
+            <RadioCard on={kind === 'walkinKcl'} label="飛び込み用 問診票" desc="氏名手書きのマークシート式（様式 R7-03W）" onClick={() => set({ shKind: 'walkinKcl' })} />
           </div>
         </div>
-        {kind === 'walkin' && (
+        {isWalk && (
           <div>
-            <Overline style={{ marginBottom: 8 }}>用紙の内訳</Overline>
-            <Select value={walkDoc} onChange={(e) => set({ shWalkDoc: e.target.value })}
-              options={[{ v: 'both', l: '記録用紙 + 問診票（セット）' }, { v: 'meas', l: '記録用紙のみ' }, { v: 'kcl', l: '基本チェックリスト 問診票のみ' }]} style={{ width: '100%' }} />
-            <div style={{ marginTop: 12 }}>
-              <Overline style={{ marginBottom: 8 }}>人数分</Overline>
-              <Select value={String(walkN)} onChange={(e) => set({ shWalkN: +e.target.value })}
-                options={[{ v: '3', l: '3 名分' }, { v: '5', l: '5 名分' }, { v: '10', l: '10 名分' }, { v: '20', l: '20 名分' }]} style={{ width: '100%' }} />
-            </div>
+            <Overline style={{ marginBottom: 8 }}>人数分</Overline>
+            <Select value={String(walkN)} onChange={(e) => set({ shWalkN: +e.target.value })}
+              options={[{ v: '3', l: '3 名分' }, { v: '5', l: '5 名分' }, { v: '10', l: '10 名分' }, { v: '20', l: '20 名分' }]} style={{ width: '100%' }} />
             <div style={{ fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7, marginTop: 10 }}>
               台帳に登録の無い当日参加（飛び込み）の方専用の用紙です。
               ID は空欄のまま、氏名・ふりがな等を受付で手書きします。<br />
-              様式番号 <b>R7-02W / R7-03W</b> と右下の小さな <b>◆</b> が飛び込み識別マークで、
+              様式番号 <b>{kind === 'walkin' ? 'R7-02W' : 'R7-03W'}</b> と右下の小さな <b>◆</b> が飛び込み識別マークで、
               スキャンすると通常の取り込みではなく<b>「飛び込み取り込み」</b>に自動で振り分けられます。
             </div>
           </div>
@@ -587,8 +583,8 @@ export default function SheetMaker() {
         )}
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
-            {kind === 'walkin'
-              ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{walkN}</span> 名分 · {walkDoc === 'both' ? '記録用紙 + 問診票（両面）' : walkDoc === 'meas' ? '記録用紙' : '問診票（両面）'} · 飛び込み用</>
+            {isWalk
+              ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{walkN}</span> 名分 · {kind === 'walkin' ? '記録用紙' : '問診票（両面で 1 枚）'} · 飛び込み用</>
               : kind === 'kcl'
               ? (kclId === 'print'
                 ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{total}</span> 名 · A4 縦 · <b>両面で 1 名 1 枚</b></>
@@ -600,7 +596,7 @@ export default function SheetMaker() {
             印刷する
           </button>
           <div style={{ fontSize: 11.5, color: 'var(--fg-3)', lineHeight: 1.6 }}>
-            {kind === 'walkin'
+            {isWalk
               ? '氏名はできるだけ丁寧に、ふりがなも必ず記入してもらってください（読み取り後の登録で使います）。'
               : kind === 'kcl'
               ? (kclId === 'print'
@@ -616,12 +612,10 @@ export default function SheetMaker() {
       <div className="pdf-stage">
         <div className="pdf-pages">
           {kind === 'walkin'
-            ? Array.from({ length: walkN }, (_, i) => i).flatMap(i => {
-              const out = []
-              if (walkDoc !== 'kcl') out.push(<SheetPage key={'m' + i} p={mk(null, i, walkN)} walkIn />)
-              if (walkDoc !== 'meas') out.push(<KclPageFront key={'kf' + i} walkIn />, <KclPageBack key={'kb' + i} walkIn />)
-              return out
-            })
+            ? Array.from({ length: walkN }, (_, i) => <SheetPage key={i} p={mk(null, i, walkN)} walkIn />)
+            : kind === 'walkinKcl'
+            ? Array.from({ length: walkN }, (_, i) => i).flatMap(i =>
+              [<KclPageFront key={'kf' + i} walkIn />, <KclPageBack key={'kb' + i} walkIn />])
             : kind === 'kcl'
             ? (kclId === 'print'
               ? pages.flatMap((p, i) => [<KclPageFront key={'f' + i} p={p} />, <KclPageBack key={'b' + i} />])
