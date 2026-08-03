@@ -259,6 +259,18 @@ function ProdImport() {
   const ready = enriched.filter(x => x.rec.status === 'recognized' && x.u && (x.rec.kcl ? kclOk(x.rec) : !x.rec.needsReview))
   const nNeed = enriched.filter(x => x.rec.status === 'recognized' && !(x.u && (x.rec.kcl ? kclOk(x.rec) : !x.rec.needsReview))).length
 
+  // 問診票の照合モーダル(台帳から利用者を選んで回答を登録)
+  const [assign, setAssign] = useState(null)
+  const [assignQ, setAssignQ] = useState('')
+  const doAssign = async (rec, u) => {
+    try {
+      await commitOne({ rec, u })
+      setAssign(null); setAssignQ('')
+      set(s2 => ({ rev: s2.rev + 1 }))
+      showToast(`${u.name} さんの問診回答を本登録しました`)
+    } catch (err) { showToast('登録に失敗しました: ' + (err.message || '')) }
+  }
+
   const doReject = async () => {
     if (!rejTarget || rejBusy) return
     setRejBusy(true)
@@ -408,7 +420,10 @@ function ProdImport() {
                     )}
                     {rec.status === 'recognized' && rec.kcl && u && (
                       <button className="btn btn-outline btn-sm" style={{ height: 28, padding: '0 10px', fontSize: 12 }} disabled={bulkBusy}
-                        onClick={async () => { try { await commitOne({ rec, u }); set(s2 => ({ rev: s2.rev + 1 })); showToast('問診回答を本登録しました') } catch (err) { showToast('登録に失敗しました: ' + (err.message || '')) } }}>回答を登録</button>
+                        onClick={() => doAssign(rec, u)}>回答を登録</button>
+                    )}
+                    {rec.status === 'recognized' && rec.kcl && !u && (
+                      <button className="btn btn-outline btn-sm" style={{ height: 28, padding: '0 10px', fontSize: 12 }} onClick={() => { setAssign(rec); setAssignQ(rec.ocrName || '') }}>確認する</button>
                     )}
                     {rec.status !== 'committed' && (
                       <button className="btn btn-ghost btn-sm" title="この読み取りを却下（一覧から取り除く）"
@@ -427,6 +442,27 @@ function ProdImport() {
           onDone={() => set(s => ({ rev: s.rev + 1 }))} />
       )}
 
+      {assign && (
+        <Modal onClose={() => setAssign(null)} width="min(480px, 94vw)">
+          <ModalHead title="問診票の照合" sub={`読み取り氏名: ${assign.ocrName || '（未取得）'}${assign.ocrId ? ' · ID ' + assign.ocrId : ''}`} onClose={() => setAssign(null)} />
+          <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <input className="field" autoFocus placeholder="氏名・かな・ID で検索" value={assignQ} onChange={(e) => setAssignQ(e.target.value)} />
+            <div style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {D.users.filter(x => {
+                const q = assignQ.trim().toLowerCase()
+                if (!q) return false
+                return String(x.id).includes(q) || (x.name || '').toLowerCase().includes(q) || (x.kana || '').toLowerCase().includes(q)
+              }).slice(0, 10).map(x => (
+                <button key={x.id} className="btn btn-ghost" style={{ justifyContent: 'flex-start', height: 40 }} onClick={() => doAssign(assign, x)}>
+                  <span style={{ fontWeight: 600 }}>{x.name}</span>
+                  <span className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)', marginLeft: 8 }}>ID {x.id} · {x.venueName || ''}</span>
+                </button>
+              ))}
+              {!assignQ.trim() && <div style={{ fontSize: 12.5, color: 'var(--fg-3)', padding: '10px 4px' }}>用紙の氏名・ID を確認して検索し、該当の利用者を選ぶとその方の回答として本登録します。</div>}
+            </div>
+          </div>
+        </Modal>
+      )}
       {rejTarget && (
         <ConfirmModal danger icon="warn"
           title={`No.${rejTarget.no ?? '—'} の読み取りを却下`}
