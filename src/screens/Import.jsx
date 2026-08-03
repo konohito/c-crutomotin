@@ -253,8 +253,11 @@ function ProdImport() {
   const enriched = queue.filter(r => r.status !== 'rejected' && !r.walkIn).map(rec => ({ rec, u: matchUser(rec) }))
   const nDone = enriched.filter(x => x.rec.status === 'committed').length
   const nErr = enriched.filter(x => x.rec.status === 'error').length
-  const ready = enriched.filter(x => x.rec.status === 'recognized' && x.u && !x.rec.needsReview)
-  const nNeed = enriched.filter(x => x.rec.status === 'recognized' && (!x.u || x.rec.needsReview)).length
+  // 用紙の様式番号(暗号)による区分で取り込みモードを変える:
+  // 記録用紙 → 測定値の本登録 / 問診票(rec.kcl) → 回答の本登録(kclAnswers)
+  const kclOk = (r) => r.kcl && r.kcl.readable && !Object.values(r.kcl.answers || {}).some(v => v === 'multi')
+  const ready = enriched.filter(x => x.rec.status === 'recognized' && x.u && (x.rec.kcl ? kclOk(x.rec) : !x.rec.needsReview))
+  const nNeed = enriched.filter(x => x.rec.status === 'recognized' && !(x.u && (x.rec.kcl ? kclOk(x.rec) : !x.rec.needsReview))).length
 
   const doReject = async () => {
     if (!rejTarget || rejBusy) return
@@ -354,9 +357,10 @@ function ProdImport() {
               <div />
             </div>
             {enriched.map(({ rec, u }) => {
+              const okAuto = u && (rec.kcl ? kclOk(rec) : !rec.needsReview)
               const st = rec.status === 'committed' ? ['登録済', 'var(--success-50)', 'var(--success-700)']
                 : rec.status === 'error' ? ['エラー', 'var(--danger-50)', 'var(--danger-700)']
-                : (!u || rec.needsReview) ? ['要確認', 'var(--warning-50)', 'var(--warning-700)']
+                : !okAuto ? ['要確認', 'var(--warning-50)', 'var(--warning-700)']
                 : ['自動判定', 'var(--slate-100)', 'var(--slate-600)']
               const cellIds = ['height', 'weight', 'gripR', 'gripL', 'walk5', 'walk5max', 'tug']
               return (
@@ -366,7 +370,21 @@ function ProdImport() {
                     <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u ? u.name : (rec.ocrName || '（氏名未取得）')}</div>
                     <div className="t-num" style={{ fontSize: 11, color: u ? 'var(--fg-3)' : 'var(--danger-700)' }}>{u ? `ID ${u.id} · 照合 OK` : '台帳に一致なし'}</div>
                   </div>
-                  {cellIds.map(cid => {
+                  {rec.kcl ? (
+                    <div style={{ gridColumn: '3 / 11', display: 'flex', alignItems: 'center', gap: 10, padding: '5px 6px', minWidth: 0 }}>
+                      <Pill bg="var(--brand-50)" fg="var(--brand-700)">問診票{rec.kcl.side === 'front' ? '（おもて）' : rec.kcl.side === 'back' ? '（うら）' : ''}</Pill>
+                      <span className="t-num" style={{ fontSize: 12.5, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {(() => {
+                          const vs = Object.values(rec.kcl.answers || {})
+                          const y = vs.filter(v => v === 'yes').length, n = vs.filter(v => v === 'no').length
+                          const m = vs.filter(v => v === 'multi').length, e = vs.filter(v => v === null).length
+                          return rec.kcl.readable
+                            ? `はい ${y} · いいえ ${n}${m ? ` · 二重塗り ${m}` : ''}${e ? ` · 未回答 ${e}` : ''}`
+                            : 'マークを読み取れませんでした（用紙を確認してください）'
+                        })()}
+                      </span>
+                    </div>
+                  ) : cellIds.map(cid => {
                     const f = rec.fields && rec.fields[cid]
                     const low = f && f.conf > 0 && f.conf < CONF_THRESHOLD
                     return (
@@ -375,18 +393,22 @@ function ProdImport() {
                       </div>
                     )
                   })}
-                  <div className="t-num" style={{ fontSize: 12, textAlign: 'right', padding: '5px 6px', color: 'var(--fg-2)' }}>
+                  {!rec.kcl && <div className="t-num" style={{ fontSize: 12, textAlign: 'right', padding: '5px 6px', color: 'var(--fg-2)' }}>
                     {['balR', 'balL'].map(cid => {
                       const f = rec.fields && rec.fields[cid]
                       return f && f.value != null ? fmtD(f.value, 1) : '—'
                     }).join(' / ')}
-                  </div>
+                  </div>}
                   <div style={{ paddingLeft: 12 }}>
                     <Pill bg={st[1]} fg={st[2]}>{st[0]}</Pill>
                   </div>
                   <div style={{ textAlign: 'right', display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                    {rec.status === 'recognized' && (
+                    {rec.status === 'recognized' && !rec.kcl && (
                       <button className="btn btn-outline btn-sm" style={{ height: 28, padding: '0 10px', fontSize: 12 }} onClick={() => setReview(rec)}>確認する</button>
+                    )}
+                    {rec.status === 'recognized' && rec.kcl && u && (
+                      <button className="btn btn-outline btn-sm" style={{ height: 28, padding: '0 10px', fontSize: 12 }} disabled={bulkBusy}
+                        onClick={async () => { try { await commitOne({ rec, u }); set(s2 => ({ rev: s2.rev + 1 })); showToast('問診回答を本登録しました') } catch (err) { showToast('登録に失敗しました: ' + (err.message || '')) } }}>回答を登録</button>
                     )}
                     {rec.status !== 'committed' && (
                       <button className="btn btn-ghost btn-sm" title="この読み取りを却下（一覧から取り除く）"
