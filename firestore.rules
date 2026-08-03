@@ -22,7 +22,10 @@ service cloud.firestore {
     // クライアントは閲覧と、確認・本登録に伴うステータス更新のみ許可する。
     match /batches/{batchId} {
       allow read: if isStaff();
-      allow write: if false; // メタ更新はバックエンドのみ
+      // 全件処理済みマーク(取り込み画面のプルダウンから除くため)のみ職員が更新可
+      allow update: if isStaff()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['finishedAt']);
+      allow create, delete: if false; // それ以外のメタ更新はバックエンドのみ
 
       match /recognitions/{recognitionId} {
         allow read: if isStaff();

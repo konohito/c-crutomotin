@@ -3,7 +3,7 @@ import D from '../data/engine.js'
 import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, needsReview, openSheetVals, CONF_THRESHOLD } from '../store.jsx'
 import { fmtD } from '../lib/helpers.js'
 import { ocrEnabled, recognizeSheet, matchUser } from '../lib/ocr.js'
-import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKclRecognition, rejectRecognition, sheetImageUrl } from '../lib/db.js'
+import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKclRecognition, rejectRecognition, sheetImageUrl, deleteSheetImage, markBatchDone } from '../lib/db.js'
 import { saveMeasurement } from '../lib/realdata.js'
 import { Card, Pill, Modal, ModalHead, Select, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -235,7 +235,8 @@ function ProdImport() {
     let unsub = () => {}
     watchBatches((list) => {
       setBatches(list)
-      setBatchId(prev => prev || (list[0] ? list[0].id : ''))
+      const open = list.filter(b => !b.finishedAt)
+      setBatchId(prev => prev || (open[0] ? open[0].id : ''))
     }).then(fn => { unsub = fn }).catch(() => setBatches([]))
     return () => unsub()
   }, [])
@@ -271,11 +272,23 @@ function ProdImport() {
     } catch (err) { showToast('登録に失敗しました: ' + (err.message || '')) }
   }
 
+  // 全件が本登録/却下になったらバッチを処理完了にし、プルダウンから消す
+  const markedRef = useRef(new Set())
+  useEffect(() => {
+    if (!batchId || !queue.length) return
+    const done = queue.every(r => r.status === 'committed' || r.status === 'rejected')
+    if (done && !markedRef.current.has(batchId)) {
+      markedRef.current.add(batchId)
+      markBatchDone(batchId).catch(() => {})
+    }
+  }, [queue, batchId])
+
   const doReject = async () => {
     if (!rejTarget || rejBusy) return
     setRejBusy(true)
     try {
       await rejectRecognition({ batchId, recognitionId: rejTarget.id })
+      deleteSheetImage(rejTarget.storagePath).catch(() => {})
       showToast('読み取りを却下しました')
       setRejTarget(null)
     } catch (e) { showToast('却下に失敗しました: ' + (e.message || '')) }
@@ -289,6 +302,7 @@ function ProdImport() {
       const clean = {}
       Object.entries(rec.kcl.answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
       u.kcl[D.CUR] = { raw: { ...((u.kcl[D.CUR] || {}).raw || {}), ...clean }, date: batchDate(batchId) }
+      deleteSheetImage(rec.storagePath).catch(() => {})
       return
     }
     const finalValues = {}
@@ -297,6 +311,7 @@ function ProdImport() {
     const nums = {}
     D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
     await saveMeasurement(u.id, D.CUR, nums)
+    deleteSheetImage(rec.storagePath).catch(() => {})
   }
 
   const commitReady = async () => {
@@ -327,7 +342,7 @@ function ProdImport() {
         </div>
         {batches && batches.length > 0 && (
           <Select value={batchId} onChange={(e) => setBatchId(e.target.value)}
-            options={batches.map(b => ({ v: b.id, l: `${batchDate(b.id)} · ${b.id}（${b.sheetCount || 0} 枚）` }))} />
+            options={batches.filter(b => !b.finishedAt || b.id === batchId).map(b => ({ v: b.id, l: `${batchDate(b.id)} · ${b.id}（${b.sheetCount || 0} 枚）` }))} />
         )}
         {queue.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

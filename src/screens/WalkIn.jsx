@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { dbEnabled, wardLabel, watchWalkins, updateWalkin, clearWalkInFlag, commitRecognition, commitKclRecognition } from '../lib/db.js'
+import { dbEnabled, wardLabel, watchWalkins, updateWalkin, clearWalkInFlag, commitRecognition, commitKclRecognition, deleteSheetImage } from '../lib/db.js'
 import { createUserDoc, saveMeasurement } from '../lib/realdata.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -100,6 +100,7 @@ export default function WalkIn() {
         Object.entries(e.kcl.answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
         u.kcl[D.CUR] = { raw: clean, date: null }
         await updateWalkin(e.id, { walkinStatus: 'committed', userId: u.id, userName: u.name })
+        deleteSheetImage(e.storagePath).catch(() => {})
         if (!dbEnabled()) setEntries(prev => prev.map(x => x.id === e.id ? { ...x, walkinStatus: 'committed', userId: u.id, userName: u.name } : x))
         setOpenId('')
         set(s2 => ({ rev: s2.rev + 1 }))
@@ -116,6 +117,7 @@ export default function WalkIn() {
       D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
       await saveMeasurement(u.id, D.CUR, nums)
       await updateWalkin(e.id, { walkinStatus: 'committed', userId: u.id, userName: u.name })
+      deleteSheetImage(e.storagePath).catch(() => {})
       if (!dbEnabled()) setEntries(prev => prev.map(x => x.id === e.id ? { ...x, walkinStatus: 'committed', userId: u.id, userName: u.name } : x))
       setOpenId('')
       set(s => ({ rev: s.rev + 1 }))

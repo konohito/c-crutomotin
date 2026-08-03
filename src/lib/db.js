@@ -111,6 +111,20 @@ export async function watchRecognitions(batchId, cb) {
   })
 }
 
+// 処理済み(本登録/却下)の原本画像を Storage から削除する(ストレージ費用対策。失敗しても業務継続)
+export async function deleteSheetImage(storagePath) {
+  if (!dbEnabled() || !storagePath) return
+  const { storage, bucket } = await sdk()
+  await storage.deleteObject(storage.ref(bucket, storagePath))
+}
+
+// バッチの全件処理済みマーク(取り込み画面のプルダウンから除くため)
+export async function markBatchDone(batchId) {
+  if (!dbEnabled() || !batchId) return
+  const { firestore, db } = await sdk()
+  await firestore.updateDoc(firestore.doc(db, 'batches', batchId), { finishedAt: firestore.serverTimestamp() })
+}
+
 // 当日受付 取り込みキュー(walkins)をリアルタイム購読する。unsubscribe 関数を返す。
 export async function watchWalkins(cb) {
   if (!dbEnabled()) return () => {}
