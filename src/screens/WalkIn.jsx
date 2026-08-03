@@ -5,6 +5,7 @@ import { dbEnabled, wardLabel, watchWalkins, updateWalkin, clearWalkInFlag, comm
 import { createUserDoc, saveMeasurement } from '../lib/realdata.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
+import { KclAnswerChips } from '../ui/kclanswers.jsx'
 
 /* 当日受付 取り込み — 台帳に登録の無い当日参加者の受付キュー。
    当日受付用の記録用紙・問診票(様式 R7-02W / R7-03W)をスキャンすると、通常の取り込みではなくここに届く。
@@ -187,7 +188,7 @@ export default function WalkIn() {
               </div>
               <span style={{ fontSize: 12, fontWeight: 700, color: fg, background: bg, borderRadius: 999, padding: '4px 12px' }}>{label}</span>
             </div>
-            <div style={{ marginTop: 10 }}><ValueSummary fields={e.fields} /></div>
+            <div style={{ marginTop: 10 }}>{e.kcl ? <KclAnswerChips kcl={e.kcl} /> : <ValueSummary fields={e.fields} />}</div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
               {e.walkinStatus === 'pending' && openId !== e.id && (
