@@ -86,8 +86,8 @@ function readKcl(document, imageBuffer, mimeType) {
 
   const dx = head.b.x - head.a.x                 // 列間(設計 74px 相当)→ 写真上のスケール基準
   const slope = (head.b.y - head.a.y) / dx       // 写真の傾き(x に比例した y ずれ)
-  const bw = dx * (22 / 74) * 0.8                // 楕円内側の窓(x 方向・正規化)
-  const bh = dx * (30 / 74) * 0.8 * (W / H)      // 同(y 方向は画像アスペクトで換算)
+  const bw = dx * (15 / 74) * 0.75               // 楕円内側の窓(x 方向・正規化。用紙の楕円 15×21px に一致)
+  const bh = dx * (21 / 74) * 0.75 * (W / H)     // 同(y 方向は画像アスペクトで換算)
   const answers = {}
   for (const r of rows) {
     const yAt = (colX) => r.y + slope * (colX - r.x)
