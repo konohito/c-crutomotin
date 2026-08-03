@@ -7,6 +7,7 @@ import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKc
 import { saveMeasurement } from '../lib/realdata.js'
 import { Card, Pill, Modal, ModalHead, Select, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
+import { kclSideList, ansKind, ANS_STYLE } from '../ui/kclanswers.jsx'
 
 
 const GRID = '42px 168px repeat(8, 1fr) 92px 128px'
@@ -262,9 +263,33 @@ function ProdImport() {
   const ready = enriched.filter(x => x.rec.status === 'recognized' && x.u && (x.rec.kcl ? kclOk(x.rec) : !x.rec.needsReview))
   const nNeed = enriched.filter(x => x.rec.status === 'recognized' && !(x.u && (x.rec.kcl ? kclOk(x.rec) : !x.rec.needsReview))).length
 
-  // 問診票の照合モーダル(台帳から利用者を選んで回答を登録)
+  // 問診票の確認モーダル(設問別の読み取り結果の確認・修正 + 台帳照合 + 本登録)
   const [assign, setAssign] = useState(null)
   const [assignQ, setAssignQ] = useState('')
+  const [assignU, setAssignU] = useState(null)
+  const [ansEdit, setAnsEdit] = useState({})
+  const openKclReview = (rec, u) => {
+    setAssign(rec)
+    setAssignU(u || null)
+    setAssignQ('')
+    // 読み取り結果を編集用にコピー(multi は未回答扱いで初期化し、職員が確定する)
+    const init = {}
+    Object.entries((rec.kcl && rec.kcl.answers) || {}).forEach(([k, v]) => { init[k] = (v === 'yes' || v === 'no') ? v : null })
+    setAnsEdit(init)
+  }
+  const doCommitKcl = async () => {
+    if (!assignU) { showToast('利用者を選択してください'); return }
+    try {
+      await commitKclRecognition({ batchId, recognitionId: assign.id, user: assignU, answers: ansEdit, year: D.CUR })
+      const clean = {}
+      Object.entries(ansEdit).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
+      assignU.kcl[D.CUR] = { raw: { ...((assignU.kcl[D.CUR] || {}).raw || {}), ...clean }, date: batchDate(batchId) }
+      deleteSheetImage(assign.storagePath).catch(() => {})
+      setAssign(null); setAssignU(null)
+      set(s2 => ({ rev: s2.rev + 1 }))
+      showToast(`${assignU.name} さんの問診回答を本登録しました`)
+    } catch (err) { showToast('登録に失敗しました: ' + (err.message || '')) }
+  }
   const doAssign = async (rec, u) => {
     try {
       await commitOne({ rec, u })
@@ -435,12 +460,8 @@ function ProdImport() {
                     {rec.status === 'recognized' && !rec.kcl && (
                       <button className="btn btn-outline btn-sm" style={{ height: 28, padding: '0 10px', fontSize: 12 }} onClick={() => setReview(rec)}>確認する</button>
                     )}
-                    {rec.status === 'recognized' && rec.kcl && u && (
-                      <button className="btn btn-outline btn-sm" style={{ height: 28, padding: '0 10px', fontSize: 12 }} disabled={bulkBusy}
-                        onClick={() => doAssign(rec, u)}>回答を登録</button>
-                    )}
-                    {rec.status === 'recognized' && rec.kcl && !u && (
-                      <button className="btn btn-outline btn-sm" style={{ height: 28, padding: '0 10px', fontSize: 12 }} onClick={() => { setAssign(rec); setAssignQ(rec.ocrName || '') }}>確認する</button>
+                    {rec.status === 'recognized' && rec.kcl && (
+                      <button className="btn btn-outline btn-sm" style={{ height: 28, padding: '0 10px', fontSize: 12 }} onClick={() => openKclReview(rec, u)}>確認する</button>
                     )}
                     {rec.status !== 'committed' && (
                       <button className="btn btn-ghost btn-sm" title="この読み取りを却下（一覧から取り除く）"
@@ -460,22 +481,74 @@ function ProdImport() {
       )}
 
       {assign && (
-        <Modal onClose={() => setAssign(null)} width="min(480px, 94vw)">
-          <ModalHead title="問診票の照合" sub={`読み取り氏名: ${assign.ocrName || '（未取得）'}${assign.ocrId ? ' · ID ' + assign.ocrId : ''}`} onClose={() => setAssign(null)} />
-          <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <input className="field" autoFocus placeholder="氏名・かな・ID で検索" value={assignQ} onChange={(e) => setAssignQ(e.target.value)} />
-            <div style={{ maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-              {D.users.filter(x => {
-                const q = assignQ.trim().toLowerCase()
-                if (!q) return false
-                return String(x.id).includes(q) || (x.name || '').toLowerCase().includes(q) || (x.kana || '').toLowerCase().includes(q)
-              }).slice(0, 10).map(x => (
-                <button key={x.id} className="btn btn-ghost" style={{ justifyContent: 'flex-start', height: 40 }} onClick={() => doAssign(assign, x)}>
-                  <span style={{ fontWeight: 600 }}>{x.name}</span>
-                  <span className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)', marginLeft: 8 }}>ID {x.id} · {x.venueName || ''}</span>
-                </button>
-              ))}
-              {!assignQ.trim() && <div style={{ fontSize: 12.5, color: 'var(--fg-3)', padding: '10px 4px' }}>用紙の氏名・ID を確認して検索し、該当の利用者を選ぶとその方の回答として本登録します。</div>}
+        <Modal onClose={() => setAssign(null)} width="min(640px, 96vw)">
+          <ModalHead title={`問診票の確認（${assign.kcl && assign.kcl.side === 'front' ? 'おもて面' : assign.kcl && assign.kcl.side === 'back' ? 'うら面' : '面不明'}）`}
+            sub={`読み取り氏名: ${assign.ocrName || '（未取得）'}${assign.ocrId ? ' · ID ' + assign.ocrId : ''}`} onClose={() => setAssign(null)} />
+          <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '72vh', overflowY: 'auto' }}>
+            {/* データの確からしさ(読取率) */}
+            {(() => {
+              const list = kclSideList(assign.kcl && assign.kcl.side)
+              const kinds = list.map(q => ansKind(assign.kcl && assign.kcl.answers, q.no))
+              const okN = kinds.filter(k => k === 'yes' || k === 'no' || k === 'empty').length
+              const ngN = kinds.length - okN
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--fg-2)' }}>
+                  <span>マーク読取率 <b className="t-num" style={{ fontSize: 16, color: ngN ? 'var(--warning-700)' : 'var(--success-700)' }}>{Math.round(okN / list.length * 100)}%</b>（{okN} / {list.length} 問）</span>
+                  {ngN > 0 && <span style={{ color: 'var(--warning-700)' }}>要修正 {ngN} 問（二重塗り・読取不可）は下で確定してください</span>}
+                </div>
+              )
+            })()}
+            {/* 台帳照合 */}
+            <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 10, padding: '10px 12px' }}>
+              {assignU ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 700 }}>{assignU.name}</span>
+                  <span className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>ID {assignU.id} · {assignU.venueName || ''}</span>
+                  <span style={{ flex: 1 }} />
+                  <button className="btn btn-ghost btn-sm" style={{ height: 26 }} onClick={() => setAssignU(null)}>変更</button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <input className="field" autoFocus placeholder="氏名・かな・ID で台帳を検索" value={assignQ} onChange={(e) => setAssignQ(e.target.value)} />
+                  {assignQ.trim() && D.users.filter(x => {
+                    const q = assignQ.trim().toLowerCase()
+                    return String(x.id).includes(q) || (x.name || '').toLowerCase().includes(q) || (x.kana || '').toLowerCase().includes(q)
+                  }).slice(0, 6).map(x => (
+                    <button key={x.id} className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', height: 34 }} onClick={() => setAssignU(x)}>
+                      <span style={{ fontWeight: 600 }}>{x.name}</span>
+                      <span className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)', marginLeft: 8 }}>ID {x.id} · {x.venueName || ''}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* 設問別の読み取り結果と修正 */}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {kclSideList(assign.kcl && assign.kcl.side).map(({ no, text }) => {
+                const k = ansKind(assign.kcl && assign.kcl.answers, no)
+                const [label, fg, bg] = ANS_STYLE[k]
+                const v = ansEdit[no] ?? null
+                const seg = (val, lb) => (
+                  <button key={lb} onClick={() => setAnsEdit(prev => ({ ...prev, [no]: val }))}
+                    style={{ height: 26, padding: '0 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                      border: `1px solid ${v === val ? 'var(--brand-500)' : 'var(--border-default)'}`,
+                      background: v === val ? 'var(--brand-50)' : 'var(--bg-surface)',
+                      color: v === val ? 'var(--brand-700)' : 'var(--fg-2)' }}>{lb}</button>
+                )
+                return (
+                  <div key={no} style={{ display: 'grid', gridTemplateColumns: '34px 1fr 92px auto', gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span className="t-num" style={{ fontSize: 12.5, fontWeight: 700 }}>{no.startsWith('ex') ? '運' + no.slice(2) : no}</span>
+                    <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={text}>{text}</span>
+                    {/* 読み取り結果(確からしさ)。修正は右のボタンで */}
+                    <span style={{ fontSize: 11.5, fontWeight: 700, textAlign: 'center', borderRadius: 6, padding: '3px 0', color: fg, background: bg, border: k === 'empty' ? '1px solid var(--border-subtle)' : 'none' }}>{label}</span>
+                    <span style={{ display: 'flex', gap: 4 }}>{seg('yes', 'はい')}{seg('no', 'いいえ')}{seg(null, '未回答')}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn" onClick={() => setAssign(null)}>閉じる</button>
+              <button className="btn btn-primary" disabled={!assignU} onClick={doCommitKcl}>この内容で本登録</button>
             </div>
           </div>
         </Modal>
