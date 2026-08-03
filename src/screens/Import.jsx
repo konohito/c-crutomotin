@@ -268,10 +268,14 @@ function ProdImport() {
   const [assignQ, setAssignQ] = useState('')
   const [assignU, setAssignU] = useState(null)
   const [ansEdit, setAnsEdit] = useState({})
+  const [assignImg, setAssignImg] = useState('')
   const openKclReview = (rec, u) => {
     setAssign(rec)
     setAssignU(u || null)
     setAssignQ('')
+    // 原本画像(本登録/却下までは Storage に残っている)
+    setAssignImg('')
+    if (rec.storagePath) sheetImageUrl(rec.storagePath).then(setAssignImg).catch(() => {})
     // 読み取り結果を編集用にコピー(multi は未回答扱いで初期化し、職員が確定する)
     const init = {}
     Object.entries((rec.kcl && rec.kcl.answers) || {}).forEach(([k, v]) => { init[k] = (v === 'yes' || v === 'no') ? v : null })
@@ -481,10 +485,19 @@ function ProdImport() {
       )}
 
       {assign && (
-        <Modal onClose={() => setAssign(null)} width="min(640px, 96vw)">
+        <Modal onClose={() => setAssign(null)} width="min(1060px, 96vw)">
           <ModalHead title={`問診票の確認（${assign.kcl && assign.kcl.side === 'front' ? 'おもて面' : assign.kcl && assign.kcl.side === 'back' ? 'うら面' : '面不明'}）`}
             sub={`読み取り氏名: ${assign.ocrName || '（未取得）'}${assign.ocrId ? ' · ID ' + assign.ocrId : ''}`} onClose={() => setAssign(null)} />
-          <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '72vh', overflowY: 'auto' }}>
+          <div style={{ padding: '14px 20px', display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(320px, 1fr)', gap: 16, maxHeight: '74vh' }}>
+            {/* 原本画像(クリックで新しいタブ表示) */}
+            <div style={{ overflowY: 'auto', borderRadius: 10, background: 'var(--slate-100)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center' }}>
+              {assignImg
+                ? <a href={assignImg} target="_blank" rel="noreferrer" title="新しいタブで拡大表示">
+                    <img src={assignImg} alt="アップロードされた問診票" style={{ maxWidth: '100%', display: 'block', borderRadius: 10 }} />
+                  </a>
+                : <div style={{ fontSize: 12.5, color: 'var(--fg-3)', padding: 40 }}>画像を読み込み中…</div>}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', minWidth: 0 }}>
             {/* データの確からしさ(読取率) */}
             {(() => {
               const list = kclSideList(assign.kcl && assign.kcl.side)
@@ -549,6 +562,7 @@ function ProdImport() {
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setAssign(null)}>閉じる</button>
               <button className="btn btn-primary" disabled={!assignU} onClick={doCommitKcl}>この内容で本登録</button>
+            </div>
             </div>
           </div>
         </Modal>
