@@ -111,7 +111,7 @@ export async function watchRecognitions(batchId, cb) {
   })
 }
 
-// 飛び込み取り込みキュー(walkins)をリアルタイム購読する。unsubscribe 関数を返す。
+// 当日受付 取り込みキュー(walkins)をリアルタイム購読する。unsubscribe 関数を返す。
 export async function watchWalkins(cb) {
   if (!dbEnabled()) return () => {}
   const { firestore, db } = await sdk()
@@ -125,7 +125,7 @@ export async function watchWalkins(cb) {
   })
 }
 
-// 飛び込みエントリのステータス更新(pending → committed → registered)
+// 当日受付エントリのステータス更新(pending → committed → registered)
 export async function updateWalkin(walkinId, patch) {
   if (!dbEnabled()) return
   const { firestore, db } = await sdk()
@@ -158,6 +158,24 @@ export function buildMeasurementDoc(user, finalValues, meta = {}) {
     date: meta.date || D.TODAY, values: v, axes: ax, total,
     source: 'ocr', batchId: meta.batchId || '', recognitionId: meta.recognitionId || '',
   }
+}
+
+// 問診票の本登録: measurement ドキュメントに kclAnswers をマージ保存(おもて/うら 2 枚で合流)し、
+// recognition を committed に更新する。測定値は上書きしない。
+export async function commitKclRecognition({ batchId, recognitionId, user, answers, year }) {
+  if (!dbEnabled()) throw new Error('Firebase 未設定です')
+  const { firestore, db } = await sdk()
+  const y = year || D.CUR
+  const clean = {}
+  Object.entries(answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
+  const batch = firestore.writeBatch(db)
+  batch.set(firestore.doc(db, 'measurements', `${user.id}_${y}`), { userId: user.id, year: y, kclAnswers: clean }, { merge: true })
+  if (batchId && recognitionId) {
+    batch.update(firestore.doc(db, 'batches', batchId, 'recognitions', recognitionId), {
+      status: 'committed', matchedUserId: user.id, reviewedAt: firestore.serverTimestamp(),
+    })
+  }
+  await batch.commit()
 }
 
 // 本登録: measurement を書き込み、recognition を committed に更新する

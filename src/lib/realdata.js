@@ -28,7 +28,7 @@ function scoreOf(sex, v) {
 
 // Firestore の user ドキュメント + 測定群 → エンジン形式の利用者オブジェクト
 function toEngineUser(u, measList) {
-  const meas = {}, inbody = {}
+  const meas = {}, inbody = {}, kcl = {}
   for (const m of measList) {
     // InBody(体組成): ETL(etl-inbody.py)が突合して測定に付与した inbody を読む。旧 inbodySmi も後方互換。
     if (m.inbody) {
@@ -43,6 +43,8 @@ function toEngineUser(u, measList) {
     }
     // InBody 単独の記録（その年の体力測定が台帳に無い。例: 令和5年度）は
     // 参加履歴・スコアには入れず、InBody 欄にのみ表示する。
+    // 問診票の実回答(kclAnswers)。kihon.js の kclScore が読む raw 形式に変換する
+    if (m.kclAnswers) kcl[m.year] = { raw: { ...((kcl[m.year] || {}).raw || {}), ...m.kclAnswers }, date: m.date || null }
     if (m.inbodyOnly) continue
     const s = scoreOf(u.sex, m.values || {})
     meas[m.year] = { ...s, date: m.date || null, review: !!m.review }
@@ -58,7 +60,7 @@ function toEngineUser(u, measList) {
     phone: u.phone || '', careLevel: u.careLevel || '',
     joined: years.length ? Math.min(...years) : D.CUR, theta: 0,
     note: u.note || '', flags: u.flags || [], walkIn: !!u.walkIn,
-    meas, inbody, kcl: {},
+    meas, inbody, kcl,
   }
 }
 
@@ -100,7 +102,7 @@ export async function createUserDoc(u) {
     muni: u.muni || '', muniName: u.muniName || '', region: u.region || '',
     ward: u.venueName || '', venueCode: u.venueCode ?? null,
     phone: u.phone || '', careLevel: u.careLevel || '',
-    walkIn: !!u.walkIn, // 飛び込み仮登録(正式登録で false に。true の間は台帳一覧に出さない)
+    walkIn: !!u.walkIn, // 当日受付の仮登録(正式登録で false に。true の間は台帳一覧に出さない)
   }
   await fs.setDoc(fs.doc(db, 'users', u.id), doc, { merge: true })
 }

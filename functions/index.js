@@ -14,6 +14,7 @@ const cfg = require('./src/config')
 const { processDocument } = require('./src/documentai')
 const { mapDocumentToSheet } = require('./src/mapping')
 const { parseStoragePath, buildRecognitionDoc } = require('./src/recognition')
+const { readKcl } = require('./src/kclread')
 
 admin.initializeApp()
 
@@ -84,6 +85,14 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '512MiB', timeoutSecond
     const rec = buildRecognitionDoc(document, {
       no: parsed.no, storagePath: name, threshold: cfg.reviewThreshold,
     })
+    // 問診票(様式 R7-03/R7-03W)はマークシート読み取りを付与し、必ず職員確認を通す
+    try {
+      const kcl = readKcl(document, content, obj.contentType || 'image/jpeg')
+      if (kcl.isKcl) {
+        rec.kcl = { side: kcl.side || null, answers: kcl.answers || {}, readable: !!kcl.readable }
+        rec.needsReview = true
+      }
+    } catch (err2) { console.error('kclread error:', name, err2) }
     await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: FieldValue.serverTimestamp() })
     // 飛び込み用紙(様式 R7-02W)はトップレベルの walkins にも複製し、
     // 「飛び込み読み込み」画面が索引なしの単純クエリで購読できるようにする

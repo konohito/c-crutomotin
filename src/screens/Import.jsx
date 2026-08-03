@@ -3,7 +3,7 @@ import D from '../data/engine.js'
 import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, needsReview, openSheetVals, CONF_THRESHOLD } from '../store.jsx'
 import { fmtD } from '../lib/helpers.js'
 import { ocrEnabled, recognizeSheet, matchUser } from '../lib/ocr.js'
-import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, rejectRecognition, sheetImageUrl } from '../lib/db.js'
+import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKclRecognition, rejectRecognition, sheetImageUrl } from '../lib/db.js'
 import { saveMeasurement } from '../lib/realdata.js'
 import { Card, Pill, Modal, ModalHead, Select, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -248,7 +248,7 @@ function ProdImport() {
   }, [batchId])
 
   // 却下済みは一覧から隠す（文書は監査のため Firestore に残る）
-  // 飛び込み用紙(R7-02W)は専用の「飛び込み取り込み」画面で扱うため、通常キューには出さない
+  // 当日受付用紙(R7-02W)は専用の「当日受付 取り込み」画面で扱うため、通常キューには出さない
   const nWalkIn = queue.filter(r => r.walkIn && r.status !== 'rejected').length
   const enriched = queue.filter(r => r.status !== 'rejected' && !r.walkIn).map(rec => ({ rec, u: matchUser(rec) }))
   const nDone = enriched.filter(x => x.rec.status === 'committed').length
@@ -268,6 +268,14 @@ function ProdImport() {
   }
 
   const commitOne = async ({ rec, u }) => {
+    // 問診票(様式 R7-03)の読み取りは回答のみを保存し、測定値の記録には触れない
+    if (rec.kcl) {
+      await commitKclRecognition({ batchId, recognitionId: rec.id, user: u, answers: rec.kcl.answers, year: D.CUR })
+      const clean = {}
+      Object.entries(rec.kcl.answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
+      u.kcl[D.CUR] = { raw: { ...((u.kcl[D.CUR] || {}).raw || {}), ...clean }, date: batchDate(batchId) }
+      return
+    }
     const finalValues = {}
     D.SHEET_COLS.forEach(cid => { finalValues[cid] = rec.fields && rec.fields[cid] ? rec.fields[cid].value : null })
     await commitRecognition({ batchId, recognitionId: rec.id, user: u, finalValues, meta: { year: D.CUR, date: batchDate(batchId) } })
@@ -299,7 +307,7 @@ function ProdImport() {
           <div style={{ fontSize: 15, fontWeight: 600 }}>読み取りキュー</div>
           <div style={{ fontSize: 12.5, color: 'var(--fg-3)', marginTop: 2 }}>
             スマホの「用紙アップロード」から送信すると、自動読み取りの結果がここに届きます
-            {nWalkIn > 0 && <span style={{ color: 'var(--brand-600)', fontWeight: 600 }}>　·　飛び込み用紙 {nWalkIn} 件は「飛び込み取り込み」に振り分けました</span>}
+            {nWalkIn > 0 && <span style={{ color: 'var(--brand-600)', fontWeight: 600 }}>　·　当日受付用紙 {nWalkIn} 件は「当日受付 取り込み」に振り分けました</span>}
           </div>
         </div>
         {batches && batches.length > 0 && (

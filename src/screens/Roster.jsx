@@ -17,7 +17,7 @@ export const wardOptions = (muniName) =>
 export function filteredUsers(state) {
   const q = state.q.trim().toLowerCase()
   let list = D.users.filter(u => {
-    if (u.walkIn) return false // 飛び込み仮登録は正式登録まで台帳に出さない
+    if (u.walkIn) return false // 当日受付の仮登録は正式登録まで台帳に出さない
     if (state.rosRegion !== 'all' && u.region !== state.rosRegion) return false
     if (state.rosMuni !== 'all' && u.muniName !== state.rosMuni) return false
     if (state.rosWard !== 'all' && u.venueName !== state.rosWard) return false

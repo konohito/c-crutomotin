@@ -49,7 +49,7 @@ function SheetPage({ p, walkIn }) {
   return (
     <div className="pdf-page" style={{ padding: '44px 52px 40px' }}>
       <Markers />
-      {/* 飛び込み用の識別マーク: 右下マーカーの左に小さな◆(45°回転の正方形)。
+      {/* 当日受付用の識別マーク: 右下マーカーの左に小さな◆(45°回転の正方形)。
           見た目はさりげないが、スキャン時はこの様式番号(R7-02W)の文字で機械判別する */}
       {walkIn && <div style={{ position: 'absolute', right: 56, bottom: 32, width: 13, height: 13, background: 'var(--slate-900)', transform: 'rotate(45deg)' }} />}
 
@@ -328,7 +328,7 @@ function KclExampleRow() {
   )
 }
 
-// 飛び込み用の空欄 ID 表(採番後に受付で手書きする)
+// 当日受付用の空欄 ID 表(採番後に受付で手書きする)
 const BLANK_P = { uidDigits: ['', '', '', '', ''], strip: Array.from({ length: 20 }, () => 'transparent'), name: '', kana: '' }
 
 // 県提出スタイル用: 参加者 ID・氏名を印字(記録用紙と同じ罫線テーブル構成で既存の OCR ペアリングが効く)
@@ -367,7 +367,7 @@ function KclPageFront({ p, walkIn }) {
   return (
     <div className="pdf-page" style={{ padding: '40px 48px 34px' }}>
       <Markers />
-      {/* 飛び込み用の識別マーク(記録用紙 R7-02W と共通の◆) */}
+      {/* 当日受付用の識別マーク(記録用紙 R7-02W と共通の◆) */}
       {walkIn && <div style={{ position: 'absolute', right: 56, bottom: 32, width: 13, height: 13, background: 'var(--slate-900)', transform: 'rotate(45deg)' }} />}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
         <div style={{ flex: 1 }}>
@@ -418,17 +418,27 @@ function KclPageFront({ p, walkIn }) {
 }
 
 // うら面: 設問 14〜24・運動習慣・結びの一文
-function KclPageBack({ walkIn }) {
+function KclPageBack({ p, walkIn }) {
   return (
     <div className="pdf-page" style={{ padding: '40px 48px 34px' }}>
       <Markers />
       {walkIn && <div style={{ position: 'absolute', right: 56, bottom: 32, width: 13, height: 13, background: 'var(--slate-900)', transform: 'rotate(45deg)' }} />}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ fontSize: 10.5, border: '1px solid #000', padding: '2px 8px', fontWeight: 600 }}>様式 {walkIn ? 'R7-03W' : 'R7-03'}</div>
-        <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: '0.03em' }}>問診票（うら面・つづき）</span>
+      {/* うら面にも ID・氏名を表示(面ごとにスキャンしても誰の用紙か判別できるように) */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 10.5, border: '1px solid #000', padding: '2px 8px', fontWeight: 600 }}>様式 {walkIn ? 'R7-03W' : 'R7-03'}</div>
+            <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: '0.03em' }}>問診票（うら面・つづき）</span>
+          </div>
+        </div>
+        {(p || walkIn) ? <KclIdTable p={p || BLANK_P} /> : (
+          <div style={{ width: 160, height: 92, border: '2px dashed #000', borderRadius: 4, flexShrink: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+            <div style={{ fontSize: 11.5, color: '#333', lineHeight: 1.6 }}>ID・氏名シール貼付欄<br />（うら面にも貼ります）</div>
+          </div>
+        )}
       </div>
 
-      <KclExample />
+      
 
       <div style={{ marginTop: 8 }}>
         <KclSectionHead title="【基本チェックリスト（つづき）】" />
@@ -504,8 +514,8 @@ export default function SheetMaker() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <RadioCard on={kind === 'meas'} label="体力測定 記録用紙" desc="測定値を記入する用紙（様式 R7-02）" onClick={() => set({ shKind: 'meas' })} />
             <RadioCard on={kind === 'kcl'} label="基本チェックリスト 問診票" desc="マークシート式の問診票（様式 R7-03）" onClick={() => set({ shKind: 'kcl' })} />
-            <RadioCard on={kind === 'walkin'} label="飛び込み用 記録用紙" desc="台帳未登録の当日参加者用（様式 R7-02W）" onClick={() => set({ shKind: 'walkin' })} />
-            <RadioCard on={kind === 'walkinKcl'} label="飛び込み用 問診票" desc="氏名手書きのマークシート式（様式 R7-03W）" onClick={() => set({ shKind: 'walkinKcl' })} />
+            <RadioCard on={kind === 'walkin'} label="当日受付用 記録用紙" desc="台帳未登録の当日参加者用（様式 R7-02W）" onClick={() => set({ shKind: 'walkin' })} />
+            <RadioCard on={kind === 'walkinKcl'} label="当日受付用 問診票" desc="氏名手書きのマークシート式（様式 R7-03W）" onClick={() => set({ shKind: 'walkinKcl' })} />
           </div>
         </div>
         {isWalk && (
@@ -514,10 +524,10 @@ export default function SheetMaker() {
             <Select value={String(walkN)} onChange={(e) => set({ shWalkN: +e.target.value })}
               options={[{ v: '3', l: '3 名分' }, { v: '5', l: '5 名分' }, { v: '10', l: '10 名分' }, { v: '20', l: '20 名分' }]} style={{ width: '100%' }} />
             <div style={{ fontSize: 12, color: 'var(--fg-2)', lineHeight: 1.7, marginTop: 10 }}>
-              台帳に登録の無い当日参加（飛び込み）の方専用の用紙です。
+              台帳に登録の無い当日受付（台帳未登録）の方専用の用紙です。
               ID は空欄のまま、氏名・ふりがな等を受付で手書きします。<br />
-              様式番号 <b>{kind === 'walkin' ? 'R7-02W' : 'R7-03W'}</b> と右下の小さな <b>◆</b> が飛び込み識別マークで、
-              スキャンすると通常の取り込みではなく<b>「飛び込み取り込み」</b>に自動で振り分けられます。
+              様式番号 <b>{kind === 'walkin' ? 'R7-02W' : 'R7-03W'}</b> と右下の小さな <b>◆</b> が当日受付の識別マークで、
+              スキャンすると通常の取り込みではなく<b>「当日受付 取り込み」</b>に自動で振り分けられます。
             </div>
           </div>
         )}
@@ -584,7 +594,7 @@ export default function SheetMaker() {
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
             {isWalk
-              ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{walkN}</span> 名分 · {kind === 'walkin' ? '記録用紙' : '問診票（両面で 1 枚）'} · 飛び込み用</>
+              ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{walkN}</span> 名分 · {kind === 'walkin' ? '記録用紙' : '問診票（両面で 1 枚）'} · 当日受付用</>
               : kind === 'kcl'
               ? (kclId === 'print'
                 ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{total}</span> 名 · A4 縦 · <b>両面で 1 名 1 枚</b></>
@@ -618,7 +628,7 @@ export default function SheetMaker() {
               [<KclPageFront key={'kf' + i} walkIn />, <KclPageBack key={'kb' + i} walkIn />])
             : kind === 'kcl'
             ? (kclId === 'print'
-              ? pages.flatMap((p, i) => [<KclPageFront key={'f' + i} p={p} />, <KclPageBack key={'b' + i} />])
+              ? pages.flatMap((p, i) => [<KclPageFront key={'f' + i} p={p} />, <KclPageBack key={'b' + i} p={p} />])
               : <><KclPageFront /><KclPageBack /></>)
             : pages.map((p, i) => <SheetPage key={i} p={p} />)}
         </div>
