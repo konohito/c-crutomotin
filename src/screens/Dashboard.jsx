@@ -206,24 +206,9 @@ export default function Dashboard() {
         </Card>
       ))}
 
-      {/* 区域別（+ 確認が必要な用紙。用紙確認はデモのみ） */}
-      <div className="duo" style={{ display: 'grid', gridTemplateColumns: demo ? '1.25fr 1fr' : '1fr', gap: 16, alignItems: 'start' }}>
+      {/* 確認が必要な用紙（デモのみ。区域/行政区別の参加状況カードは不要のため廃止） */}
+      {demo && <div className="duo" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, alignItems: 'start' }}>
         <Card pad>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-            <div className="t-h4">{demo ? '区域別' : '行政区別'}の参加状況</div>
-            <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>令和7年度 測定済 / 登録</div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
-            {muniProg.map(m => (
-              <div key={m.name} style={{ display: 'grid', gridTemplateColumns: '104px 1fr 84px', gap: 12, alignItems: 'center' }}>
-                <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.name}>{m.name}</div>
-                <div className="meter"><div style={{ width: m.w }} /></div>
-                <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-2)', textAlign: 'right' }}>{m.done} / {m.total} 名</div>
-              </div>
-            ))}
-          </div>
-        </Card>
-        {demo && <Card pad>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
             <div className="t-h4">確認が必要な用紙</div>
             <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{pend.length} 件</div>
@@ -258,8 +243,8 @@ export default function Dashboard() {
               )
             })}
           </div>
-        </Card>}
-      </div>
+        </Card>
+      </div>}
 
       {/* 直近の取り込み + 推移（直近の取り込みはデモのダミーのため本番では非表示） */}
       <div className="duo" style={{ display: 'grid', gridTemplateColumns: demo ? '1fr 1.25fr' : '1fr', gap: 16, alignItems: 'start' }}>
