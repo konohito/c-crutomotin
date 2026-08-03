@@ -91,6 +91,11 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '512MiB', timeoutSecond
       if (kcl.isKcl) {
         rec.kcl = { side: kcl.side || null, answers: kcl.answers || {}, readable: !!kcl.readable }
         rec.needsReview = true
+        // シール/手書きの ID にはラベル語が無いことがある → 単独の 5 桁数字を ID として拾う
+        if (!rec.ocrId) {
+          const m5 = String(document.text || '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).match(/(?:^|[^0-9])(\d{5})(?![0-9])/)
+        if (m5) rec.ocrId = m5[1]
+        }
       }
     } catch (err2) { console.error('kclread error:', name, err2) }
     await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: FieldValue.serverTimestamp() })
