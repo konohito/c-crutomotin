@@ -3,7 +3,7 @@ import D from '../data/engine.js'
 import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, needsReview, openSheetVals, CONF_THRESHOLD } from '../store.jsx'
 import { fmtD } from '../lib/helpers.js'
 import { ocrEnabled, recognizeSheet, matchUser } from '../lib/ocr.js'
-import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKclRecognition, rejectRecognition, sheetImageUrl, deleteSheetImage, markBatchDone } from '../lib/db.js'
+import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKclRecognition, rejectRecognition, sheetImageUrl, deleteSheetImage, markBatchDone, sweepFinishedBatches } from '../lib/db.js'
 import { saveMeasurement } from '../lib/realdata.js'
 import { Card, Pill, Modal, ModalHead, Select, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -225,6 +225,7 @@ function ProdImport() {
   const { set, showToast } = useStore()
   const [batches, setBatches] = useState(null)
   const [batchId, setBatchId] = useState('')
+  const sweptRef = useRef(false)
   const [queue, setQueue] = useState([])
   const [review, setReview] = useState(null)
   const [bulkBusy, setBulkBusy] = useState(false)
@@ -237,6 +238,7 @@ function ProdImport() {
       setBatches(list)
       const open = list.filter(b => !b.finishedAt)
       setBatchId(prev => prev || (open[0] ? open[0].id : ''))
+      if (!sweptRef.current) { sweptRef.current = true; sweepFinishedBatches(list).catch(() => {}) }
     }).then(fn => { unsub = fn }).catch(() => setBatches([]))
     return () => unsub()
   }, [])
@@ -276,7 +278,7 @@ function ProdImport() {
   const markedRef = useRef(new Set())
   useEffect(() => {
     if (!batchId || !queue.length) return
-    const done = queue.every(r => r.status === 'committed' || r.status === 'rejected')
+    const done = queue.every(r => r.walkIn || r.status === 'committed' || r.status === 'rejected')
     if (done && !markedRef.current.has(batchId)) {
       markedRef.current.add(batchId)
       markBatchDone(batchId).catch(() => {})
