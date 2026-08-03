@@ -125,6 +125,22 @@ export async function markBatchDone(batchId) {
   await firestore.updateDoc(firestore.doc(db, 'batches', batchId), { finishedAt: firestore.serverTimestamp() })
 }
 
+// 未完了バッチを一括点検し、処理し終えたものに finishedAt を付ける(プルダウンの掃除)。
+// 「処理済み」= 全件が 本登録/却下/当日受付への振り分け(walkIn) のいずれか。
+// エラー行が残るバッチは対応漏れが見えるよう残す。
+export async function sweepFinishedBatches(batchList) {
+  if (!dbEnabled()) return
+  const { firestore, db } = await sdk()
+  for (const b of (batchList || []).filter(x => !x.finishedAt)) {
+    try {
+      const snap = await firestore.getDocs(firestore.collection(db, 'batches', b.id, 'recognitions'))
+      const docs = snap.docs.map(d => d.data())
+      const done = docs.length > 0 && docs.every(r => r.walkIn || r.status === 'committed' || r.status === 'rejected')
+      if (done) await markBatchDone(b.id)
+    } catch { /* 個別の失敗は無視して次へ */ }
+  }
+}
+
 // 当日受付 取り込みキュー(walkins)をリアルタイム購読する。unsubscribe 関数を返す。
 export async function watchWalkins(cb) {
   if (!dbEnabled()) return () => {}
