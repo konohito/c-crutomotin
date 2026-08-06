@@ -147,6 +147,10 @@ export default function Detail() {
               編集
             </button>
           )}
+          <button className="btn btn-outline" onClick={() => set({ screen: 'techo', thUser: u.id, thKind: 'record' })} title="この方の介護予防手帳を表示・印刷">
+            <Icon name="techo" size={16} strokeWidth={1.8} />
+            手帳
+          </button>
           <button className="btn btn-primary" onClick={() => set({ screen: 'pdf', pdfMode: 'single', pdfUser: u.id, pdfYear: lastY, pdfQ: '' })}>
             <Icon name="download" size={16} strokeWidth={1.8} />
             結果票 PDF
