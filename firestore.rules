@@ -11,6 +11,14 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/staff/$(request.auth.uid));
     }
 
+    // 電子手帳の利用者本人か（職員が portalUsers/{authUid} を発行した利用者のみ。
+    // self-signup では portalUsers 文書が無いため何も読めない）
+    function isPortalOwner(userId) {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/portalUsers/$(request.auth.uid))
+        && get(/databases/$(database)/documents/portalUsers/$(request.auth.uid)).data.userId == userId;
+    }
+
     // 職員許可リスト。承認済み職員はアプリの「職員管理」で一覧・追加・解除できる（全員同権限）。
     // 最初の 1 人だけは CLI(grant-staff.mjs / Admin SDK)で承認する（ルールをすり抜ける）。
     match /staff/{uid} {
@@ -49,22 +57,44 @@ service cloud.firestore {
       allow update: if isStaff()
         && request.resource.data.diff(resource.data).affectedKeys()
            .hasOnly(['walkinStatus', 'userId', 'userName', 'registeredAt', 'reviewedBy']);
-      allow create, delete: if false;
+      allow create: if false;
+      allow delete: if isStaff(); // 誤スキャン・重複エントリの削除
     }
 
     // 利用者台帳。承認職員が閲覧・編集可（氏名・市町村/行政区・介護度・電話 等）。削除は不可。
+    // 電子手帳の利用者本人は自分の文書のみ閲覧可。
     match /users/{userId} {
-      allow read: if isStaff();
+      allow read: if isStaff() || isPortalOwner(userId);
       allow create, update: if isStaff();
       allow delete: if false;
     }
 
     // 測定データ。承認職員が閲覧・作成・編集可（実データ取り込み後の修正を含む）。削除は不可(監査性)。
+    // 電子手帳の利用者本人は自分の測定のみ閲覧可（where userId == 本人ID のクエリ）。
     match /measurements/{measurementId} {
-      allow read: if isStaff();
+      allow read: if isStaff()
+        || (request.auth != null && isPortalOwner(resource.data.userId));
       allow create, update: if isStaff()
         && request.resource.data.keys().hasAll(['userId', 'year']);
       allow delete: if false;
+    }
+
+    // 電子手帳の利用者アカウント紐付け（authUid → 参加者ID）。発行・解除は職員のみ。
+    match /portalUsers/{uid} {
+      allow read: if isStaff() || (request.auth != null && request.auth.uid == uid);
+      allow create, update, delete: if isStaff();
+    }
+
+    // 電子手帳（目標・興味関心 + 体調/活動記録）。職員と本人が読み書きできる。
+    match /techo/{userId} {
+      allow read, create, update: if isStaff() || isPortalOwner(userId);
+      allow delete: if false;
+
+      match /logs/{logId} {
+        allow read, create: if isStaff() || isPortalOwner(userId);
+        allow update: if false;       // 記録は追記式（訂正は削除して入れ直す）
+        allow delete: if isStaff();   // 誤入力の訂正は職員のみ
+      }
     }
   }
 }

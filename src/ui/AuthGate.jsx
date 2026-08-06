@@ -1,8 +1,10 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { authEnabled, watchAuth, signOutUser } from '../lib/auth.js'
 import { loadRealData } from '../lib/realdata.js'
+import { loadPortalData } from '../lib/techo.js'
 import { getStaffProfile } from '../lib/staffAdmin.js'
 import Login from '../screens/Login.jsx'
+import Portal from '../screens/Portal.jsx'
 
 const BASE = import.meta.env.BASE_URL
 
@@ -40,16 +42,29 @@ function NoAccess() {
 }
 
 // 認証後に実データ（Firestore）を読み込んでから本体を表示する。
-// 実データが無ければ従来のシードのまま表示する。権限が無ければ NoAccess を表示する。
-function RealDataBoot({ children }) {
+// 実データが無ければ従来のシードのまま表示する。
+// 職員権限が無い場合は、利用者アカウント(portalUsers)を確認して本人の電子手帳を表示する。
+// どちらでもなければ NoAccess を表示する。
+function RealDataBoot({ user, children }) {
   const [res, setRes] = useState(null)
+  const [portalU, setPortalU] = useState() // undefined=未確認 / null=利用者でもない / それ以外=利用者本人
   useEffect(() => {
     let alive = true
     loadRealData().catch(() => ({ loaded: false })).then((r) => { if (alive) setRes(r || { loaded: false }) })
     return () => { alive = false }
   }, [])
+  useEffect(() => {
+    if (!res || !res.denied || !user) return
+    let alive = true
+    loadPortalData(user.uid).then((u) => { if (alive) setPortalU(u || null) }).catch(() => { if (alive) setPortalU(null) })
+    return () => { alive = false }
+  }, [res, user])
   if (!res) return <AuthSplash label="データを読み込んでいます…" />
-  if (res.denied) return <NoAccess />
+  if (res.denied) {
+    if (portalU === undefined) return <AuthSplash label="手帳を読み込んでいます…" />
+    if (portalU) return <Portal user={portalU} onSignOut={signOutUser} />
+    return <NoAccess />
+  }
   return children
 }
 
@@ -85,7 +100,7 @@ export default function AuthGate({ children }) {
   if (!user) return <Login />
   return (
     <AuthCtx.Provider value={{ user, enabled: true, profile, signOut: signOutUser, refreshProfile }}>
-      <RealDataBoot>{children}</RealDataBoot>
+      <RealDataBoot user={user}>{children}</RealDataBoot>
     </AuthCtx.Provider>
   )
 }

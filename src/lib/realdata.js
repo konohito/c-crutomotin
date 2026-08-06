@@ -27,7 +27,8 @@ function scoreOf(sex, v) {
 }
 
 // Firestore の user ドキュメント + 測定群 → エンジン形式の利用者オブジェクト
-function toEngineUser(u, measList) {
+// (電子手帳のポータル読み込み(techo.js)からも使う)
+export function toEngineUser(u, measList) {
   const meas = {}, inbody = {}, kcl = {}
   for (const m of measList) {
     // InBody(体組成): ETL(etl-inbody.py)が突合して測定に付与した inbody を読む。旧 inbodySmi も後方互換。
@@ -60,6 +61,7 @@ function toEngineUser(u, measList) {
     phone: u.phone || '', careLevel: u.careLevel || '',
     joined: years.length ? Math.min(...years) : D.CUR, theta: 0,
     note: u.note || '', flags: u.flags || [], walkIn: !!u.walkIn,
+    portal: u.portal || null, // 電子手帳アカウント { loginId, issuedAt }
     meas, inbody, kcl,
   }
 }
