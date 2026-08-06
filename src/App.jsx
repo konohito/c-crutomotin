@@ -79,7 +79,7 @@ function NavItem({ id, label, badge }) {
   const { state, set } = useStore()
   const active = state.screen === id
   return (
-    <button className={`nav-item${active ? ' active' : ''}`} onClick={() => set({ screen: id, navOpen: false })}>
+    <button className={`nav-item${active ? ' active' : ''}`} onClick={() => set({ screen: id, navOpen: false, ...(id === 'techo' ? { thUser: null } : {}) })}>
       <Icon name={id} size={18} />
       <span style={{ flex: 1 }}>{label}</span>
       {badge ? <span className="nav-badge t-num">{badge}</span> : null}

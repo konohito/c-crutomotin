@@ -334,9 +334,11 @@ const KINDS = [
 export default function Techo() {
   const { state, set } = useStore()
   const kind = state.thKind || 'record'
+  // 個人詳細の「手帳」ボタンから開いた場合: その方 1 名分を画面で閲覧(そのまま印刷も可)
+  const viewUser = state.thUser ? D.users.find(x => x.id === state.thUser) : null
   // 記録手帳の氏名・情報: 共通(空欄で印刷) / 台帳から印字(1 名 1 冊・測定結果も差し込み)
   const thName = state.thName || 'blank'
-  const perUser = kind === 'record' && thName === 'print'
+  const perUser = !viewUser && kind === 'record' && thName === 'print'
   const mu = allMunis(state).find(x => x.id === state.thMuni) || D.MUNIS[0]
   const muniUsers = D.users.filter(u => u.muni === mu.id)
   const wardOpts = distinct(muniUsers.map(u => u.venueName))
@@ -346,7 +348,9 @@ export default function Techo() {
   const targets = allTargets.slice(0, PRINT_CAP)
 
   const pages = kind === 'record'
-    ? (perUser
+    ? (viewUser
+      ? RecordPages(viewUser)
+      : perUser
       ? targets.map(u => <Fragment key={u.id}>{RecordPages(u)}</Fragment>)
       : RecordPages(null))
     : kind === 'archive' ? ArchivePages() : SupporterPages()
@@ -355,6 +359,22 @@ export default function Techo() {
   return (
     <div className="print-screen panel-screen" style={{ display: 'grid', gridTemplateColumns: '300px 1fr', height: '100%', minHeight: 0 }}>
       <div className="noprint side-panel" style={{ background: 'var(--bg-surface)', borderRight: '1px solid var(--border-default)', overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {viewUser && (
+          <div>
+            <button className="btn btn-ghost btn-sm" style={{ paddingLeft: 6, marginBottom: 10 }} onClick={() => set({ screen: 'det', detId: viewUser.id })}>
+              <Icon name="back" size={16} />
+              個人詳細へ戻る
+            </button>
+            <div style={{ border: '1px solid var(--brand-200)', background: 'var(--brand-50)', borderRadius: 10, padding: '12px 14px' }}>
+              <div style={{ fontSize: 11, color: 'var(--brand-700)' }}>{viewUser.kana}</div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{viewUser.name} さんの手帳</div>
+              <div className="t-num" style={{ fontSize: 11.5, color: 'var(--fg-2)', marginTop: 2 }}>ID {viewUser.id} · {viewUser.muniName}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--fg-2)', lineHeight: 1.6, marginTop: 6 }}>
+                記録手帳には台帳の基本情報と直近の測定結果が差し込まれています。そのまま印刷できます。
+              </div>
+            </div>
+          </div>
+        )}
         <div>
           <Overline style={{ marginBottom: 8 }}>冊子の種類</Overline>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -363,7 +383,7 @@ export default function Techo() {
             ))}
           </div>
         </div>
-        {kind === 'record' && (
+        {!viewUser && kind === 'record' && (
           <div>
             <Overline style={{ marginBottom: 8 }}>氏名・情報の表示</Overline>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
