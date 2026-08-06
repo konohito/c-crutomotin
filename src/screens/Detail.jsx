@@ -147,7 +147,7 @@ export default function Detail() {
               編集
             </button>
           )}
-          <button className="btn btn-outline" onClick={() => set({ screen: 'techo', thUser: u.id, thKind: 'record' })} title="この方の介護予防手帳を表示・印刷">
+          <button className="btn btn-outline" onClick={() => set({ screen: 'techolist', tlId: u.id })} title="この方の電子手帳（記録・アカウント発行・印刷）">
             <Icon name="techo" size={16} strokeWidth={1.8} />
             手帳
           </button>

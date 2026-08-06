@@ -162,6 +162,13 @@ export async function updateWalkin(walkinId, patch) {
   await firestore.updateDoc(firestore.doc(db, 'walkins', walkinId), patch)
 }
 
+// 当日受付エントリを削除(誤スキャン・重複の整理用。画像の削除は呼び出し側で)
+export async function deleteWalkin(walkinId) {
+  if (!dbEnabled()) return
+  const { firestore, db } = await sdk()
+  await firestore.deleteDoc(firestore.doc(db, 'walkins', walkinId))
+}
+
 // 利用者の walkIn フラグを外す(正式登録 = 台帳に出す)
 export async function clearWalkInFlag(userId) {
   if (!dbEnabled()) return

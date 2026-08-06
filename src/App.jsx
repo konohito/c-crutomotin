@@ -17,6 +17,7 @@ import Calendar from './screens/Calendar.jsx'
 import PdfExport from './screens/PdfExport.jsx'
 import SheetMaker from './screens/SheetMaker.jsx'
 import Techo from './screens/Techo.jsx'
+import TechoList from './screens/TechoList.jsx'
 import WalkIn from './screens/WalkIn.jsx'
 import Mobile from './screens/Mobile.jsx'
 import Staff from './screens/Staff.jsx'
@@ -39,6 +40,7 @@ const TITLES = {
   cal: ['カレンダー', '測定会・教室・会議の予定管理'],
   sheet: ['用紙作成', '読み取り対応の記録用紙を印刷'],
   techo: ['手帳作成', '介護予防手帳（記録手帳・資料集・サポーターマニュアル）の印刷'],
+  techolist: ['手帳一覧', '利用者ごとの電子手帳 · 記録の閲覧とアカウント発行'],
   ana: ['集計分析', '市町村・圏域別の年次集計'],
   pdf: ['PDF 出力', '個人結果票の一括出力'],
   exp: ['CSV 出力', '県報告用データの一括出力'],
@@ -53,6 +55,7 @@ const NAV_MAIN = [
   ['csv', '利用者情報取り込み'],
   ['cal', 'カレンダー'],
   ['sheet', '用紙作成'],
+  ['techolist', '手帳一覧'],
   ['techo', '手帳作成'],
   ['ros', '利用者台帳'],
   ['mob', '用紙アップロード'],
@@ -79,7 +82,7 @@ function NavItem({ id, label, badge }) {
   const { state, set } = useStore()
   const active = state.screen === id
   return (
-    <button className={`nav-item${active ? ' active' : ''}`} onClick={() => set({ screen: id, navOpen: false, ...(id === 'techo' ? { thUser: null } : {}) })}>
+    <button className={`nav-item${active ? ' active' : ''}`} onClick={() => set({ screen: id, navOpen: false, ...(id === 'techo' ? { thUser: null } : {}), ...(id === 'techolist' ? { tlId: null } : {}) })}>
       <Icon name={id} size={18} />
       <span style={{ flex: 1 }}>{label}</span>
       {badge ? <span className="nav-badge t-num">{badge}</span> : null}
@@ -211,7 +214,7 @@ function Header() {
 
 const SCREENS = {
   dash: Dashboard, imp: ImportScreen, csv: CsvImport, ros: Roster, det: Detail,
-  ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, techo: Techo, mob: Mobile, exp: CsvExport, staff: Staff, walkin: WalkIn,
+  ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, techo: Techo, techolist: TechoList, mob: Mobile, exp: CsvExport, staff: Staff, walkin: WalkIn,
 }
 
 function AppInner() {

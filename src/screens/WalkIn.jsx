@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { dbEnabled, wardLabel, watchWalkins, updateWalkin, clearWalkInFlag, commitRecognition, commitKclRecognition, deleteSheetImage } from '../lib/db.js'
+import { dbEnabled, wardLabel, watchWalkins, updateWalkin, deleteWalkin, clearWalkInFlag, commitRecognition, commitKclRecognition, deleteSheetImage } from '../lib/db.js'
 import { createUserDoc, saveMeasurement } from '../lib/realdata.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -144,6 +144,24 @@ export default function WalkIn() {
 
   const resultSheet = (e) => set({ screen: 'pdf', pdfMode: 'single', pdfUser: e.userId })
 
+  // エントリの削除(誤スキャン・重複・テスト読み取りの整理)。画像も削除する。
+  // 仮登録済みの利用者データ(測定値・回答)は消さない — エントリ(受付キュー)のみ消える。
+  const deleteEntry = async (e) => {
+    const warn = e.walkinStatus === 'pending'
+      ? 'この読み取りを削除しますか？\n（スキャン画像も削除され、元に戻せません）'
+      : 'このエントリを一覧から削除しますか？\n（仮登録した利用者と測定データは残ります）'
+    if (!window.confirm(warn)) return
+    setBusy(e.id)
+    try {
+      await deleteWalkin(e.id)
+      deleteSheetImage(e.storagePath).catch(() => {})
+      if (!dbEnabled()) setEntries(prev => prev.filter(x => x.id !== e.id))
+      if (openId === e.id) setOpenId('')
+      showToast('エントリを削除しました')
+    } catch (err) { showToast('削除に失敗しました: ' + (err.message || '')) }
+    setBusy('')
+  }
+
   const list = entries.filter(e => e.walkinStatus !== 'dismissed')
   const nPending = list.filter(e => e.walkinStatus === 'pending').length
 
@@ -205,6 +223,11 @@ export default function WalkIn() {
               {e.walkinStatus === 'registered' && (
                 <button className="btn" onClick={() => set({ screen: 'ros' })}>台帳で確認</button>
               )}
+              <span style={{ flex: 1 }} />
+              <button className="btn btn-ghost" disabled={busy === e.id} onClick={() => deleteEntry(e)}
+                style={{ color: 'var(--danger-700, #b91c1c)' }} title="このエントリを削除">
+                削除
+              </button>
             </div>
 
             {openId === e.id && (
