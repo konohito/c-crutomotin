@@ -16,6 +16,7 @@ import Analytics from './screens/Analytics.jsx'
 import Calendar from './screens/Calendar.jsx'
 import PdfExport from './screens/PdfExport.jsx'
 import SheetMaker from './screens/SheetMaker.jsx'
+import Techo from './screens/Techo.jsx'
 import WalkIn from './screens/WalkIn.jsx'
 import Mobile from './screens/Mobile.jsx'
 import Staff from './screens/Staff.jsx'
@@ -37,6 +38,7 @@ const TITLES = {
   det: ['個人詳細', '時系列の測定結果と評価'],
   cal: ['カレンダー', '測定会・教室・会議の予定管理'],
   sheet: ['用紙作成', '読み取り対応の記録用紙を印刷'],
+  techo: ['手帳作成', '介護予防手帳（記録手帳・資料集・サポーターマニュアル）の印刷'],
   ana: ['集計分析', '市町村・圏域別の年次集計'],
   pdf: ['PDF 出力', '個人結果票の一括出力'],
   exp: ['CSV 出力', '県報告用データの一括出力'],
@@ -51,6 +53,7 @@ const NAV_MAIN = [
   ['csv', '利用者情報取り込み'],
   ['cal', 'カレンダー'],
   ['sheet', '用紙作成'],
+  ['techo', '手帳作成'],
   ['ros', '利用者台帳'],
   ['mob', '用紙アップロード'],
 ]
@@ -208,7 +211,7 @@ function Header() {
 
 const SCREENS = {
   dash: Dashboard, imp: ImportScreen, csv: CsvImport, ros: Roster, det: Detail,
-  ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, mob: Mobile, exp: CsvExport, staff: Staff, walkin: WalkIn,
+  ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, techo: Techo, mob: Mobile, exp: CsvExport, staff: Staff, walkin: WalkIn,
 }
 
 function AppInner() {
