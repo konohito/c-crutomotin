@@ -89,7 +89,7 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '512MiB', timeoutSecond
     try {
       const kcl = readKcl(document, content, obj.contentType || 'image/jpeg')
       if (kcl.isKcl) {
-        rec.kcl = { side: kcl.side || null, answers: kcl.answers || {}, readable: !!kcl.readable }
+        rec.kcl = { side: kcl.side || null, answers: kcl.answers || {}, readable: !!kcl.readable, reason: kcl.reason || null }
         rec.needsReview = true
         // シール/手書きの ID にはラベル語が無いことがある → 単独の 5 桁数字を ID として拾う
         if (!rec.ocrId) {

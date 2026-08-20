@@ -130,8 +130,16 @@ function median(arr) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
-// 数字クラスタの連結文字列 → 数値。小数点が読めていなければ枠構成から位置を補う。
-function digitsToValue(joined, boxDef) {
+/* 測定値の妥当範囲。1 マス 1 桁の記入枠は先頭が空欄になることがあり(例: 体重「□50.4」)、
+   印字の小数点が読めないと "504" が「50.4(先頭の枠が空欄)」と「504(小数枠が空欄)」の
+   どちらにも解釈できる。物理的にあり得る方を採用して取り違えを防ぐ。 */
+const VALUE_RANGE = {
+  height: [100, 210], weight: [25, 160], gripR: [3, 80], gripL: [3, 80],
+  walk5: [1, 30], walk5max: [0.8, 30], tug: [3, 90], balR: [0, 61], balL: [0, 61],
+}
+
+// 数字クラスタの連結文字列 → 数値。小数点が読めていなければ枠構成と妥当範囲から位置を補う。
+function digitsToValue(joined, boxDef, cid) {
   if (!joined) return null
   if (joined.includes('.')) {
     const v = parseFloat(joined)
@@ -139,9 +147,22 @@ function digitsToValue(joined, boxDef) {
   }
   if (!boxDef) return null
   const [ints, fracs] = boxDef
-  if (joined.length === ints + fracs) return parseFloat(joined.slice(0, ints) + '.' + joined.slice(ints))
-  if (joined.length > 0 && joined.length <= ints) return parseFloat(joined) // 小数枠が空欄
-  return null
+  if (joined.length > ints + fracs) return null
+  // ① 末尾 fracs 桁を小数部とみなす(整数側の先頭枠が空欄のケース)
+  const split = joined.length > fracs
+    ? parseFloat(joined.slice(0, joined.length - fracs) + '.' + joined.slice(joined.length - fracs))
+    : NaN
+  // ② 整数のみ(小数枠が空欄のケース)
+  const intOnly = joined.length <= ints ? parseFloat(joined) : NaN
+  // 既定: 枠がすべて埋まっていれば小数点を差し込み、そうでなければ整数とみなす
+  let value = joined.length === ints + fracs ? split : intOnly
+  // 妥当範囲が分かる項目では、範囲に収まる解釈を優先する(体重「□50.4」→ 504 の取り違えを防ぐ)
+  const range = VALUE_RANGE[cid]
+  if (range) {
+    const ok = (v) => Number.isFinite(v) && v >= range[0] && v <= range[1]
+    if (!ok(value)) { if (ok(split)) value = split; else if (ok(intOnly)) value = intOnly }
+  }
+  return Number.isFinite(value) ? value : null
 }
 
 // value が null のままの項目を座標ベースで補完し、補完した cid の一覧を返す(fields を書き換える)
@@ -195,7 +216,7 @@ function spatialFallback(document, fields) {
     }
     const box = clusters[clusters.length - 1]
     const joined = zenToHan(box.map(t => t.text).join('')).replace(/[^0-9.]/g, '')
-    const value = digitsToValue(joined, BOX_DIGITS[a.cid])
+    const value = digitsToValue(joined, BOX_DIGITS[a.cid], a.cid)
     if (value === null) continue
     const confs = box.map(t => t.conf).filter(c => c !== null)
     const conf = Math.min(FALLBACK_MAX_CONF, confs.length ? pct(confs.reduce((s, c) => s + c, 0) / confs.length) : 60)

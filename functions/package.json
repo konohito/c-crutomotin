@@ -8,7 +8,7 @@
   },
   "main": "index.js",
   "scripts": {
-    "test": "node test/mapping.test.cjs && node test/recognition.test.cjs && node test/mockdoc.test.cjs",
+    "test": "node test/mapping.test.cjs && node test/recognition.test.cjs && node test/mockdoc.test.cjs && node test/kclread.test.cjs",
     "test:e2e": "firebase emulators:exec --project demo-cruto --only functions,firestore,storage \"node test/e2e-pipeline.cjs\"",
     "serve": "firebase emulators:start --only functions,firestore,storage",
     "deploy": "firebase deploy --only functions",
