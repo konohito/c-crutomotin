@@ -7,7 +7,7 @@ import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKc
 import { saveMeasurement } from '../lib/realdata.js'
 import { Card, Pill, Modal, ModalHead, Select, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
-import { kclSideList, ansKind, ANS_STYLE } from '../ui/kclanswers.jsx'
+import { kclSideList, ansKind, ANS_STYLE, kclStats, kclAutoOk } from '../ui/kclanswers.jsx'
 
 
 const GRID = '42px 168px repeat(8, 1fr) 92px 128px'
@@ -263,7 +263,7 @@ function ProdImport() {
   const nErr = enriched.filter(x => x.rec.status === 'error').length
   // 用紙の様式番号(暗号)による区分で取り込みモードを変える:
   // 記録用紙 → 測定値の本登録 / 問診票(rec.kcl) → 回答の本登録(kclAnswers)
-  const kclOk = (r) => r.kcl && r.kcl.readable && !Object.values(r.kcl.answers || {}).some(v => v === 'multi')
+  const kclOk = (r) => kclAutoOk(r.kcl)
   const ready = enriched.filter(x => x.rec.status === 'recognized' && x.u && (x.rec.kcl ? kclOk(x.rec) : !x.rec.needsReview))
   const nNeed = enriched.filter(x => x.rec.status === 'recognized' && !(x.u && (x.rec.kcl ? kclOk(x.rec) : !x.rec.needsReview))).length
 
@@ -446,11 +446,9 @@ function ProdImport() {
                       <Pill bg="var(--brand-50)" fg="var(--brand-700)">問診票{rec.kcl.side === 'front' ? '（おもて）' : rec.kcl.side === 'back' ? '（うら）' : ''}</Pill>
                       <span className="t-num" style={{ fontSize: 12.5, color: 'var(--fg-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {(() => {
-                          const vs = Object.values(rec.kcl.answers || {})
-                          const y = vs.filter(v => v === 'yes').length, n = vs.filter(v => v === 'no').length
-                          const m = vs.filter(v => v === 'multi').length, e = vs.filter(v => v === null).length
+        const st = kclStats(rec.kcl)
                           return rec.kcl.readable
-                            ? `はい ${y} · いいえ ${n}${m ? ` · 二重塗り ${m}` : ''}${e ? ` · 未回答 ${e}` : ''}`
+                            ? `読み取り ${st.read}/${st.total} 問${st.empty ? ` · 未回答 ${st.empty}` : ''}${st.multi ? ` · 二重塗り ${st.multi}` : ''}`
                             : `マークを読み取れませんでした（${rec.kcl.reason || '用紙を確認してください'}）`
                         })()}
                       </span>
@@ -513,14 +511,18 @@ function ProdImport() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', minWidth: 0 }}>
             {/* データの確からしさ(読取率) */}
             {(() => {
-              const list = kclSideList(assign.kcl && assign.kcl.side)
-              const kinds = list.map(q => ansKind(assign.kcl && assign.kcl.answers, q.no))
-              const okN = kinds.filter(k => k === 'yes' || k === 'no' || k === 'empty').length
-              const ngN = kinds.length - okN
+              // 「はい/いいえ」が取れた設問だけを読取率に数える。
+              // 未回答は本当に無回答か読み落としか画面では区別できないため、確認対象として出す。
+              const st = kclStats(assign.kcl)
+              const ngN = st.empty + st.multi + st.unread
               return (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--fg-2)' }}>
-                  <span>マーク読取率 <b className="t-num" style={{ fontSize: 16, color: ngN ? 'var(--warning-700)' : 'var(--success-700)' }}>{Math.round(okN / list.length * 100)}%</b>（{okN} / {list.length} 問）</span>
-                  {ngN > 0 && <span style={{ color: 'var(--warning-700)' }}>要修正 {ngN} 問（二重塗り・読取不可）は下で確定してください</span>}
+                  <span>マーク読取率 <b className="t-num" style={{ fontSize: 16, color: ngN ? 'var(--warning-700)' : 'var(--success-700)' }}>{st.rate}%</b>（{st.read} / {st.total} 問）</span>
+                  {ngN > 0 && (
+                    <span style={{ color: 'var(--warning-700)' }}>
+                      要確認 {ngN} 問（{[st.empty && `未回答 ${st.empty}`, st.multi && `二重塗り ${st.multi}`, st.unread && `読取不可 ${st.unread}`].filter(Boolean).join('・')}）は下で確定してください
+                    </span>
+                  )}
                   {assign.kcl && !assign.kcl.readable && assign.kcl.reason && (
                     <span style={{ width: '100%', color: 'var(--danger-700)', background: 'var(--danger-50)', borderRadius: 8, padding: '6px 10px' }}>
                       マークを読み取れませんでした: {assign.kcl.reason}
