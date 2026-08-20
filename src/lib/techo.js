@@ -178,9 +178,14 @@ export async function loadPortalData(authUid) {
     const userId = map.data().userId
     const usnap = await fs.getDoc(fs.doc(db, 'users', userId))
     if (!usnap.exists()) return null
-    const mq = fs.query(fs.collection(db, 'measurements'), fs.where('userId', '==', userId))
-    const msnap = await fs.getDocs(mq)
-    return toEngineUser({ id: userId, ...usnap.data() }, msnap.docs.map(d => d.data()))
+    /* 測定は年度ごとに ID が決まっている(measurements/{参加者ID}_{年度})ので、
+       コレクションを検索せず 1 件ずつ取りに行く。
+       検索(クエリ)にすると、セキュリティルールが本人確認のために
+       文書ごとに参照を行うことになり、件数が増えると評価上限に当たるため。 */
+    const ids = D.YEARS.map(y => `${userId}_${y}`)
+    const snaps = await Promise.all(ids.map(id => fs.getDoc(fs.doc(db, 'measurements', id)).catch(() => null)))
+    const meas = snaps.filter(s => s && s.exists()).map(s => s.data())
+    return toEngineUser({ id: userId, ...usnap.data() }, meas)
   } catch (e) {
     console.error('loadPortalData failed:', e)
     return null

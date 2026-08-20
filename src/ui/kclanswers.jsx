@@ -28,6 +28,30 @@ export const ansKind = (answers, no) => {
   return v === 'yes' ? 'yes' : v === 'no' ? 'no' : v === 'multi' ? 'multi' : 'empty'
 }
 
+/* 読み取り結果の集計。「はい/いいえ」が取れたものだけを読めた扱いにする。
+   未回答(塗りが見つからない)は、本当に無回答か読み落としかを画面では区別できないため
+   読取率には含めず、職員の確認対象として数える。 */
+export function kclStats(kcl) {
+  const list = kclSideList(kcl && kcl.side)
+  const kinds = list.map(q => ansKind(kcl && kcl.answers, q.no))
+  const read = kinds.filter(k => k === 'yes' || k === 'no').length
+  return {
+    total: list.length,
+    read,
+    empty: kinds.filter(k => k === 'empty').length,
+    multi: kinds.filter(k => k === 'multi').length,
+    unread: kinds.filter(k => k === 'unread').length,
+    rate: list.length ? Math.round((read / list.length) * 100) : 0,
+  }
+}
+
+// 職員の確認なしで本登録してよいか(二重塗りが無く、ほぼ全問読めている)
+export function kclAutoOk(kcl) {
+  if (!kcl || !kcl.readable) return false
+  const s = kclStats(kcl)
+  return s.multi === 0 && s.unread === 0 && s.read >= Math.ceil(s.total * 0.85)
+}
+
 // 読み取り結果の一覧チップ(読み取り専用・当日受付カードなどで使用)
 export function KclAnswerChips({ kcl }) {
   const list = kclSideList(kcl && kcl.side)

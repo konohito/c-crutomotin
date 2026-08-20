@@ -59,7 +59,13 @@ export async function uploadSheetImage(file, { batchId, no }) {
 export async function bumpBatchUpload(batchId, n = 1) {
   if (!dbEnabled() || !batchId) return
   const { firestore, db } = await sdk()
-  await firestore.setDoc(firestore.doc(db, 'batches', batchId), { uploadCount: firestore.increment(n) }, { merge: true })
+  // updatedAt も入れる。バッチ一覧は updatedAt の降順で購読しており、
+  // この項目が無い文書はクエリ結果に現れない(＝読み取りが失敗したバッチが
+  // 一覧にすら出ず、取りこぼしに気づけなくなる)。
+  await firestore.setDoc(firestore.doc(db, 'batches', batchId), {
+    uploadCount: firestore.increment(n),
+    updatedAt: firestore.serverTimestamp(),
+  }, { merge: true })
 }
 
 // 記録用紙画像の表示用 URL を取得する（確認モーダルで原本と読み取り値を見比べるため）

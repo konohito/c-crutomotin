@@ -16,8 +16,8 @@ const OVAL_W = 15, OVAL_H = 21
 const IMG_W = 1200, IMG_H = 1600
 const OFF_X = 100, OFF_Y = 60, SCALE = 900 / PAGE_W
 
-// おもて面の設問(印刷順)。2 要素目に | があるものは 2 行に折り返す設問。
-const ROWS = [
+// 設問(印刷順)。text に | があるものは 2 行に折り返す設問。
+const FRONT_ROWS = [
   { key: 1, text: 'バスや電車で１人で外出していますか' },
   { key: 2, text: '日用品の買い物をしていますか' },
   { key: 3, text: '預貯金の出し入れをしていますか' },
@@ -32,13 +32,49 @@ const ROWS = [
   { key: 13, text: '半年前に比べて固いものが食べにくくなりましたか' },
   { key: 14, text: 'お茶や汁物等でむせることがありますか' },
 ]
-// 実際の記入写真と同じ回答
-const EXPECT = {
+const FRONT_EXPECT = {
   1: 'no', 2: 'yes', 3: 'yes', 4: 'no', 5: 'no', 6: 'yes', 7: 'yes',
   8: 'no', 9: 'yes', 10: 'yes', 11: 'no', 13: 'no', 14: 'yes',
 }
-const ROW_Y0 = 560, ROW_PITCH = 40, LINE_H = 22
+// うら面。最後の 2 問は【運動習慣について】として別の見出し(はい・いいえ)の下に並ぶ
+const BACK_ROWS = [
+  { key: 15, text: '口の渇きが気になりますか' },
+  { key: 16, text: '週に１回以上は外出していますか' },
+  { key: 17, text: '昨年と比べて外出の回数が減っていますか' },
+  { key: 18, text: '周りの人から「いつも同じ事を聞く」などの物忘れ|があると言われますか' },
+  { key: 19, text: '自分で電話番号を調べて、電話をかけることをして|いますか' },
+  { key: 20, text: '今日が何月何日かわからない時がありますか' },
+  { key: 21, text: '（ここ２週間）毎日の生活に充実感がない' },
+  { key: 22, text: '（ここ２週間）これまで楽しんでやれていたことが|楽しめなくなった' },
+  { key: 23, text: '（ここ２週間）以前は楽にできていたことが今はお|っくうに感じられる' },
+  { key: 24, text: '（ここ２週間）自分が役に立つ人間だと思えない' },
+  { key: 25, text: '（ここ２週間）わけもなく疲れたような感じがする' },
+  { key: 'ex1', text: '週1回程度の定期的な運動・スポーツをしています|か', section: 1 },
+  { key: 'ex2', text: '自宅や自宅外で、ストレッチや筋トレなどの運動を|週1回以上は行なっていますか', section: 1 },
+]
+const BACK_EXPECT = {
+  15: 'yes', 16: 'no', 17: 'no', 18: 'no', 19: 'yes', 20: 'yes', 21: 'no',
+  22: 'no', 23: 'yes', 24: 'yes', 25: 'yes', ex1: 'yes', ex2: 'no',
+}
+const ROW_Y0 = 560, ROW_PITCH = 40, LINE_H = 22, HEAD_Y = 509
 const EXAMPLE_Y = 537   // 記入例の行(設問①の 23px 上。実際の用紙より詰めた厳しい条件)
+
+// 面ごとの構成。うら面は【運動習慣について】の見出し(はい・いいえ)がもう 1 組ある。
+const SIDES = {
+  front: { rows: FRONT_ROWS, expect: FRONT_EXPECT, intro: true, example: true, title: '【基本チェックリスト】' },
+  back: { rows: BACK_ROWS, expect: BACK_EXPECT, intro: false, example: false, title: '【基本チェックリスト（つづき）】' },
+}
+// 各設問の y と、見出し(はい・いいえ)の y を決める
+function layout(cfg) {
+  const rowY = [], headers = [HEAD_Y]
+  let y = ROW_Y0, prevSec = 0
+  cfg.rows.forEach((r) => {
+    const sec = r.section || 0
+    if (sec !== prevSec) { y += ROW_PITCH * 1.5; headers.push(y - ROW_PITCH * 0.75); prevSec = sec }
+    rowY.push(y); y += ROW_PITCH
+  })
+  return { rowY, headers }
+}
 
 // 用紙座標(page) → 写真座標。tilt(ラジアン)は手持ち撮影の傾き。
 function makeXf(tilt) {
@@ -58,7 +94,7 @@ function makeXf(tilt) {
 }
 
 // ---- 合成画像(机の上に置いた白い用紙に楕円を塗る) ---------------------------
-function makeImage(xf, blank, style) {
+function makeImage(xf, blank, style, cfg, lay) {
   const data = Buffer.alloc(IMG_W * IMG_H * 4)
   for (let y = 0; y < IMG_H; y++) {
     for (let x = 0; x < IMG_W; x++) {
@@ -103,13 +139,13 @@ function makeImage(xf, blank, style) {
   }
   // 記入例の行(設問①のすぐ上)には「はい」が塗られた見本が印刷されている。
   // 設問①の判定がこれを拾わないことも検証する。
-  fill(COL_YES, EXAMPLE_Y)
-  if (!blank) ROWS.forEach((r, idx) => fill(EXPECT[r.key] === 'yes' ? COL_YES : COL_NO, ROW_Y0 + idx * ROW_PITCH, style))
+  if (cfg.example) fill(COL_YES, EXAMPLE_Y)
+  if (!blank) cfg.rows.forEach((r, idx) => fill(cfg.expect[r.key] === 'yes' ? COL_YES : COL_NO, lay.rowY[idx], style))
   return data
 }
 
 // ---- 合成 Document AI レスポンス ---------------------------------------------
-function makeDoc(xf) {
+function makeDoc(xf, cfg, lay) {
   let text = ''
   const tokens = [], lines = [], paragraphs = []
   // 用紙上の矩形 → 写真上の四隅(傾けると平行四辺形になる。Document AI も四隅を返す)
@@ -124,24 +160,28 @@ function makeDoc(xf) {
   }
 
   lines.push(put('様式 R7-03 令和7年度 からだデータ測定会 問診票', 60, 100, 620, 130))
-  lines.push(put('あてはまる方（はい・いいえ）を、濃いペンで黒くぬりつぶしてください。', 90, 250, 700, 274))
-  // ↑ この行の中の「はい」「いいえ」も OCR ではトークンとして出る(用紙の左寄り)
-  tokens.push(put('はい', 270, 252, 305, 272))
-  tokens.push(put('いいえ', 325, 252, 375, 272))
-  lines.push(put('【基本チェックリスト】', 60, 500, 260, 524))
-  // 回答欄の列見出し(用紙の右端。これが本来のアンカー)
-  tokens.push(put('はい', COL_YES - 22, 496, COL_YES + 22, 522))
-  tokens.push(put('いいえ', COL_NO - 28, 496, COL_NO + 28, 522))
-  const exLine = put('記入例 「はい」と答えるとき', 80, EXAMPLE_Y - 11, 300, EXAMPLE_Y + 11)
-  lines.push(exLine)
+  if (cfg.intro) {
+    lines.push(put('あてはまる方（はい・いいえ）を、濃いペンで黒くぬりつぶしてください。', 90, 250, 700, 274))
+    // ↑ この行の中の「はい」「いいえ」も OCR ではトークンとして出る(用紙の左寄り)
+    tokens.push(put('はい', 270, 252, 305, 272))
+    tokens.push(put('いいえ', 325, 252, 375, 272))
+  }
+  // 各セクションの見出しと、回答欄の列見出し(用紙の右端。これが本来のアンカー)
+  lay.headers.forEach((hy, si) => {
+    lines.push(put(si === 0 ? cfg.title : '【運動習慣について】', 60, hy - 9, 260, hy + 15))
+    tokens.push(put('はい', COL_YES - 22, hy - 13, COL_YES + 22, hy + 13))
+    tokens.push(put('いいえ', COL_NO - 28, hy - 13, COL_NO + 28, hy + 13))
+  })
+  if (cfg.example) lines.push(put('記入例 「はい」と答えるとき', 80, EXAMPLE_Y - 11, 300, EXAMPLE_Y + 11))
 
   /* Document AI は連続する行をまとめて 1 つの段落として返す。設問が 1 問ずつ
      別々の段落になるとは限らず、2〜3 問がまとめられることも多い。
      ここでは記入例＋設問①、以降は 2〜3 問ずつをまとめた現実的な段落を作る。 */
-  const groups = [[-1, 0], [1, 2], [3, 4, 5], [6, 7], [8, 9], [10, 11], [12]]
+  const groups = cfg.example ? [[-1, 0], [1, 2], [3, 4, 5], [6, 7], [8, 9], [10, 11], [12]]
+    : [[0, 1], [2, 3], [4, 5, 6], [7, 8], [9, 10], [11, 12]]
   const span = { top: {}, bottom: {}, left: {}, right: {} }
-  ROWS.forEach((r, idx) => {
-    const cy = ROW_Y0 + idx * ROW_PITCH
+  cfg.rows.forEach((r, idx) => {
+    const cy = lay.rowY[idx]
     const parts = r.text.split('|')
     if (parts.length === 1) {
       lines.push(put(parts[0], 80, cy - LINE_H / 2, 600, cy + LINE_H / 2))
@@ -159,7 +199,7 @@ function makeDoc(xf) {
   for (const g of groups) {
     const tops = g.map(i => (i < 0 ? EXAMPLE_Y - 11 : span.top[i]))
     const bots = g.map(i => (i < 0 ? EXAMPLE_Y + 11 : span.bottom[i]))
-    const txt = g.map(i => (i < 0 ? '記入例 「はい」と答えるとき' : ROWS[i].text.split('|').join(''))).join('')
+    const txt = g.map(i => (i < 0 ? '記入例 「はい」と答えるとき' : cfg.rows[i].text.split('|').join(''))).join('')
     paragraphs.push(put(txt, 80, Math.min(...tops), 600, Math.max(...bots)))
   }
   // 画像入力のとき Document AI の dimension は(回転補正後の)画素数を返す
@@ -194,9 +234,10 @@ function withExifOrientation(jpegBuf, orient) {
 
 // ---- 実行 --------------------------------------------------------------------
 let failed = 0
-function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full' } = {}) {
+function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full', side = 'front' } = {}) {
+  const cfg = SIDES[side], lay = layout(cfg)
   const xf = makeXf((tiltDeg * Math.PI) / 180)
-  const display = makeImage(xf, blank, style)
+  const display = makeImage(xf, blank, style, cfg, lay)
   let buf
   if (orient === 6) {
     const st = toStoredOrient6(display)
@@ -204,23 +245,23 @@ function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full' } =
   } else {
     buf = jpeg.encode({ data: display, width: IMG_W, height: IMG_H }, 92).data
   }
-  const res = readKcl(makeDoc(xf), buf, 'image/jpeg')
+  const res = readKcl(makeDoc(xf, cfg, lay), buf, 'image/jpeg')
   assert.strictEqual(res.isKcl, true, `${label}: 問診票として判定されること`)
-  assert.strictEqual(res.side, 'front', `${label}: おもて面と判定されること`)
+  assert.strictEqual(res.side, side, `${label}: ${side === 'front' ? 'おもて' : 'うら'}面と判定されること`)
   if (!res.readable) {
     console.error(`✗ ${label}: 読み取り不可 (${res.reason})`)
     failed++
     return
   }
-  const want = (r) => (blank ? null : EXPECT[r.key])
-  const wrong = ROWS.filter(r => res.answers[r.key] !== want(r))
+  const want = (r) => (blank ? null : cfg.expect[r.key])
+  const wrong = cfg.rows.filter(r => res.answers[r.key] !== want(r))
     .map(r => `No.${r.key}: 期待 ${want(r)} / 実際 ${res.answers[r.key]}`)
   if (wrong.length) {
-    console.error(`✗ ${label}: ${wrong.length}/${ROWS.length} 問を誤読\n  ` + wrong.join('\n  '))
+    console.error(`✗ ${label}: ${wrong.length}/${cfg.rows.length} 問を誤読\n  ` + wrong.join('\n  '))
     failed++
     return
   }
-  console.log(`✓ ${label}: ${ROWS.length} 問すべて正しく読み取り`)
+  console.log(`✓ ${label}: ${cfg.rows.length} 問すべて正しく読み取り`)
 }
 
 // EXIF 解析の単体確認
@@ -250,6 +291,13 @@ run('斜線だけの記入', { style: 'line' })
 // 未記入の用紙で「記入例」の塗りを拾って誤検出しないこと
 run('白紙(記入例のみ印刷)', { blank: true })
 run('白紙 + 傾き 3 度', { blank: true, tiltDeg: 3 })
+// うら面(【運動習慣について】の見出しがもう 1 組ある)
+run('うら面', { side: 'back' })
+run('うら面 + 傾き 2.5 度', { side: 'back', tiltDeg: 2.5 })
+run('うら面 + 傾き -3 度', { side: 'back', tiltDeg: -3 })
+run('うら面 + EXIF 回転あり', { side: 'back', orient: 6 })
+run('うら面 + 中心がずれた塗り', { side: 'back', style: 'offset' })
+run('うら面 白紙', { side: 'back', blank: true })
 
 if (failed) { console.error(`\n${failed} 件失敗`); process.exit(1) }
 console.log('\nkclread: すべて成功')
