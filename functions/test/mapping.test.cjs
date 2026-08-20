@@ -150,6 +150,11 @@ check('digitsToValue insert dot', digitsToValue('240', [2, 1]) === 24.0)
 check('digitsToValue int only', digitsToValue('24', [2, 1]) === 24)
 check('digitsToValue too long -> null', digitsToValue('12345', [2, 1]) === null)
 check('digitsToValue empty -> null', digitsToValue('', [2, 1]) === null)
+// 記入枠の先頭が空欄で小数点が読めない場合、妥当範囲から解釈を選ぶ(体重 □50.4 → 504 にしない)
+check('digitsToValue weight leading blank', digitsToValue('504', [3, 1], 'weight') === 50.4)
+check('digitsToValue weight no frac', digitsToValue('50', [3, 1], 'weight') === 50)
+check('digitsToValue height full boxes', digitsToValue('1452', [3, 1], 'height') === 145.2)
+check('digitsToValue grip', digitsToValue('185', [2, 1], 'gripR') === 18.5)
 
 // --- 5. 補助関数(既存) ---
 check('parseNumber blank -> null', parseNumber('').value === null)

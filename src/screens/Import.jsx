@@ -438,7 +438,7 @@ function ProdImport() {
                           const m = vs.filter(v => v === 'multi').length, e = vs.filter(v => v === null).length
                           return rec.kcl.readable
                             ? `はい ${y} · いいえ ${n}${m ? ` · 二重塗り ${m}` : ''}${e ? ` · 未回答 ${e}` : ''}`
-                            : 'マークを読み取れませんでした（用紙を確認してください）'
+                            : `マークを読み取れませんでした（${rec.kcl.reason || '用紙を確認してください'}）`
                         })()}
                       </span>
                     </div>
