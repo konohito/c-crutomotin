@@ -53,6 +53,15 @@ export async function uploadSheetImage(file, { batchId, no }) {
   return path
 }
 
+// 送信した枚数をバッチに記録する（読み取り件数と突き合わせて取りこぼしを検知するため）。
+// バックエンドの読み取りが失敗・タイムアウトすると recognition が作られないので、
+// 「送った枚数」を先に残しておくことで、消えた 1 枚に気づけるようにする。
+export async function bumpBatchUpload(batchId, n = 1) {
+  if (!dbEnabled() || !batchId) return
+  const { firestore, db } = await sdk()
+  await firestore.setDoc(firestore.doc(db, 'batches', batchId), { uploadCount: firestore.increment(n) }, { merge: true })
+}
+
 // 記録用紙画像の表示用 URL を取得する（確認モーダルで原本と読み取り値を見比べるため）
 export async function sheetImageUrl(storagePath) {
   if (!dbEnabled() || !storagePath) return null
@@ -125,20 +134,34 @@ export async function markBatchDone(batchId) {
   await firestore.updateDoc(firestore.doc(db, 'batches', batchId), { finishedAt: firestore.serverTimestamp() })
 }
 
-// 未完了バッチを一括点検し、処理し終えたものに finishedAt を付ける(プルダウンの掃除)。
-// 「処理済み」= 全件が 本登録/却下/当日受付への振り分け(walkIn) のいずれか。
-// エラー行が残るバッチは対応漏れが見えるよう残す。
+// バッチを一括点検し、処理し終えたものに finishedAt を付ける(プルダウンの掃除)。
+// 「処理済み」= 送信した枚数がすべて読み取られ、かつ全件が
+//   本登録/却下/当日受付への振り分け(walkIn) のいずれか。
+// エラー行や未読み取りが残るバッチは対応漏れが見えるよう残す。
+// 逆に、完了マーク後に遅れて読み取りが届いたバッチは再び開く(取りこぼし対策)。
 export async function sweepFinishedBatches(batchList) {
   if (!dbEnabled()) return
   const { firestore, db } = await sdk()
-  for (const b of (batchList || []).filter(x => !x.finishedAt)) {
+  for (const b of (batchList || [])) {
     try {
       const snap = await firestore.getDocs(firestore.collection(db, 'batches', b.id, 'recognitions'))
       const docs = snap.docs.map(d => d.data())
-      const done = docs.length > 0 && docs.every(r => r.walkIn || r.status === 'committed' || r.status === 'rejected')
-      if (done) await markBatchDone(b.id)
+      const done = batchAllDone(b, docs)
+      if (done && !b.finishedAt) await markBatchDone(b.id)
+      else if (!done && b.finishedAt) {
+        await firestore.updateDoc(firestore.doc(db, 'batches', b.id), { finishedAt: null })
+      }
     } catch { /* 個別の失敗は無視して次へ */ }
   }
+}
+
+// バッチが処理し終えているか。送信枚数(uploadCount)に読み取りが追いついていることも条件にする。
+export function batchAllDone(batch, recs) {
+  const list = recs || []
+  if (!list.length) return false
+  const expected = (batch && batch.uploadCount) || 0
+  if (list.length < expected) return false   // まだ読み取られていない用紙がある
+  return list.every(r => r.walkIn || r.status === 'committed' || r.status === 'rejected')
 }
 
 // 当日受付 取り込みキュー(walkins)をリアルタイム購読する。unsubscribe 関数を返す。

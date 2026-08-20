@@ -58,18 +58,41 @@ function findHead(tokens) {
   return right.reduce((m, c) => (!m || c.a.y < m.a.y ? c : m), null)
 }
 
-/* 設問行のアンカー(左端 x・中心 x・中心 y)を求める。
-   設問文が 2 行に折り返す場合、行(lines)は上下 2 本に分かれるのに対し
-   回答欄の楕円は 2 行の中央に置かれるため、行の中心を使うと窓が楕円から外れる。
-   折り返しをまとめた段落(paragraphs)が取れていればその中心を使う。
+function median(arr) {
+  if (!arr.length) return 0
+  const s = arr.slice().sort((a, b) => a - b)
+  const m = Math.floor(s.length / 2)
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+/* 設問文が 2 行に折り返しているときの「2 行目」を探す。
+   回答欄の楕円は折り返した 2 行の中央に置かれるため、1 行目だけで中心を取ると窓が外れる。
+   段落(paragraphs)は Document AI が複数の設問をまとめて 1 つにすることがあるため使わない。
+
+   判定は行の「中心」と設問の行間隔(pitch)で行う。外接矩形の上端・下端は、
+   写真が傾くと幅の広い行ほど縦に膨らむため基準にできない
+   (膨らんだ範囲で探すと、次の設問の 2 行目を自分の続きだと誤認する)。 */
+function continuationLine(ln, nextStartY, pitch, lines, isStart) {
+  const limit = Math.min(ln.y + pitch * 0.9, nextStartY - pitch * 0.35)
+  let best = null
+  for (const l of lines) {
+    if (l === ln || isStart(l)) continue
+    if (l.y <= ln.y + pitch * 0.15 || l.y > limit) continue
+    if (l.left < ln.left - pitch * 0.3 || l.right > ln.right + pitch * 0.3) continue
+    if (!best || l.y < best.y) best = l
+  }
+  return best
+}
+
+/* 設問行のアンカー(左端 x・中心 x・中心 y)。
+   折り返しがあれば 2 行の中心どうしの中点を採る(外接矩形の膨らみの影響を受けない)。
    中心 y は「中心 x の位置での y」なので、傾き補正の基準点も中心 x にする。 */
-function rowAnchor(ln, paras, np) {
-  const h = Math.max(1e-6, ln.bottom - ln.top)
-  const p = paras.find(p2 => norm(p2.text).includes(np)
-    && p2.top <= ln.top + h * 0.5 && p2.bottom >= ln.bottom - h * 0.5
-    && (p2.bottom - p2.top) <= h * 3.2)
-  const el = p || ln
-  return { x: ln.left, cx: (el.left + el.right) / 2, y: (el.top + el.bottom) / 2 }
+function rowAnchor(ln, cont) {
+  return {
+    x: ln.left,
+    cx: cont ? (ln.x + cont.x) / 2 : ln.x,
+    y: cont ? (ln.y + cont.y) / 2 : ln.y,
+  }
 }
 
 /* 用紙の傾き(dx/dy)を設問行の左端から頑健に推定する。
@@ -98,17 +121,26 @@ function readKcl(document, imageBuffer, mimeType) {
   const isKcl = nt.includes('r703') || nt.includes('基本チェックリスト')
   if (!isKcl) return { isKcl: false }
   const lines = positioned(document, 'lines')
-  const paras = positioned(document, 'paragraphs')
   const tokens = positioned(document, 'tokens')
 
   const head = findHead(tokens)
   // 設問行の照合(行テキストに設問プレフィックスが含まれるか)
-  const rows = []
+  const found = []
   for (const [key, prefix] of QS) {
     const np = norm(prefix)
     const ln = lines.find(l => norm(l.text).includes(np))
-    if (ln) rows.push({ key, ...rowAnchor(ln, paras, np) })
+    if (ln) found.push({ key, ln })
   }
+  // 折り返しの 2 行目を拾うため、どの行が設問の先頭かを先に確定させる
+  found.sort((a, b) => a.ln.y - b.ln.y)
+  const startSet = new Set(found.map(f => f.ln))
+  const isStart = (l) => startSet.has(l) || QS.some(([, p]) => norm(l.text).includes(norm(p)))
+  // 設問の行間隔(折り返しで前後にぶれるので中央値を採る)
+  const pitch = median(found.slice(1).map((f, i) => f.ln.y - found[i].ln.y).filter(d => d > 0)) || 0.03
+  const rows = found.map(({ key, ln }, i) => {
+    const nextY = i + 1 < found.length ? found[i + 1].ln.y : Infinity
+    return { key, ...rowAnchor(ln, continuationLine(ln, nextY, pitch, lines, isStart)) }
+  })
   const side = rows.some(r => typeof r.key === 'number' && r.key <= 11) ? 'front' : (rows.length ? 'back' : null)
   const unreadable = (reason) => ({ isKcl: true, side, answers: {}, readable: false, reason })
   if (!head) return unreadable('列見出し「はい」「いいえ」を検出できませんでした')
@@ -139,20 +171,26 @@ function readKcl(document, imageBuffer, mimeType) {
     }
   }
 
-  const mean = (cx, cy, w, h) => {
-    let s = 0, n = 0
+  /* 窓の中の画素を走査して { 平均輝度, 暗い画素の割合 } を返す。
+     判定に「平均」ではなく「暗い画素の割合」を使うことで、塗りが枠から少しはみ出す・
+     枠より小さい・中心がずれている、といった実際の記入のばらつきに強くなる。 */
+  const scan = (cx, cy, w, h, thr) => {
+    let s = 0, n = 0, dark = 0
     const x0 = Math.max(0, Math.round((cx - w / 2) * W)), x1 = Math.min(W - 1, Math.round((cx + w / 2) * W))
     const y0 = Math.max(0, Math.round((cy - h / 2) * H)), y1 = Math.min(H - 1, Math.round((cy + h / 2) * H))
-    const st = Math.max(1, Math.round((x1 - x0) / 12) || 1)
+    const st = Math.max(1, Math.round((x1 - x0) / 14) || 1)
     for (let py = y0; py <= y1; py += st) {
       for (let px = x0; px <= x1; px += st) {
         const [rx, ry] = om.at(px, py)
         const i = ((ry * rw) + rx) * 4
-        s += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]; n++
+        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+        s += lum; n++
+        if (lum < thr) dark++
       }
     }
-    return n ? s / n : 255
+    return { mean: n ? s / n : 255, frac: n ? dark / n : 0 }
   }
+  const mean = (cx, cy, w, h) => scan(cx, cy, w, h, -1).mean
 
   const dx = head.b.x - head.a.x                 // 列間(設計 74px 相当)→ 写真上のスケール基準
   const tilt = estimateTilt(rows)                // 用紙の回転(下の行ほど列の x がずれる。dx/dy)
@@ -164,14 +202,14 @@ function readKcl(document, imageBuffer, mimeType) {
   const bw = dx * (15 / 74) * 0.75               // 楕円内側の窓(x 方向・正規化。用紙の楕円 15×21px に一致)
   const bh = dx * (21 / 74) * 0.75 * (W / H)     // 同(y 方向は画像アスペクトで換算)
   /* 幾何の残差(遠近ゆがみ・行の検出誤差)を吸収するため、期待位置の周囲を少し探して
-     最も暗い窓を採る。x は隣の列が 74px 先なので広め(楕円 0.4 個分)に探せるが、
+     最も塗られている窓を採る。x は隣の列が 74px 先なので広め(楕円 0.4 個分)に探せるが、
      y は上下の行が 34px 間隔で「記入例」の見本も近いため、狭く(0.12 個分)に留める。 */
-  const darkest = (cx, cy) => {
-    let best = 255
+  const filledFrac = (cx, cy, thr) => {
+    let best = 0
     for (const ox of [-0.4, -0.2, 0, 0.2, 0.4]) {
       for (const oy of [-0.12, 0, 0.12]) {
-        const v = mean(cx + ox * bw * 1.33, cy + oy * bh * 1.33, bw, bh)
-        if (v < best) best = v
+        const f = scan(cx + ox * bw * 1.33, cy + oy * bh * 1.33, bw, bh, thr).frac
+        if (f > best) best = f
       }
     }
     return best
@@ -183,15 +221,16 @@ function readKcl(document, imageBuffer, mimeType) {
     const yAt = (colX) => r.y + slope * (colX - r.cx)
     const midX = (ax + bx) / 2
     const paper = mean(midX, yAt(midX), bw, bh)  // 2 列の間の紙面を基準の白とする
-    const dY = paper - darkest(ax, yAt(ax))
-    const dN = paper - darkest(bx, yAt(bx))
-    const strong = (d) => d > 25 && d > paper * 0.28
-    let fy = strong(dY), fn = strong(dN)
-    // どちらも基準未満でも、片側だけが明らかに暗ければ薄い塗りとして採用する
+    // 紙面より十分暗い画素を「塗り」とみなす。基準は行ごとに取るので影・照明ムラに強い
+    const thr = Math.min(paper * 0.62, paper - 28)
+    const fY = filledFrac(ax, yAt(ax), thr)
+    const fN = filledFrac(bx, yAt(bx), thr)
+    let fy = fY >= 0.30, fn = fN >= 0.30
+    // どちらも基準未満でも、片側だけが明らかに塗られていれば採用する
     // (かすれ・鉛筆・コピー濃度が薄い用紙の救済。裏写りは両側同程度に出るため誤検出しにくい)
     if (!fy && !fn) {
-      if (dY > 12 && dY > dN * 2.2) fy = true
-      else if (dN > 12 && dN > dY * 2.2) fn = true
+      if (fY >= 0.12 && fY > fN * 3) fy = true
+      else if (fN >= 0.12 && fN > fY * 3) fn = true
     }
     answers[r.key] = fy && fn ? 'multi' : fy ? 'yes' : fn ? 'no' : null
   }

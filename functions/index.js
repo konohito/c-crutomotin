@@ -63,7 +63,10 @@ exports.recognizeSheet = onRequest(async (req, res) => {
    Document AI で認識した結果を Firestore の
    batches/{batchId}/recognitions/{recognitionId} に保存する(＝読み取りキュー)。
    台帳照合・本登録はフロント側(職員が確認)で行う。 */
-exports.onSheetImageUpload = onObjectFinalized({ memory: '512MiB', timeoutSeconds: 120 }, async (event) => {
+// 写真 1 枚あたり、画像のダウンロード + Document AI + 画素解析(RGBA 展開)を行うため
+// メモリを厚めに取る。不足するとインスタンスが落ち、recognition が作られないまま
+// 用紙が消えてしまう(取りこぼし)。
+exports.onSheetImageUpload = onObjectFinalized({ memory: '1GiB', timeoutSeconds: 300 }, async (event) => {
   const obj = event.data
   const name = obj.name || ''
   const parsed = parseStoragePath(name)

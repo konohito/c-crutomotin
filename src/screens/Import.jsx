@@ -3,7 +3,7 @@ import D from '../data/engine.js'
 import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, needsReview, openSheetVals, CONF_THRESHOLD } from '../store.jsx'
 import { fmtD } from '../lib/helpers.js'
 import { ocrEnabled, recognizeSheet, matchUser } from '../lib/ocr.js'
-import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKclRecognition, rejectRecognition, sheetImageUrl, deleteSheetImage, markBatchDone, sweepFinishedBatches } from '../lib/db.js'
+import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKclRecognition, rejectRecognition, sheetImageUrl, deleteSheetImage, markBatchDone, sweepFinishedBatches, batchAllDone } from '../lib/db.js'
 import { saveMeasurement } from '../lib/realdata.js'
 import { Card, Pill, Modal, ModalHead, Select, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -253,6 +253,10 @@ function ProdImport() {
 
   // 却下済みは一覧から隠す（文書は監査のため Firestore に残る）
   // 当日受付用紙(R7-02W)は専用の「当日受付 取り込み」画面で扱うため、通常キューには出さない
+  // 送信枚数と読み取り件数の差(＝まだ読み取れていない用紙)
+  const curBatch = batches.find(b => b.id === batchId)
+  const uploadedN = (curBatch && curBatch.uploadCount) || 0
+  const missingN = Math.max(0, uploadedN - queue.length)
   const nWalkIn = queue.filter(r => r.walkIn && r.status !== 'rejected').length
   const enriched = queue.filter(r => r.status !== 'rejected' && !r.walkIn).map(rec => ({ rec, u: matchUser(rec) }))
   const nDone = enriched.filter(x => x.rec.status === 'committed').length
@@ -304,15 +308,18 @@ function ProdImport() {
   }
 
   // 全件が本登録/却下になったらバッチを処理完了にし、プルダウンから消す
+  // 送信枚数に読み取りが追いついていない間は完了にしない
+  // (先に処理できた 1 枚を登録した時点でバッチが消え、遅れて届いた用紙が
+  //  一覧から見えなくなる取りこぼしを防ぐ)
   const markedRef = useRef(new Set())
   useEffect(() => {
     if (!batchId || !queue.length) return
-    const done = queue.every(r => r.walkIn || r.status === 'committed' || r.status === 'rejected')
-    if (done && !markedRef.current.has(batchId)) {
+    const batch = batches.find(b => b.id === batchId)
+    if (batchAllDone(batch, queue) && !markedRef.current.has(batchId)) {
       markedRef.current.add(batchId)
       markBatchDone(batchId).catch(() => {})
     }
-  }, [queue, batchId])
+  }, [queue, batchId, batches])
 
   const doReject = async () => {
     if (!rejTarget || rejBusy) return
@@ -370,10 +377,16 @@ function ProdImport() {
             スマホの「用紙アップロード」から送信すると、自動読み取りの結果がここに届きます
             {nWalkIn > 0 && <span style={{ color: 'var(--brand-600)', fontWeight: 600 }}>　·　当日受付用紙 {nWalkIn} 件は「当日受付 取り込み」に振り分けました</span>}
           </div>
+          {missingN > 0 && (
+            <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--danger-700)', background: 'var(--danger-50)', borderRadius: 8, padding: '6px 10px' }}>
+              送信 <b className="t-num">{uploadedN}</b> 枚に対して読み取りが <b className="t-num">{queue.length}</b> 件です。
+              <b className="t-num"> {missingN}</b> 枚がまだ読み取れていません（処理中の可能性があります。1 分ほど待っても増えない場合は、その用紙をもう一度送信してください）。
+            </div>
+          )}
         </div>
         {batches && batches.length > 0 && (
           <Select value={batchId} onChange={(e) => setBatchId(e.target.value)}
-            options={batches.filter(b => !b.finishedAt || b.id === batchId).map(b => ({ v: b.id, l: `${batchDate(b.id)} · ${b.id}（${b.sheetCount || 0} 枚）` }))} />
+            options={batches.filter(b => !b.finishedAt || b.id === batchId).map(b => ({ v: b.id, l: `${batchDate(b.id)} · ${b.id}（${b.uploadCount || b.sheetCount || 0} 枚）` }))} />
         )}
         {queue.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
