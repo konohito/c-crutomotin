@@ -6,6 +6,7 @@
    3. 各行 × 各列の楕円位置の画素を窓平均し、行間の紙面(基準)より十分暗ければ塗りと判定
    採点(判定基準)はフロントの kihon.js が担う(公式基準: 1-20 で 10 項目以上 等)。 */
 const { anchorText, norm } = require('./mapping')
+const { exifOrientation, orientMap } = require('./exif')
 const jpeg = require('jpeg-js')
 
 // 印刷順の設問プレフィックス。key は公式 No(12=BMI は用紙に無い) / ex1・ex2(運動習慣)
@@ -31,7 +32,7 @@ function positioned(document, kind) {
         text,
         x: xs.reduce((a, b) => a + b, 0) / xs.length,
         y: ys.reduce((a, b) => a + b, 0) / ys.length,
-        left: Math.min(...xs), top: Math.min(...ys), bottom: Math.max(...ys),
+        left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys),
       })
     }
   }
@@ -57,16 +58,38 @@ function findHead(tokens) {
   return right.reduce((m, c) => (!m || c.a.y < m.a.y ? c : m), null)
 }
 
-/* 設問行の中心 y を求める。
+/* 設問行のアンカー(左端 x・中心 x・中心 y)を求める。
    設問文が 2 行に折り返す場合、行(lines)は上下 2 本に分かれるのに対し
    回答欄の楕円は 2 行の中央に置かれるため、行の中心を使うと窓が楕円から外れる。
-   折り返しをまとめた段落(paragraphs)が取れていればその中心を使う。 */
-function rowCenter(ln, paras, np) {
+   折り返しをまとめた段落(paragraphs)が取れていればその中心を使う。
+   中心 y は「中心 x の位置での y」なので、傾き補正の基準点も中心 x にする。 */
+function rowAnchor(ln, paras, np) {
   const h = Math.max(1e-6, ln.bottom - ln.top)
   const p = paras.find(p2 => norm(p2.text).includes(np)
     && p2.top <= ln.top + h * 0.5 && p2.bottom >= ln.bottom - h * 0.5
     && (p2.bottom - p2.top) <= h * 3.2)
-  return p ? (p.top + p.bottom) / 2 : (ln.top + ln.bottom) / 2
+  const el = p || ln
+  return { x: ln.left, cx: (el.left + el.right) / 2, y: (el.top + el.bottom) / 2 }
+}
+
+/* 用紙の傾き(dx/dy)を設問行の左端から頑健に推定する。
+   手持ち撮影ではわずかに回転するため、下の行ほど回答欄の x 位置も横にずれる。
+   行の左端は「①」を含むかどうかで揺れることがあるので、
+   全ペアの傾きの中央値(Theil–Sen)を採って外れ値の影響を抑える。 */
+function estimateTilt(rows) {
+  if (rows.length < 4) return null
+  const sl = []
+  for (let i = 0; i < rows.length; i++) {
+    for (let j = i + 1; j < rows.length; j++) {
+      const dy = rows[j].y - rows[i].y
+      if (Math.abs(dy) < 0.02) continue
+      sl.push((rows[j].x - rows[i].x) / dy)
+    }
+  }
+  if (sl.length < 6) return null
+  sl.sort((a, b) => a - b)
+  const t = sl[Math.floor(sl.length / 2)]
+  return Math.abs(t) <= 0.15 ? t : null   // 約 8 度を超える推定は誤りとみなして使わない
 }
 
 // document(OCR) + 画像バイト列 → { isKcl, side, answers:{key:'yes'|'no'|'multi'|null}, readable }
@@ -84,7 +107,7 @@ function readKcl(document, imageBuffer, mimeType) {
   for (const [key, prefix] of QS) {
     const np = norm(prefix)
     const ln = lines.find(l => norm(l.text).includes(np))
-    if (ln) rows.push({ key, x: ln.left, y: rowCenter(ln, paras, np) })
+    if (ln) rows.push({ key, ...rowAnchor(ln, paras, np) })
   }
   const side = rows.some(r => typeof r.key === 'number' && r.key <= 11) ? 'front' : (rows.length ? 'back' : null)
   const unreadable = (reason) => ({ isKcl: true, side, answers: {}, readable: false, reason })
@@ -100,9 +123,14 @@ function readKcl(document, imageBuffer, mimeType) {
   } catch { img = null }
   if (!img) return unreadable(`画像を読み込めませんでした(${mimeType || '不明な形式'}。JPEG で撮影・保存してください)`)
 
-  const W = img.width, H = img.height, data = img.data
-  // Document AI 側で 90 度回転補正が入ると、座標系と画素の向きがずれて全問誤読になる。
-  // 明らかに縦横が入れ替わっている場合だけ、誤った値を出さずに要確認へ回す。
+  // スマホ写真は EXIF に「表示時に何度回すか」を持つ。Document AI は回転を補正した
+  // 向きで座標を返すため、生画素をそのまま参照すると座標系がずれる。表示向きに引き直す。
+  const orient = exifOrientation(imageBuffer)
+  const om = orientMap(orient, img.width, img.height)
+  const W = om.W, H = om.H, rw = img.width, data = img.data
+
+  // それでも縦横が入れ替わっている場合(EXIF 以外の要因で補正が入った等)は、
+  // 誤った値を出さずに要確認へ回す。
   const dim = ((document.pages || [])[0] || {}).dimension
   if (dim && dim.width && dim.height) {
     const rDoc = dim.width / dim.height, rImg = W / H
@@ -118,7 +146,8 @@ function readKcl(document, imageBuffer, mimeType) {
     const st = Math.max(1, Math.round((x1 - x0) / 12) || 1)
     for (let py = y0; py <= y1; py += st) {
       for (let px = x0; px <= x1; px += st) {
-        const i = ((py * W) + px) * 4
+        const [rx, ry] = om.at(px, py)
+        const i = ((ry * rw) + rx) * 4
         s += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]; n++
       }
     }
@@ -126,16 +155,36 @@ function readKcl(document, imageBuffer, mimeType) {
   }
 
   const dx = head.b.x - head.a.x                 // 列間(設計 74px 相当)→ 写真上のスケール基準
-  const slope = (head.b.y - head.a.y) / dx       // 写真の傾き(x に比例した y ずれ)
+  const tilt = estimateTilt(rows)                // 用紙の回転(下の行ほど列の x がずれる。dx/dy)
+  /* 正規化座標は x が幅・y が高さで割られているため縦横で尺度が違う。
+     回転量を x↔y に読み換えるときは (W/H)^2 を掛けて尺度を合わせる。
+     行アンカーから推定した傾きの方が、見出し 2 語(74px)から測るより誤差が小さい。 */
+  const ar = W / H
+  const slope = tilt !== null ? -tilt * ar * ar : (head.b.y - head.a.y) / dx  // x に比例した y ずれ
   const bw = dx * (15 / 74) * 0.75               // 楕円内側の窓(x 方向・正規化。用紙の楕円 15×21px に一致)
   const bh = dx * (21 / 74) * 0.75 * (W / H)     // 同(y 方向は画像アスペクトで換算)
+  /* 幾何の残差(遠近ゆがみ・行の検出誤差)を吸収するため、期待位置の周囲を少し探して
+     最も暗い窓を採る。x は隣の列が 74px 先なので広め(楕円 0.4 個分)に探せるが、
+     y は上下の行が 34px 間隔で「記入例」の見本も近いため、狭く(0.12 個分)に留める。 */
+  const darkest = (cx, cy) => {
+    let best = 255
+    for (const ox of [-0.4, -0.2, 0, 0.2, 0.4]) {
+      for (const oy of [-0.12, 0, 0.12]) {
+        const v = mean(cx + ox * bw * 1.33, cy + oy * bh * 1.33, bw, bh)
+        if (v < best) best = v
+      }
+    }
+    return best
+  }
   const answers = {}
   for (const r of rows) {
-    const yAt = (colX) => r.y + slope * (colX - r.x)
-    const midX = (head.a.x + head.b.x) / 2
+    const shift = tilt !== null ? tilt * (r.y - head.a.y) : 0   // 回転による列 x のずれ
+    const ax = head.a.x + shift, bx = head.b.x + shift
+    const yAt = (colX) => r.y + slope * (colX - r.cx)
+    const midX = (ax + bx) / 2
     const paper = mean(midX, yAt(midX), bw, bh)  // 2 列の間の紙面を基準の白とする
-    const dY = paper - mean(head.a.x, yAt(head.a.x), bw, bh)
-    const dN = paper - mean(head.b.x, yAt(head.b.x), bw, bh)
+    const dY = paper - darkest(ax, yAt(ax))
+    const dN = paper - darkest(bx, yAt(bx))
     const strong = (d) => d > 25 && d > paper * 0.28
     let fy = strong(dY), fn = strong(dN)
     // どちらも基準未満でも、片側だけが明らかに暗ければ薄い塗りとして採用する
@@ -146,7 +195,7 @@ function readKcl(document, imageBuffer, mimeType) {
     }
     answers[r.key] = fy && fn ? 'multi' : fy ? 'yes' : fn ? 'no' : null
   }
-  return { isKcl: true, side, answers, readable: true }
+  return { isKcl: true, side, answers, readable: true, orient }
 }
 
 module.exports = { readKcl, QS }

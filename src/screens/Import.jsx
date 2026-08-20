@@ -508,6 +508,11 @@ function ProdImport() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--fg-2)' }}>
                   <span>マーク読取率 <b className="t-num" style={{ fontSize: 16, color: ngN ? 'var(--warning-700)' : 'var(--success-700)' }}>{Math.round(okN / list.length * 100)}%</b>（{okN} / {list.length} 問）</span>
                   {ngN > 0 && <span style={{ color: 'var(--warning-700)' }}>要修正 {ngN} 問（二重塗り・読取不可）は下で確定してください</span>}
+                  {assign.kcl && !assign.kcl.readable && assign.kcl.reason && (
+                    <span style={{ width: '100%', color: 'var(--danger-700)', background: 'var(--danger-50)', borderRadius: 8, padding: '6px 10px' }}>
+                      マークを読み取れませんでした: {assign.kcl.reason}
+                    </span>
+                  )}
                 </div>
               )
             })()}
