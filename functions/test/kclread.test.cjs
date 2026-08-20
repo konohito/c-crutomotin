@@ -58,7 +58,7 @@ function makeXf(tilt) {
 }
 
 // ---- 合成画像(机の上に置いた白い用紙に楕円を塗る) ---------------------------
-function makeImage(xf, blank) {
+function makeImage(xf, blank, style) {
   const data = Buffer.alloc(IMG_W * IMG_H * 4)
   for (let y = 0; y < IMG_H; y++) {
     for (let x = 0; x < IMG_W; x++) {
@@ -70,22 +70,41 @@ function makeImage(xf, blank) {
       data[i] = v; data[i + 1] = v; data[i + 2] = v; data[i + 3] = 255
     }
   }
-  const fill = (cxPage, cyPage) => {
-    const [cx, cy] = xf.fwd(cxPage, cyPage)
-    const rx = (OVAL_W / 2) * SCALE, ry = (OVAL_H / 2) * SCALE
+  const ink = (x, y) => {
+    if (x < 0 || y < 0 || x >= IMG_W || y >= IMG_H) return
+    const i = (Math.round(y) * IMG_W + Math.round(x)) * 4
+    data[i] = 38; data[i + 1] = 34; data[i + 2] = 30
+  }
+  /* 記入のばらつきを再現する。
+     full=枠どおり / over=はみ出す / small=枠より小さい / offset=中心がずれる / line=斜線 */
+  const fill = (cxPage, cyPage, style = 'full') => {
+    const k = style === 'over' ? 1.35 : style === 'small' ? 0.6 : 1
+    const offX = style === 'offset' ? OVAL_W * 0.3 : 0
+    const offY = style === 'offset' ? OVAL_H * 0.25 : 0
+    const [cx, cy] = xf.fwd(cxPage + offX, cyPage + offY)
+    const rx = (OVAL_W / 2) * SCALE * k, ry = (OVAL_H / 2) * SCALE * k
+    if (style === 'line') {
+      // 枠を斜めに横切る太い線(「悪い例」の線だけの記入)
+      const [x0, y0] = xf.fwd(cxPage - OVAL_W * 0.55, cyPage - OVAL_H * 0.55)
+      const [x1, y1] = xf.fwd(cxPage + OVAL_W * 0.55, cyPage + OVAL_H * 0.55)
+      const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0)) * 2
+      for (let s = 0; s <= n; s++) {
+        const bx = x0 + ((x1 - x0) * s) / n, by = y0 + ((y1 - y0) * s) / n
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) ink(bx + dx, by + dy)
+      }
+      return
+    }
     for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++) {
       for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
         if (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 > 1) continue
-        if (x < 0 || y < 0 || x >= IMG_W || y >= IMG_H) continue
-        const i = (y * IMG_W + x) * 4
-        data[i] = 38; data[i + 1] = 34; data[i + 2] = 30
+        ink(x, y)
       }
     }
   }
   // 記入例の行(設問①のすぐ上)には「はい」が塗られた見本が印刷されている。
   // 設問①の判定がこれを拾わないことも検証する。
   fill(COL_YES, EXAMPLE_Y)
-  if (!blank) ROWS.forEach((r, idx) => fill(EXPECT[r.key] === 'yes' ? COL_YES : COL_NO, ROW_Y0 + idx * ROW_PITCH))
+  if (!blank) ROWS.forEach((r, idx) => fill(EXPECT[r.key] === 'yes' ? COL_YES : COL_NO, ROW_Y0 + idx * ROW_PITCH, style))
   return data
 }
 
@@ -113,22 +132,36 @@ function makeDoc(xf) {
   // 回答欄の列見出し(用紙の右端。これが本来のアンカー)
   tokens.push(put('はい', COL_YES - 22, 496, COL_YES + 22, 522))
   tokens.push(put('いいえ', COL_NO - 28, 496, COL_NO + 28, 522))
-  lines.push(put('記入例 「はい」と答えるとき', 80, EXAMPLE_Y - 11, 300, EXAMPLE_Y + 11))
+  const exLine = put('記入例 「はい」と答えるとき', 80, EXAMPLE_Y - 11, 300, EXAMPLE_Y + 11)
+  lines.push(exLine)
 
+  /* Document AI は連続する行をまとめて 1 つの段落として返す。設問が 1 問ずつ
+     別々の段落になるとは限らず、2〜3 問がまとめられることも多い。
+     ここでは記入例＋設問①、以降は 2〜3 問ずつをまとめた現実的な段落を作る。 */
+  const groups = [[-1, 0], [1, 2], [3, 4, 5], [6, 7], [8, 9], [10, 11], [12]]
+  const span = { top: {}, bottom: {}, left: {}, right: {} }
   ROWS.forEach((r, idx) => {
     const cy = ROW_Y0 + idx * ROW_PITCH
     const parts = r.text.split('|')
     if (parts.length === 1) {
       lines.push(put(parts[0], 80, cy - LINE_H / 2, 600, cy + LINE_H / 2))
-      paragraphs.push(put(parts[0], 80, cy - LINE_H / 2, 600, cy + LINE_H / 2))
+      span.top[idx] = cy - LINE_H / 2; span.bottom[idx] = cy + LINE_H / 2
+      span.left[idx] = 80; span.right[idx] = 600
     } else {
-      // 2 行に折り返す設問: 行は 2 本、段落は両方をまとめた 1 つ
+      // 2 行に折り返す設問: 行は上下 2 本(2 行目は短く、字下げされる)
       const y1 = cy - LINE_H * 0.62, y2 = cy + LINE_H * 0.62
       lines.push(put(parts[0], 80, y1 - LINE_H / 2, 600, y1 + LINE_H / 2))
-      lines.push(put(parts[1], 80, y2 - LINE_H / 2, 300, y2 + LINE_H / 2))
-      paragraphs.push(put(parts.join(''), 80, y1 - LINE_H / 2, 600, y2 + LINE_H / 2))
+      lines.push(put(parts[1], 96, y2 - LINE_H / 2, 300, y2 + LINE_H / 2))
+      span.top[idx] = y1 - LINE_H / 2; span.bottom[idx] = y2 + LINE_H / 2
+      span.left[idx] = 80; span.right[idx] = 600
     }
   })
+  for (const g of groups) {
+    const tops = g.map(i => (i < 0 ? EXAMPLE_Y - 11 : span.top[i]))
+    const bots = g.map(i => (i < 0 ? EXAMPLE_Y + 11 : span.bottom[i]))
+    const txt = g.map(i => (i < 0 ? '記入例 「はい」と答えるとき' : ROWS[i].text.split('|').join(''))).join('')
+    paragraphs.push(put(txt, 80, Math.min(...tops), 600, Math.max(...bots)))
+  }
   // 画像入力のとき Document AI の dimension は(回転補正後の)画素数を返す
   return { text, pages: [{ dimension: { width: IMG_W, height: IMG_H }, tokens, lines, paragraphs }] }
 }
@@ -161,9 +194,9 @@ function withExifOrientation(jpegBuf, orient) {
 
 // ---- 実行 --------------------------------------------------------------------
 let failed = 0
-function run(label, { tiltDeg = 0, orient = 1, blank = false } = {}) {
+function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full' } = {}) {
   const xf = makeXf((tiltDeg * Math.PI) / 180)
-  const display = makeImage(xf, blank)
+  const display = makeImage(xf, blank, style)
   let buf
   if (orient === 6) {
     const st = toStoredOrient6(display)
@@ -208,6 +241,12 @@ run('手持ちの傾き -3 度', { tiltDeg: -3 })
 run('手持ちの傾き 5 度', { tiltDeg: 5 })
 run('EXIF 回転あり(orientation 6)', { orient: 6 })
 run('EXIF 回転あり + 傾き 2 度', { orient: 6, tiltDeg: 2 })
+// 記入のばらつき(はみ出す・枠より小さい・中心がずれる・斜線)
+run('はみ出した塗り', { style: 'over' })
+run('枠より小さい塗り', { style: 'small' })
+run('中心がずれた塗り', { style: 'offset' })
+run('中心がずれた塗り + 傾き 3 度', { style: 'offset', tiltDeg: 3 })
+run('斜線だけの記入', { style: 'line' })
 // 未記入の用紙で「記入例」の塗りを拾って誤検出しないこと
 run('白紙(記入例のみ印刷)', { blank: true })
 run('白紙 + 傾き 3 度', { blank: true, tiltDeg: 3 })

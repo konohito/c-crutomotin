@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import D from '../data/engine.js'
 import { useStore, sheetsAll } from '../store.jsx'
-import { dbEnabled, uploadSheetImage } from '../lib/db.js'
+import { dbEnabled, uploadSheetImage, bumpBatchUpload } from '../lib/db.js'
 import { Card } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 import IOSDevice from '../ui/IOSDevice.jsx'
@@ -267,6 +267,8 @@ function SheetUploader() {
       setItems(prev => prev.map(x => x.id === it.id ? { ...x, status: 'up', err: '' } : x))
       try {
         await uploadSheetImage(it.file, { batchId, no })
+        // 送った枚数を先に記録しておく(読み取りが失敗しても取りこぼしに気づけるように)
+        await bumpBatchUpload(batchId, 1).catch(() => {})
         setItems(prev => prev.map(x => x.id === it.id ? { ...x, status: 'done' } : x))
       } catch (e) {
         setItems(prev => prev.map(x => x.id === it.id ? { ...x, status: 'err', err: (e && e.message) || 'アップロードに失敗しました' } : x))

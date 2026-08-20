@@ -1,7 +1,7 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_LEVELS, commentFor } from '../lib/helpers.js'
-import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAIN_BY_ID } from '../data/kihon.js'
+import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAIN_BY_ID, KCL_SHORT } from '../data/kihon.js'
 import { wardLabel } from '../lib/db.js'
 import { RadioCard, CheckRow, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -187,8 +187,8 @@ function PdfPage({ p, state, count }) {
       </div>
 
       {/* フレイル簡易評価 / 基本チェックリスト（問診） */}
-      {((state.incFrail && p.frail) || (state.incKcl && p.kcl)) && (
-        <div style={{ display: 'grid', gridTemplateColumns: (state.incFrail && p.frail) && (state.incKcl && p.kcl) ? '1fr 1fr' : '1fr', gap: 10, marginTop: 8 }}>
+      {((state.incFrail && p.frail) || state.incKcl) && (
+        <div style={{ display: 'grid', gridTemplateColumns: (state.incFrail && p.frail) && state.incKcl ? '1fr 1fr' : '1fr', gap: 10, marginTop: 8 }}>
           {state.incFrail && p.frail && (
             <div style={{ border: '1px solid var(--slate-300)', padding: '5px 14px 6px', minWidth: 0 }}>
               <div style={{ fontSize: 12.5, letterSpacing: '0.04em', color: 'var(--slate-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>フレイル簡易評価（測定値による簡易判定）</div>
@@ -220,12 +220,28 @@ function PdfPage({ p, state, count }) {
                   </span>
                 </div>
                 {/* 領域が多くても収まるよう独立した行にする */}
-                <div style={{ fontSize: 12.5, color: 'var(--slate-600)', marginTop: 2 }}>
+                <div style={{ fontSize: 12.5, color: 'var(--slate-600)', marginTop: 2, lineHeight: 1.3 }}>
                   {areas.length ? '気になる領域: ' + areas.join('・') : '大きな低下はみられません'}
+                </div>
+                {/* 該当した項目（どの設問が該当したか）*/}
+                <div style={{ fontSize: 10.5, color: 'var(--slate-600)', marginTop: 1, lineHeight: 1.32 }}>
+                  該当項目: {p.kcl.hitQuestions.length
+                    ? p.kcl.hitQuestions.slice(0, 8).map(q => KCL_SHORT[q.no] || ('No.' + q.no)).join('・')
+                      + (p.kcl.hitQuestions.length > 8 ? ` ほか ${p.kcl.hitQuestions.length - 8} 項目` : '')
+                    : 'なし'}
                 </div>
               </div>
             )
           })()}
+          {/* 問診票が未取り込みのときも枠を出し、「載っていない」と誤解されないようにする */}
+          {state.incKcl && !p.kcl && (
+            <div style={{ border: '1px solid var(--slate-300)', padding: '5px 14px 6px', minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, letterSpacing: '0.04em', color: 'var(--slate-600)' }}>基本チェックリスト（問診）</div>
+              <div style={{ fontSize: 12.5, color: 'var(--slate-500)', marginTop: 6, lineHeight: 1.6 }}>
+                この年度の問診票はまだ取り込まれていません。<br />回答を取り込むと、点数と該当項目がここに表示されます。
+              </div>
+            </div>
+          )}
         </div>
       )}
 
