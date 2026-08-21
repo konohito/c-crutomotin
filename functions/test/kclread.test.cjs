@@ -7,6 +7,7 @@ const assert = require('assert')
 const jpeg = require('jpeg-js')
 const { readKcl } = require('../src/kclread')
 const { exifOrientation, orientMap } = require('../src/exif')
+const LAYOUT = require('../src/kcllayout')
 
 // ---- 用紙の設計値(SheetMaker.jsx と一致) ------------------------------------
 const PAGE_W = 794, PAGE_H = 1123
@@ -61,8 +62,8 @@ const EXAMPLE_Y = 537   // 記入例の行(設問①の 23px 上。実際の用�
 
 // 面ごとの構成。うら面は【運動習慣について】の見出し(はい・いいえ)がもう 1 組ある。
 const SIDES = {
-  front: { rows: FRONT_ROWS, expect: FRONT_EXPECT, intro: true, example: true, title: '【基本チェックリスト】' },
-  back: { rows: BACK_ROWS, expect: BACK_EXPECT, intro: false, example: false, title: '【基本チェックリスト（つづき）】' },
+  front: { side: 'front', rows: FRONT_ROWS, expect: FRONT_EXPECT, intro: true, example: true, title: '【基本チェックリスト】' },
+  back: { side: 'back', rows: BACK_ROWS, expect: BACK_EXPECT, intro: false, example: false, title: '【基本チェックリスト（つづき）】' },
 }
 // 各設問の y と、見出し(はい・いいえ)の y を決める
 function layout(cfg) {
@@ -76,25 +77,47 @@ function layout(cfg) {
   return { rowY, headers }
 }
 
-// 用紙座標(page) → 写真座標。tilt(ラジアン)は手持ち撮影の傾き。
-function makeXf(tilt) {
+/* 用紙座標(page) → 写真座標。実写に合わせて 射影変換(回転 + 遠近のゆがみ)で作る。
+   手持ちのスマホは用紙と完全に平行にならないため、上下で幅が変わる台形のゆがみが入る。
+   persp は「上端が下端より何割狭いか」の目安(0.06 = 6%)。 */
+function makeXf(tilt, persp = 0) {
   const cos = Math.cos(tilt), sin = Math.sin(tilt)
   const X0 = PAGE_W / 2, Y0 = PAGE_H / 2
   const cx0 = OFF_X + X0 * SCALE, cy0 = OFF_Y + Y0 * SCALE
-  const fwd = (X, Y) => [
-    cx0 + ((X - X0) * cos - (Y - Y0) * sin) * SCALE,
-    cy0 + ((X - X0) * sin + (Y - Y0) * cos) * SCALE,
+  // 3x3 の射影行列(u,v は用紙中心からの相対座標)
+  const g = 0, h = persp / (PAGE_H / 2)   // v が小さい(上)ほど w が小さくなり拡大 → 台形
+  const M = [
+    [cos * SCALE, -sin * SCALE, cx0],
+    [sin * SCALE, cos * SCALE, cy0],
+    [g, h, 1],
   ]
-  // 写真座標 → 用紙座標(背景の描画に使う逆変換)
+  const fwd = (X, Y) => {
+    const u = X - X0, v = Y - Y0
+    const w = M[2][0] * u + M[2][1] * v + 1
+    return [(M[0][0] * u + M[0][1] * v + M[0][2]) / w, (M[1][0] * u + M[1][1] * v + M[1][2]) / w]
+  }
+  // 逆変換(背景の描画に使う)。3x3 の逆行列を求めて同じ形で適用する
+  const det3 = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+    - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+    + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+  const dt = det3(M)
+  const co = (r, c) => {
+    const rs = [0, 1, 2].filter(i => i !== r), cs = [0, 1, 2].filter(i => i !== c)
+    const m = M[rs[0]][cs[0]] * M[rs[1]][cs[1]] - M[rs[0]][cs[1]] * M[rs[1]][cs[0]]
+    return ((r + c) % 2 ? -m : m) / dt
+  }
+  const Mi = [[co(0, 0), co(1, 0), co(2, 0)], [co(0, 1), co(1, 1), co(2, 1)], [co(0, 2), co(1, 2), co(2, 2)]]
   const inv = (px, py) => {
-    const u = (px - cx0) / SCALE, v = (py - cy0) / SCALE
-    return [X0 + u * cos + v * sin, Y0 - u * sin + v * cos]
+    const w = Mi[2][0] * px + Mi[2][1] * py + Mi[2][2]
+    const u = (Mi[0][0] * px + Mi[0][1] * py + Mi[0][2]) / w
+    const v = (Mi[1][0] * px + Mi[1][1] * py + Mi[1][2]) / w
+    return [X0 + u, Y0 + v]
   }
   return { fwd, inv }
 }
 
 // ---- 合成画像(机の上に置いた白い用紙に楕円を塗る) ---------------------------
-function makeImage(xf, blank, style, cfg, lay) {
+function makeImage(xf, blank, style, cfg, lay, noMarkers) {
   const data = Buffer.alloc(IMG_W * IMG_H * 4)
   for (let y = 0; y < IMG_H; y++) {
     for (let x = 0; x < IMG_W; x++) {
@@ -137,10 +160,29 @@ function makeImage(xf, blank, style, cfg, lay) {
       }
     }
   }
-  // 記入例の行(設問①のすぐ上)には「はい」が塗られた見本が印刷されている。
-  // 設問①の判定がこれを拾わないことも検証する。
-  if (cfg.example) fill(COL_YES, EXAMPLE_Y)
-  if (!blank) cfg.rows.forEach((r, idx) => fill(cfg.expect[r.key] === 'yes' ? COL_YES : COL_NO, lay.rowY[idx], style))
+  // 四隅の位置合わせマーカー(読み取りはこれを基準に用紙座標へ引き直す)
+  const MK = noMarkers ? {} : LAYOUT.markers
+  const mkHalf = (17 / 2)
+  for (const k of Object.keys(MK)) {
+    const cxP = MK[k][0] * PAGE_W, cyP = MK[k][1] * PAGE_H
+    for (let dy = -mkHalf; dy <= mkHalf; dy += 0.5) {
+      for (let dx = -mkHalf; dx <= mkHalf; dx += 0.5) {
+        const [ix, iy] = xf.fwd(cxP + dx, cyP + dy)
+        for (let sy = 0; sy <= 1; sy++) for (let sx = 0; sx <= 1; sx++) ink(ix + sx, iy + sy)
+      }
+    }
+  }
+  /* 記入例の行(設問①のすぐ上)には「はい」が塗られた見本が印刷されている。
+     実際の用紙と同じ位置に置いて、設問①の判定がこれを拾わないことも検証する。 */
+  const ex = LAYOUT.variants.seal[cfg.side].example
+  if (ex) fill(ex.yes[0] * PAGE_W, ex.yes[1] * PAGE_H)
+  // 回答欄は実際の用紙と同じ位置(実測レイアウト)に置く
+  if (!blank) cfg.rows.forEach((r) => {
+    const cell = LAYOUT.variants.seal[cfg.side][String(r.key)]
+    if (!cell) return
+    const col = cfg.expect[r.key] === 'yes' ? cell.yes : cell.no
+    fill(col[0] * PAGE_W, col[1] * PAGE_H, style)
+  })
   return data
 }
 
@@ -234,10 +276,10 @@ function withExifOrientation(jpegBuf, orient) {
 
 // ---- 実行 --------------------------------------------------------------------
 let failed = 0
-function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full', side = 'front' } = {}) {
+function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full', side = 'front', persp = 0, noMarkers = false, expectVia = 'markers' } = {}) {
   const cfg = SIDES[side], lay = layout(cfg)
-  const xf = makeXf((tiltDeg * Math.PI) / 180)
-  const display = makeImage(xf, blank, style, cfg, lay)
+  const xf = makeXf((tiltDeg * Math.PI) / 180, persp)
+  const display = makeImage(xf, blank, style, cfg, lay, noMarkers)
   let buf
   if (orient === 6) {
     const st = toStoredOrient6(display)
@@ -253,6 +295,19 @@ function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full', si
     failed++
     return
   }
+  // 期待した経路(四隅マーカー / OCR アンカー)で読めていることも確かめる
+  const via = res.via || 'anchor'
+  if (via !== expectVia) {
+    console.error(`✗ ${label}: 読み取り経路が ${via}(期待 ${expectVia})`)
+    failed++
+    return
+  }
+  // 白紙は塗りが無く様式を選ぶ手がかりが無いが、どの様式でも結果(すべて未回答)は同じ
+  if (via === 'markers' && !blank && res.variant !== 'seal') {
+    console.error(`✗ ${label}: 様式の判定が ${res.variant}(期待 seal)`)
+    failed++
+    return
+  }
   const want = (r) => (blank ? null : cfg.expect[r.key])
   const wrong = cfg.rows.filter(r => res.answers[r.key] !== want(r))
     .map(r => `No.${r.key}: 期待 ${want(r)} / 実際 ${res.answers[r.key]}`)
@@ -262,6 +317,41 @@ function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full', si
     return
   }
   console.log(`✓ ${label}: ${cfg.rows.length} 問すべて正しく読み取り`)
+}
+
+/* 読み取り不可になるべきケース(誤った回答を出さないこと自体を検証する) */
+function runUnreadable(label, opts = {}) {
+  const cfg = SIDES[opts.side || 'front'], lay = layout(cfg)
+  const xf = makeXf(((opts.tiltDeg || 0) * Math.PI) / 180, opts.persp || 0)
+  const display = makeImage(xf, false, 'full', cfg, lay, opts.noMarkers)
+  const buf = jpeg.encode({ data: display, width: IMG_W, height: IMG_H }, 92).data
+  const res = readKcl(makeDoc(xf, cfg, lay), buf, 'image/jpeg')
+  if (res.readable || Object.keys(res.answers || {}).length) {
+    console.error(`✗ ${label}: 読み取り不可になるべきなのに回答を返した`)
+    failed++
+    return
+  }
+  console.log(`✓ ${label}: 誤答を出さず読み取り不可（${res.reason}）`)
+}
+
+/* 座標表(kcllayout.js)が用紙の設問構成と食い違っていないかの検算。
+   用紙のレイアウトを変えたのに measure-kcl-layout.mjs を流し忘れると
+   読み取り位置が全部ずれるため、テストで気づけるようにしておく。 */
+{
+  for (const [name, v] of Object.entries(LAYOUT.variants)) {
+    for (const side of ['front', 'back']) {
+      const want = (side === 'front' ? FRONT_ROWS : BACK_ROWS).map(r => String(r.key))
+      const have = Object.keys(v[side]).filter(k => k !== 'example')
+      assert.deepStrictEqual(have.sort(), want.slice().sort(),
+        `${name}/${side}: 座標表の設問が用紙と一致しません（npm run build のあと measure-kcl-layout.mjs を実行してください）`)
+      for (const k of want) {
+        const c = v[side][k]
+        assert.ok(c.no[0] > c.yes[0], `${name}/${side}/${k}: いいえ列は はい列より右にあるはず`)
+        assert.ok(c.yes[1] > 0.1 && c.yes[1] < 0.98, `${name}/${side}/${k}: 回答欄の位置が版面の外`)
+      }
+    }
+  }
+  console.log(`✓ kcllayout: 3 様式 × 2 面の座標表が用紙の設問構成と一致`)
 }
 
 // EXIF 解析の単体確認
@@ -291,6 +381,11 @@ run('斜線だけの記入', { style: 'line' })
 // 未記入の用紙で「記入例」の塗りを拾って誤検出しないこと
 run('白紙(記入例のみ印刷)', { blank: true })
 run('白紙 + 傾き 3 度', { blank: true, tiltDeg: 3 })
+// 実写に多い「手持ちで少し傾き + 台形のゆがみ」
+run('遠近のゆがみ 6%', { persp: 0.06 })
+run('遠近のゆがみ 6% + 傾き 2 度', { persp: 0.06, tiltDeg: 2 })
+run('遠近のゆがみ -8% + 傾き -2 度', { persp: -0.08, tiltDeg: -2 })
+run('うら面 + 遠近のゆがみ 6% + 傾き 2 度', { side: 'back', persp: 0.06, tiltDeg: 2 })
 // うら面(【運動習慣について】の見出しがもう 1 組ある)
 run('うら面', { side: 'back' })
 run('うら面 + 傾き 2.5 度', { side: 'back', tiltDeg: 2.5 })
@@ -298,6 +393,13 @@ run('うら面 + 傾き -3 度', { side: 'back', tiltDeg: -3 })
 run('うら面 + EXIF 回転あり', { side: 'back', orient: 6 })
 run('うら面 + 中心がずれた塗り', { side: 'back', style: 'offset' })
 run('うら面 白紙', { side: 'back', blank: true })
+// 強い遠近のゆがみ
+run('遠近のゆがみ 12% + 傾き 4 度', { persp: 0.12, tiltDeg: 4 })
+run('うら面 + 遠近のゆがみ -12% + 傾き -4 度', { side: 'back', persp: -0.12, tiltDeg: -4 })
+// 四隅マーカーが写っていない(用紙が切れた)ときは、従来の OCR アンカー方式に戻る
+// 四隅マーカーが写っていない(用紙が切れた)ときは、誤答を出さず読み取り不可にする
+runUnreadable('マーカーなし(切れた写真)', { noMarkers: true })
+runUnreadable('マーカーなし + 傾き 2 度', { noMarkers: true, tiltDeg: 2 })
 
 if (failed) { console.error(`\n${failed} 件失敗`); process.exit(1) }
 console.log('\nkclread: すべて成功')

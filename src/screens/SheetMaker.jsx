@@ -38,10 +38,10 @@ const CELL_LABEL = { padding: '4px 10px', background: 'var(--slate-50)', borderB
 {/* 四隅の位置合わせマーカー(端から約 8mm。これ以上外だとプリンタの印字不可領域で欠ける) */}
 function Markers() {
   return (<>
-    <div style={{ position: 'absolute', left: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
-    <div style={{ position: 'absolute', right: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
-    <div style={{ position: 'absolute', left: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
-    <div style={{ position: 'absolute', right: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)', borderRadius: '50%' }} />
+    <div data-mk="tl" style={{ position: 'absolute', left: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
+    <div data-mk="tr" style={{ position: 'absolute', right: 30, top: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
+    <div data-mk="bl" style={{ position: 'absolute', left: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)' }} />
+    <div data-mk="br" style={{ position: 'absolute', right: 30, bottom: 30, width: 17, height: 17, background: 'var(--slate-900)', borderRadius: '50%' }} />
   </>)
 }
 
@@ -241,10 +241,11 @@ const circled = (n) => n <= 20 ? String.fromCharCode(0x245F + n) : String.fromCh
 const KCL_BUBBLE_W = 54  // 回答列のセル幅(はい/いいえの列見出しと楕円の中心を揃える基準)
 const KCL_BUBBLE_GAP = 20
 // 楕円本体はマークシート定番の縦長(22×30)。セルの中央に置いて列位置を固定する
-function KclBubble({ filled }) {
+function KclBubble({ filled, mark }) {
   return (
     <span style={{ width: KCL_BUBBLE_W, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-      <span style={{ width: 15, height: 21, border: '2px solid #000', borderRadius: 999, background: filled ? '#000' : '#fff', display: 'inline-block' }} />
+      {/* data-kcl は読み取り用の座標表(kcllayout.js)を実測するための目印 */}
+      <span data-kcl={mark} style={{ width: 15, height: 21, border: '2px solid #000', borderRadius: 999, background: filled ? '#000' : '#fff', display: 'inline-block' }} />
     </span>
   )
 }
@@ -253,12 +254,15 @@ function KclAnsCols({ children }) {
   return <div style={{ display: 'flex', gap: KCL_BUBBLE_GAP, justifyContent: 'flex-end', paddingRight: 6, alignItems: 'center' }}>{children}</div>
 }
 
-function KclRow({ no, text }) {
+function KclRow({ no, text, qkey }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '34px 1fr 152px', gap: 8, alignItems: 'center', padding: '4px 0', borderBottom: '1px solid #000' }}>
       <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.3 }}>{circled(no)}</div>
       <div style={{ fontSize: 21.5, lineHeight: 1.3 }}>{text}</div>
-      <KclAnsCols><KclBubble /><KclBubble /></KclAnsCols>
+      <KclAnsCols>
+        <KclBubble mark={qkey ? `${qkey}:yes` : undefined} />
+        <KclBubble mark={qkey ? `${qkey}:no` : undefined} />
+      </KclAnsCols>
     </div>
   )
 }
@@ -323,7 +327,7 @@ function KclExampleRow() {
         <span style={{ background: '#000', color: '#fff', fontSize: 13, fontWeight: 700, padding: '2px 9px' }}>記入例</span>
         <span style={{ fontSize: 16, fontWeight: 600 }}>「はい」と答えるとき</span>
       </div>
-      <KclAnsCols><KclBubble filled /><KclBubble /></KclAnsCols>
+      <KclAnsCols><KclBubble filled mark="example:yes" /><KclBubble mark="example:no" /></KclAnsCols>
     </div>
   )
 }
@@ -402,7 +406,7 @@ function KclPageFront({ p, walkIn }) {
       <div style={{ marginTop: 8 }}>
         <KclSectionHead title="【基本チェックリスト】" />
         <KclExampleRow />
-        {KCL_PRINT_QS.slice(0, KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} no={i + 1} text={q.text} />)}
+        {KCL_PRINT_QS.slice(0, KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} qkey={q.no} no={i + 1} text={q.text} />)}
       </div>
 
       <div style={{ flex: 1 }} />
@@ -442,12 +446,12 @@ function KclPageBack({ p, walkIn }) {
 
       <div style={{ marginTop: 8 }}>
         <KclSectionHead title="【基本チェックリスト（つづき）】" />
-        {KCL_PRINT_QS.slice(KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} no={KCL_PAGE1_COUNT + i + 1} text={q.text} />)}
+        {KCL_PRINT_QS.slice(KCL_PAGE1_COUNT).map((q, i) => <KclRow key={q.no} qkey={q.no} no={KCL_PAGE1_COUNT + i + 1} text={q.text} />)}
       </div>
 
       <div style={{ marginTop: 10 }}>
         <KclSectionHead title="【運動習慣について】" />
-        {EXERCISE_QS.map((t, i) => <KclRow key={i} no={i + 1} text={t} />)}
+        {EXERCISE_QS.map((t, i) => <KclRow key={i} qkey={`ex${i + 1}`} no={i + 1} text={t} />)}
       </div>
 
       <div style={{ flex: 1 }} />
