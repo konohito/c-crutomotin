@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "build:hosting": "vite build --mode hosting",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:smoke": "vite build --config vite.smoke.config.mjs"
   },
   "dependencies": {
     "firebase": "^12.16.0",
