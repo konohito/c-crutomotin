@@ -27,6 +27,7 @@ import EventModal from './modals/EventModal.jsx'
 import { EditUserModal, EditMeasModal } from './modals/EditModals.jsx'
 import PasswordModal from './modals/PasswordModal.jsx'
 import { staffAdminEnabled } from './lib/staffAdmin.js'
+import ScreenErrorBoundary from './ui/errorboundary.jsx'
 
 const BASE = import.meta.env.BASE_URL
 
@@ -227,7 +228,10 @@ function AppInner() {
       <main className="app-main">
         <Header />
         <div className="app-content">
-          <Screen key={state.screen} />
+          {/* 1 画面の不具合でアプリ全体が真っ白にならないようにする */}
+          <ScreenErrorBoundary screenKey={state.screen}>
+            <Screen key={state.screen} />
+          </ScreenErrorBoundary>
         </div>
       </main>
       {state.mdNo !== null && <ReviewModal />}

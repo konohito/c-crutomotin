@@ -16,3 +16,4 @@ functions/.env
 # Python バイトコードキャッシュ
 __pycache__/
 *.pyc
+dist-smoke

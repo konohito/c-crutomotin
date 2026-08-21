@@ -224,7 +224,10 @@ function RecReviewModal({ rec, batchId, onClose, onDone }) {
 
 function ProdImport() {
   const { set, showToast } = useStore()
-  const [batches, setBatches] = useState(null)
+  // batches は常に配列。読み込み済みかどうかは別のフラグで持つ
+  // (null を混ぜると参照のたびに空チェックが要り、抜けると画面全体が落ちるため)
+  const [batches, setBatches] = useState([])
+  const [batchesLoaded, setBatchesLoaded] = useState(false)
   const [batchId, setBatchId] = useState('')
   const sweptRef = useRef(false)
   const [queue, setQueue] = useState([])
@@ -236,11 +239,11 @@ function ProdImport() {
   useEffect(() => {
     let unsub = () => {}
     watchBatches((list) => {
-      setBatches(list)
+      setBatches(list); setBatchesLoaded(true)
       const open = list.filter(b => !b.finishedAt)
       setBatchId(prev => prev || (open[0] ? open[0].id : ''))
       if (!sweptRef.current) { sweptRef.current = true; sweepFinishedBatches(list).catch(() => {}) }
-    }).then(fn => { unsub = fn }).catch(() => setBatches([]))
+    }).then(fn => { unsub = fn }).catch(() => { setBatches([]); setBatchesLoaded(true) })
     return () => unsub()
   }, [])
 
@@ -384,7 +387,7 @@ function ProdImport() {
             </div>
           )}
         </div>
-        {batches && batches.length > 0 && (
+        {batches.length > 0 && (
           <Select value={batchId} onChange={(e) => setBatchId(e.target.value)}
             options={batches.filter(b => !b.finishedAt || b.id === batchId).map(b => ({ v: b.id, l: `${batchDate(b.id)} · ${b.id}（${b.uploadCount || b.sheetCount || 0} 枚）` }))} />
         )}
@@ -403,7 +406,7 @@ function ProdImport() {
       </Card>
 
       {/* 空状態 */}
-      {batches !== null && batches.length === 0 && (
+      {batchesLoaded && batches.length === 0 && (
         <div style={{ background: 'var(--bg-surface)', border: '1px dashed var(--border-strong)', borderRadius: 12, padding: '44px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
           <Icon name="camera" size={30} style={{ color: 'var(--slate-300)' }} />
           <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--fg-2)' }}>まだ取り込みがありません</div>
