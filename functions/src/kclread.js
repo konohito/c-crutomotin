@@ -143,14 +143,18 @@ function readMarks(img, om, side, keys, rowPos, maps) {
       }
       return s / 5
     }
+    /* 近い候補を優先する距離ペナルティ付きで探す。探索の上限(±0.0154)は
+       隣の行(0.033 間隔)の楕円に窓が届かない範囲に抑えてあるので、
+       広げても「隣の行を読む」誤りにはならない(届かなければ未回答に落ちるだけ)。 */
     const snap = (cell, y0) => {
       const midX = (cell.yes[0] + cell.no[0]) / 2
-      let best = { s: -1, dx: 0, dy: 0 }
-      for (let dy = -0.011; dy <= 0.0111; dy += 0.0022) {
-        for (let dx = -0.008; dx <= 0.0081; dx += 0.0027) {
+      let best = { s: -1, dx: 0, dy: 0, score: -Infinity }
+      for (let dy = -0.0154; dy <= 0.0155; dy += 0.0022) {
+        for (let dx = -0.0107; dx <= 0.0108; dx += 0.0027) {
           const ref = refLum(midX + dx, y0 + dy)
           const s = (ref - ringLum(cell.yes[0] + dx, y0 + dy)) + (ref - ringLum(cell.no[0] + dx, y0 + dy))
-          if (s > best.s) best = { s, dx, dy }
+          const score = s - (Math.abs(dy) + Math.abs(dx)) * 1500
+          if (score > best.score) best = { s, dx, dy, score }
         }
       }
       // 輪郭が見つからない(強いボケ等)ときは補正なしの位置に戻す
@@ -162,11 +166,14 @@ function readMarks(img, om, side, keys, rowPos, maps) {
     for (const k of wanted) {
       const cell = table[k]
       if (!cell) continue
-      /* 行の y: その設問自身の文字行の差 dByKey が全体の δ と近ければそれを使う
-         (用紙の反りで行ごとに違うずれが出るため)。折り返し設問は 1 行目が
-         回答欄より上に出て差が大きくなるので、全体の δ に落とす。 */
+      /* 行の y: その設問自身の文字行の差 dByKey が使えればそれを使う
+         (用紙の反りで行ごとに違うずれが出るため。文字と回答欄は同じ行なので
+         行ごとの差の方が正確)。ただし 2 行に折り返す設問は 1 行目の文字が
+         回答欄より上に出て差が下振れ(約 -1.2%)するため、下振れ側は全体の δ に落とす。
+         上振れ側は折り返しでは起きないので、反りとして広めに信じる。 */
       const dk = dByKey[k]
-      const yk = cell.yes[1] + (dk != null && Math.abs(dk - delta) <= 0.007 ? dk : delta)
+      const rel = dk != null ? dk - delta : 0
+      const yk = cell.yes[1] + (dk != null && rel >= -0.007 && rel <= 0.02 ? dk : delta)
       const { s: ringS, dx, dy } = snap(cell, yk)
       const py = map.at(cell.yes[0] + dx, yk + dy)
       const pn = map.at(cell.no[0] + dx, yk + dy)

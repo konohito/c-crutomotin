@@ -534,6 +534,41 @@ function ProdImport() {
                 </div>
               )
             })()}
+            {/* 読み取り診断(開発用)。バックエンドが保存した設問ごとの濃度・位置補正を表示し、
+                読み落としの原因(位置ずれ / 塗りが薄い / 枠線を見失った)を現地で切り分けられるようにする */}
+            {assign.kcl && assign.kcl.debug && (() => {
+              const dbg = assign.kcl.debug
+              const rows = kclSideList(assign.kcl.side)
+              return (
+                <details style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
+                  <summary style={{ cursor: 'pointer' }}>読み取り診断（開発用）</summary>
+                  <div style={{ marginTop: 6, border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '8px 10px' }}>
+                    <div>
+                      マーカー検出: {dbg.src === 'text' ? '文字範囲' : dbg.src === 'bright' ? '明るさ' : String(dbg.src || '—')}
+                      　·　行補正 δ <span className="t-num">{(dbg.delta * 100).toFixed(2)}%</span>
+                      　·　検算 <span className="t-num">{dbg.rows}</span> 行
+                    </div>
+                    <div className="t-num" style={{ display: 'grid', gridTemplateColumns: '36px 1fr 1fr 1fr 1fr', gap: '1px 10px', marginTop: 6 }}>
+                      <b>No</b><b>はい濃度</b><b>いいえ濃度</b><b>行ずれ</b><b>枠線</b>
+                      {rows.flatMap(q => {
+                        const d = dbg.perQ && dbg.perQ[q.no]
+                        if (!d) return []
+                        return [
+                          <span key={q.no + 'n'} style={{ fontWeight: 700 }}>{q.paper}</span>,
+                          <span key={q.no + 'y'}>{Math.round(d.fy * 100)}%</span>,
+                          <span key={q.no + 'i'}>{Math.round(d.fn * 100)}%</span>,
+                          <span key={q.no + 'd'}>{(d.dy * 100).toFixed(2)}%</span>,
+                          <span key={q.no + 'r'}>{d.ring}</span>,
+                        ]
+                      })}
+                    </div>
+                    <div style={{ marginTop: 5, color: 'var(--fg-4)' }}>
+                      濃度 30% 以上で塗りと判定。行ずれは版面高さ比の補正量、枠線は楕円の輪郭の検出強度。
+                    </div>
+                  </div>
+                </details>
+              )
+            })()}
             {/* 台帳照合 */}
             <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 10, padding: '10px 12px' }}>
               {assignU ? (
@@ -560,7 +595,7 @@ function ProdImport() {
             </div>
             {/* 設問別の読み取り結果と修正 */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {kclSideList(assign.kcl && assign.kcl.side).map(({ no, text }) => {
+              {kclSideList(assign.kcl && assign.kcl.side).map(({ no, paper, text }) => {
                 const k = ansKind(assign.kcl && assign.kcl.answers, no)
                 const [label, fg, bg] = ANS_STYLE[k]
                 const v = ansEdit[no] ?? null
@@ -573,7 +608,8 @@ function ProdImport() {
                 )
                 return (
                   <div key={no} style={{ display: 'grid', gridTemplateColumns: '34px 1fr 92px auto', gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <span className="t-num" style={{ fontSize: 12.5, fontWeight: 700 }}>{no.startsWith('ex') ? '運' + no.slice(2) : no}</span>
+                    {/* 番号は用紙の印刷どおり(公式 No.12=BMI は用紙に無いため連番を振り直してある) */}
+                    <span className="t-num" title={no.startsWith('ex') ? '' : `公式 No.${no}`} style={{ fontSize: 12.5, fontWeight: 700 }}>{paper}</span>
                     <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={text}>{text}</span>
                     {/* 読み取り結果(確からしさ)。修正は右のボタンで */}
                     <span style={{ fontSize: 11.5, fontWeight: 700, textAlign: 'center', borderRadius: 6, padding: '3px 0', color: fg, background: bg, border: k === 'empty' ? '1px solid var(--border-subtle)' : 'none' }}>{label}</span>
