@@ -617,6 +617,13 @@ function ProdImport() {
                   </div>
                 )
               })}
+              {/* 公式 No.12(BMI)が一覧に無い理由の説明。「設問が抜けている」という問い合わせ対策 */}
+              {assign.kcl && assign.kcl.side !== 'back' && (
+                <div style={{ fontSize: 11.5, color: 'var(--fg-4)', padding: '7px 2px 0' }}>
+                  番号は用紙の印刷どおりです。基本チェックリスト公式 No.12「BMIが18.5未満ですか」は
+                  本人が回答する設問ではないため用紙・この一覧にはなく、当日の身長・体重の測定値から自動で採点されます（25点満点には含まれます）。
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setAssign(null)}>閉じる</button>
