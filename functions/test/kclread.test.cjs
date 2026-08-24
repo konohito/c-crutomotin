@@ -122,10 +122,14 @@ function makeXf(tilt, persp = 0) {
 }
 
 // ---- 合成画像(机の上に置いた白い用紙に楕円を塗る) ---------------------------
+// 用紙の反り: 中央ほど大きく行が下(上)へずれる。文字と回答欄は一緒に動き、四隅は動かない
+const curlAt = (amp, yPage) => (amp || 0) * Math.sin(Math.PI * (yPage / PAGE_H))
+
 function makeImage(xf, cfg, lay, o = {}) {
   const deskLum = o.deskLum != null ? o.deskLum : 120
   const table = LAYOUT.variants[o.imgVariant || 'seal'][cfg.side]
-  const shift = o.ovalShift || 0    // 回答欄だけのずれ(用紙の反りの再現。文字は動かさない)
+  const shift = o.ovalShift || 0    // 回答欄だけのずれ(印刷ずれの再現。文字は動かさない)
+  const curl = (y) => curlAt(o.curlAmp, y)
   const data = Buffer.alloc(IMG_W * IMG_H * 4)
   for (let y = 0; y < IMG_H; y++) {
     for (let x = 0; x < IMG_W; x++) {
@@ -199,28 +203,30 @@ function makeImage(xf, cfg, lay, o = {}) {
     }
   }
   // すべての回答欄の楕円の枠線(記入例の行も含む)
+  const cellY = (cell) => { const y = cell.yes[1] * PAGE_H; return y + curl(y) + shift }
   for (const r of [{ key: 'example' }].concat(cfg.rows)) {
     const cell = table[String(r.key)]
     if (!cell) continue
-    ringDraw(cell.yes[0] * PAGE_W, cell.yes[1] * PAGE_H + shift)
-    ringDraw(cell.no[0] * PAGE_W, cell.no[1] * PAGE_H + shift)
+    ringDraw(cell.yes[0] * PAGE_W, cellY(cell))
+    ringDraw(cell.no[0] * PAGE_W, cellY(cell))
   }
   /* 記入例の行(設問①のすぐ上)には「はい」が塗られた見本が印刷されている。
      実際の用紙と同じ位置に置いて、設問①の判定がこれを拾わないことも検証する。 */
   const ex = table.example
-  if (ex) fill(ex.yes[0] * PAGE_W, ex.yes[1] * PAGE_H + shift)
+  if (ex) fill(ex.yes[0] * PAGE_W, cellY(ex))
   // 回答欄は実際の用紙と同じ位置(実測レイアウト)に置く
   if (!o.blank) cfg.rows.forEach((r) => {
     const cell = table[String(r.key)]
     if (!cell) return
     const col = cfg.expect[r.key] === 'yes' ? cell.yes : cell.no
-    fill(col[0] * PAGE_W, col[1] * PAGE_H + shift, o.style || 'full')
+    fill(col[0] * PAGE_W, cellY(cell), o.style || 'full')
   })
   return data
 }
 
 // ---- 合成 Document AI レスポンス ---------------------------------------------
-function makeDoc(xf, cfg, lay) {
+function makeDoc(xf, cfg, lay, curlAmp = 0) {
+  const curl = (y) => curlAt(curlAmp, y)
   let text = ''
   const tokens = [], lines = [], paragraphs = []
   // 用紙上の矩形 → 写真上の四隅(傾けると平行四辺形になる。Document AI も四隅を返す)
@@ -244,12 +250,14 @@ function makeDoc(xf, cfg, lay) {
   // 各セクションの見出しと、回答欄の列見出し(用紙の右端)
   const COL_YES = LAYOUT.variants.seal[cfg.side][String(cfg.rows[0].key)].yes[0] * PAGE_W
   const COL_NO = LAYOUT.variants.seal[cfg.side][String(cfg.rows[0].key)].no[0] * PAGE_W
-  lay.headers.forEach((hy, si) => {
+  lay.headers.forEach((hy0, si) => {
+    const hy = hy0 + curl(hy0)
     lines.push(put(si === 0 ? cfg.title : '【運動習慣について】', 60, hy - 9, 260, hy + 15))
     tokens.push(put('はい', COL_YES - 22, hy - 13, COL_YES + 22, hy + 13))
     tokens.push(put('いいえ', COL_NO - 28, hy - 13, COL_NO + 28, hy + 13))
   })
-  if (cfg.example && lay.exampleY != null) lines.push(put('記入例 「はい」と答えるとき', 80, lay.exampleY - 11, 300, lay.exampleY + 11))
+  const exY = lay.exampleY != null ? lay.exampleY + curl(lay.exampleY) : null
+  if (cfg.example && exY != null) lines.push(put('記入例 「はい」と答えるとき', 80, exY - 11, 300, exY + 11))
 
   /* Document AI は連続する行をまとめて 1 つの段落として返す。設問が 1 問ずつ
      別々の段落になるとは限らず、2〜3 問がまとめられることも多い。
@@ -258,7 +266,7 @@ function makeDoc(xf, cfg, lay) {
     : [[0, 1], [2, 3], [4, 5, 6], [7, 8], [9, 10], [11, 12]]
   const span = { top: {}, bottom: {}, left: {}, right: {} }
   cfg.rows.forEach((r, idx) => {
-    const cy = lay.rowY[idx]
+    const cy = lay.rowY[idx] + curl(lay.rowY[idx])
     const parts = r.text.split('|')
     if (parts.length === 1) {
       lines.push(put(parts[0], 80, cy - LINE_H / 2, 600, cy + LINE_H / 2))
@@ -276,8 +284,8 @@ function makeDoc(xf, cfg, lay) {
   // おもて面の下端の案内(実物にもある。文字範囲から用紙を探す手がかりが下にも伸びる)
   if (cfg.side === 'front') lines.push(put('うら面につづきます', 300, 1042, 494, 1064))
   for (const g of groups) {
-    const tops = g.map(i => (i < 0 ? lay.exampleY - 11 : span.top[i]))
-    const bots = g.map(i => (i < 0 ? lay.exampleY + 11 : span.bottom[i]))
+    const tops = g.map(i => (i < 0 ? exY - 11 : span.top[i]))
+    const bots = g.map(i => (i < 0 ? exY + 11 : span.bottom[i]))
     const txt = g.map(i => (i < 0 ? '記入例 「はい」と答えるとき' : cfg.rows[i].text.split('|').join(''))).join('')
     paragraphs.push(put(txt, 80, Math.min(...tops), 600, Math.max(...bots)))
   }
@@ -326,7 +334,7 @@ function run(label, opts = {}) {
   } else {
     buf = jpeg.encode({ data: display, width: IMG_W, height: IMG_H }, 92).data
   }
-  const res = readKcl(makeDoc(xf, cfg, lay), buf, 'image/jpeg')
+  const res = readKcl(makeDoc(xf, cfg, lay, opts.curlAmp || 0), buf, 'image/jpeg')
   assert.strictEqual(res.isKcl, true, `${label}: 問診票として判定されること`)
   assert.strictEqual(res.side, side, `${label}: ${side === 'front' ? 'おもて' : 'うら'}面と判定されること`)
   if (!res.readable) {
@@ -460,6 +468,11 @@ run('回答欄だけ 10px 上にずれ + 傾き 2 度', { ovalShift: -10, tiltDe
 run('うら面 + 回答欄だけ 8px 下にずれ', { side: 'back', ovalShift: 8 })
 run('回答欄だけ 14px 下にずれ(強い反り)', { ovalShift: 14 })
 run('回答欄だけ 14px 上にずれ', { ovalShift: -14 })
+// 用紙の反り(行と文字が一緒に、用紙内の場所によって違う量だけずれる。四隅は動かない)
+run('用紙の反り(中央 18px 浮き)', { curlAmp: 18 })
+run('用紙の反り(中央 -16px)+ 傾き 3 度', { curlAmp: -16, tiltDeg: 3 })
+run('うら面 + 用紙の反り 18px', { side: 'back', curlAmp: 18 })
+run('うら面 + 反り 16px + 遠近 6%', { side: 'back', curlAmp: 16, persp: 0.06 })
 // 机が用紙と同じくらい明るい(明るさで用紙を切り出せない → 文字範囲から探す)
 run('明るい木目の机', { deskLum: 205 })
 run('用紙と同化した白い机', { deskLum: 228, expectSrc: 'text' })

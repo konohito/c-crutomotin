@@ -70,7 +70,7 @@ const median = (a) => {
    (3 様式とも全行が同じ量だけ上下しているだけ)や印刷のずれは、OCR の設問行から
    求めた行方向の補正量 δ で吸収する。そのうえで、印刷された楕円の輪郭を
    近傍から探し当てて(スナップ)、用紙の反りなどの局所的なずれも吸収する。 */
-function readMarks(img, om, side, keys, rowPos, maps) {
+function readMarks(img, om, side, keys, rowPos, allPos, maps) {
   const table = LAYOUT.variants.seal[side]
   const W = om.W, H = om.H, rw = img.width, data = img.data
 
@@ -89,12 +89,37 @@ function readMarks(img, om, side, keys, rowPos, maps) {
        正しい位置合わせなら、差は全行でほぼ同じ小さな値(様式差 ±2% + 印刷ずれ)になる。
        誤った黒塊をマーカーにしていた場合は差がバラバラ・巨大になるので候補を捨てる。
        2 行に折り返す設問は 1 行目の文字が回答欄より少し上に出る(-1% 程度)が許容内。 */
+    /* 各設問の行中心を用紙座標に引き直す。2 行に折り返した設問は 1 行目だけだと
+       中心が回答欄より上に出るため、続きの行(すぐ下・左端がほぼ同じ・短い・
+       別の設問ではない)を探して 2 行の中点を行中心にする。これで全設問の行位置が
+       用紙の反り(行ごとに違うずれ)にも正確に追従する。判定は用紙座標で行うので
+       写真の傾き・遠近には影響されない。 */
+    const toPaper = (b) => {
+      const [, py] = map.inv(b.cx, b.cy)
+      const [lx] = map.inv(b.x0, b.cy)
+      const [rx] = map.inv(b.x1, b.cy)
+      return { py, lx, rx }
+    }
+    const paperAll = allPos.map(b => ({ ...toPaper(b), isQ: b.isQ }))
+    const rowPaperY = (pos) => {
+      const b = toPaper(pos)
+      let cont = null
+      for (const c of paperAll) {
+        if (c.isQ) continue
+        const dy = c.py - b.py
+        if (dy < 0.015 || dy > 0.031) continue              // 続きの行は約 2.4% 下(次の設問行 3.3% は入らない)
+        if (Math.abs(c.lx - b.lx) > 0.06) continue          // 左端がほぼ同じ(中央寄せの注記を除外)
+        if (c.rx > b.lx + (b.rx - b.lx) * 0.75) continue    // 続きの行は短い(読み損ねた隣の設問行を除外)
+        if (!cont || Math.abs(dy - 0.0243) < Math.abs(cont.py - b.py - 0.0243)) cont = c
+      }
+      return cont ? (b.py + cont.py) / 2 : b.py
+    }
     const dByKey = {}
     const ds = []
     for (const k of wanted) {
       const cell = table[k], pos = rowPos[k]
       if (!cell || !pos) continue
-      const d = map.inv(pos.cx, pos.cy)[1] - cell.yes[1]
+      const d = rowPaperY(pos) - cell.yes[1]
       dByKey[k] = d
       ds.push(d)
     }
@@ -166,14 +191,12 @@ function readMarks(img, om, side, keys, rowPos, maps) {
     for (const k of wanted) {
       const cell = table[k]
       if (!cell) continue
-      /* 行の y: その設問自身の文字行の差 dByKey が使えればそれを使う
-         (用紙の反りで行ごとに違うずれが出るため。文字と回答欄は同じ行なので
-         行ごとの差の方が正確)。ただし 2 行に折り返す設問は 1 行目の文字が
-         回答欄より上に出て差が下振れ(約 -1.2%)するため、下振れ側は全体の δ に落とす。
-         上振れ側は折り返しでは起きないので、反りとして広めに信じる。 */
+      /* 行の y: その設問自身の文字行の差 dByKey を優先する(文字と回答欄は同じ行に
+         あるため、用紙の反りで行ごとにずれが違っても正確に追従できる)。
+         折り返し設問も 2 行の中点を使っているので偏りは無い。全体の δ から大きく
+         外れた値だけは行の取り違えとみなして δ に落とす(その先はスナップが拾う)。 */
       const dk = dByKey[k]
-      const rel = dk != null ? dk - delta : 0
-      const yk = cell.yes[1] + (dk != null && rel >= -0.007 && rel <= 0.02 ? dk : delta)
+      const yk = cell.yes[1] + (dk != null && Math.abs(dk - delta) <= 0.025 ? dk : delta)
       const { s: ringS, dx, dy } = snap(cell, yk)
       const py = map.at(cell.yes[0] + dx, yk + dy)
       const pn = map.at(cell.no[0] + dx, yk + dy)
@@ -250,9 +273,13 @@ function readKcl(document, imageBuffer, mimeType) {
     }
   }
 
-  // 設問行の位置を表示向きの画素に直す + 文字全体の範囲(明るい机での用紙検出のヒント)
+  /* 設問行と全行の位置を表示向きの画素に直す(折り返し設問の続き行の特定は、
+     傾いた写真だと画素座標では行の高さが正しく取れないため、位置合わせ後に
+     用紙座標へ引き直してから readMarks 内で行う)。 */
+  const qLines = new Set(Object.values(rowLine))
   const rowPos = {}
   for (const [k, ln] of Object.entries(rowLine)) rowPos[k] = lineToPx(ln, W, H)
+  const allPos = lines.map(l => ({ ...lineToPx(l, W, H), isQ: qLines.has(l) }))
   let hint = null
   for (const l of lines) {
     const b = lineToPx(l, W, H)
@@ -268,7 +295,7 @@ function readKcl(document, imageBuffer, mimeType) {
      OCR の設問行の位置と突き合わせて検算に通ったものだけを使う。 */
   const maps = paperMappings(img, om, LAYOUT, hint)
   if (maps.length) {
-    const marks = readMarks(img, om, side, keys, rowPos, maps)
+    const marks = readMarks(img, om, side, keys, rowPos, allPos, maps)
     if (marks) return { isKcl: true, side, answers: marks.answers, readable: true, orient, via: 'markers', debug: marks.debug }
     return unreadable('マーカーは検出できましたが、位置合わせが設問の文字位置と合いませんでした（用紙を平らに置き、真上から全体が入るように撮り直してください）')
   }
