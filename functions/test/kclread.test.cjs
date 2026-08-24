@@ -2,7 +2,12 @@
 /* 問診票(様式 R7-03)マークシート読み取りの回帰テスト。
    実際の撮影写真と同じ条件(用紙が写真の一部に写り込み・説明文に「（はい・いいえ）」が含まれる・
    設問が 2 行に折り返す・手持ちで少し傾く・EXIF に回転情報が付く)の合成画像と
-   Document AI レスポンスを作り、塗りつぶした通りの回答が読み取れることを検証する。 */
+   Document AI レスポンスを作り、塗りつぶした通りの回答が読み取れることを検証する。
+
+   実物との一致で特に大事な点:
+   ・設問の文字は回答欄の楕円と同じ行にある(読み取りはこれを位置合わせの検算に使う)
+   ・楕円の枠線は塗っていなくても印刷されている(読み取りはこれに窓を吸着させる)
+   ・様式(シール/印字/当日受付)で行位置が 2% ほど違う・机の明るさは用紙と近いことがある */
 const assert = require('assert')
 const jpeg = require('jpeg-js')
 const { readKcl } = require('../src/kclread')
@@ -11,8 +16,8 @@ const LAYOUT = require('../src/kcllayout')
 
 // ---- 用紙の設計値(SheetMaker.jsx と一致) ------------------------------------
 const PAGE_W = 794, PAGE_H = 1123
-const COL_YES = 640, COL_NO = 714   // 回答欄の中心 x(間隔 74px)
 const OVAL_W = 15, OVAL_H = 21
+const LINE_H = 22
 // 写真: 1200×1600 の中に用紙(幅 900)が写っている想定(縦横比は保つ)
 const IMG_W = 1200, IMG_H = 1600
 const OFF_X = 100, OFF_Y = 60, SCALE = 900 / PAGE_W
@@ -57,24 +62,24 @@ const BACK_EXPECT = {
   15: 'yes', 16: 'no', 17: 'no', 18: 'no', 19: 'yes', 20: 'yes', 21: 'no',
   22: 'no', 23: 'yes', 24: 'yes', 25: 'yes', ex1: 'yes', ex2: 'no',
 }
-const ROW_Y0 = 560, ROW_PITCH = 40, LINE_H = 22, HEAD_Y = 509
-const EXAMPLE_Y = 537   // 記入例の行(設問①の 23px 上。実際の用紙より詰めた厳しい条件)
 
 // 面ごとの構成。うら面は【運動習慣について】の見出し(はい・いいえ)がもう 1 組ある。
 const SIDES = {
   front: { side: 'front', rows: FRONT_ROWS, expect: FRONT_EXPECT, intro: true, example: true, title: '【基本チェックリスト】' },
   back: { side: 'back', rows: BACK_ROWS, expect: BACK_EXPECT, intro: false, example: false, title: '【基本チェックリスト（つづき）】' },
 }
-// 各設問の y と、見出し(はい・いいえ)の y を決める
-function layout(cfg) {
-  const rowY = [], headers = [HEAD_Y]
-  let y = ROW_Y0, prevSec = 0
-  cfg.rows.forEach((r) => {
-    const sec = r.section || 0
-    if (sec !== prevSec) { y += ROW_PITCH * 1.5; headers.push(y - ROW_PITCH * 0.75); prevSec = sec }
-    rowY.push(y); y += ROW_PITCH
+/* 各設問の行 y は座標表(kcllayout)から取る。実際の用紙では設問の文字と回答欄の
+   楕円が同じ行に並ぶ(読み取りはこの一致を位置合わせの検算に使う)。 */
+function layout(cfg, variant = 'seal') {
+  const table = LAYOUT.variants[variant][cfg.side]
+  const rowY = cfg.rows.map(r => table[String(r.key)].yes[1] * PAGE_H)
+  const exampleY = table.example ? table.example.yes[1] * PAGE_H : null
+  // 見出し(はい/いいえ)の y: 各セクション先頭行の少し上
+  const headers = [(exampleY != null ? exampleY : rowY[0]) - 30]
+  cfg.rows.forEach((r, i) => {
+    if (i > 0 && (r.section || 0) !== (cfg.rows[i - 1].section || 0)) headers.push(rowY[i] - 30)
   })
-  return { rowY, headers }
+  return { rowY, headers, exampleY }
 }
 
 /* 用紙座標(page) → 写真座標。実写に合わせて 射影変換(回転 + 遠近のゆがみ)で作る。
@@ -117,15 +122,18 @@ function makeXf(tilt, persp = 0) {
 }
 
 // ---- 合成画像(机の上に置いた白い用紙に楕円を塗る) ---------------------------
-function makeImage(xf, blank, style, cfg, lay, noMarkers) {
+function makeImage(xf, cfg, lay, o = {}) {
+  const deskLum = o.deskLum != null ? o.deskLum : 120
+  const table = LAYOUT.variants[o.imgVariant || 'seal'][cfg.side]
+  const shift = o.ovalShift || 0    // 回答欄だけのずれ(用紙の反りの再現。文字は動かさない)
   const data = Buffer.alloc(IMG_W * IMG_H * 4)
   for (let y = 0; y < IMG_H; y++) {
     for (let x = 0; x < IMG_W; x++) {
       const i = (y * IMG_W + x) * 4
       const [X, Y] = xf.inv(x + 0.5, y + 0.5)
       const onSheet = X >= 0 && X < PAGE_W && Y >= 0 && Y < PAGE_H
-      // 用紙は白(照明ムラを少し付ける)、外は机(暗い)
-      const v = onSheet ? 236 - Math.round((y / IMG_H) * 18) : 120
+      // 用紙は白(照明ムラを少し付ける)、外は机
+      const v = onSheet ? 236 - Math.round((y / IMG_H) * 18) : deskLum
       data[i] = v; data[i + 1] = v; data[i + 2] = v; data[i + 3] = 255
     }
   }
@@ -160,8 +168,20 @@ function makeImage(xf, blank, style, cfg, lay, noMarkers) {
       }
     }
   }
+  // 楕円の枠線(実際の用紙には塗っていなくても印刷されている。読み取りの吸着の目印)
+  const ringDraw = (cxPage, cyPage) => {
+    const [cx, cy] = xf.fwd(cxPage, cyPage)
+    const rx = (OVAL_W / 2) * SCALE, ry = (OVAL_H / 2) * SCALE
+    for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++) {
+      for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
+        const r2 = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2
+        if (r2 > 1 || r2 < 0.6) continue   // 枠線 2px ぶんの帯
+        ink(x, y)
+      }
+    }
+  }
   // 四隅の位置合わせマーカー(読み取りはこれを基準に用紙座標へ引き直す)
-  const MK = noMarkers ? {} : LAYOUT.markers
+  const MK = o.noMarkers ? {} : LAYOUT.markers
   const mkHalf = (17 / 2)
   for (const k of Object.keys(MK)) {
     const cxP = MK[k][0] * PAGE_W, cyP = MK[k][1] * PAGE_H
@@ -172,16 +192,29 @@ function makeImage(xf, blank, style, cfg, lay, noMarkers) {
       }
     }
   }
+  // 机の上のにせマーカー(木の節・影などの黒い角。写真の隅と用紙のそばに置く)
+  if (o.distractors) {
+    for (const [px, py] of [[26, 30], [IMG_W - 44, 34], [24, IMG_H - 46], [IMG_W - 46, IMG_H - 42], [60, 800]]) {
+      for (let yy = 0; yy < 14; yy++) for (let xx = 0; xx < 14; xx++) ink(px + xx, py + yy)
+    }
+  }
+  // すべての回答欄の楕円の枠線(記入例の行も含む)
+  for (const r of [{ key: 'example' }].concat(cfg.rows)) {
+    const cell = table[String(r.key)]
+    if (!cell) continue
+    ringDraw(cell.yes[0] * PAGE_W, cell.yes[1] * PAGE_H + shift)
+    ringDraw(cell.no[0] * PAGE_W, cell.no[1] * PAGE_H + shift)
+  }
   /* 記入例の行(設問①のすぐ上)には「はい」が塗られた見本が印刷されている。
      実際の用紙と同じ位置に置いて、設問①の判定がこれを拾わないことも検証する。 */
-  const ex = LAYOUT.variants.seal[cfg.side].example
-  if (ex) fill(ex.yes[0] * PAGE_W, ex.yes[1] * PAGE_H)
+  const ex = table.example
+  if (ex) fill(ex.yes[0] * PAGE_W, ex.yes[1] * PAGE_H + shift)
   // 回答欄は実際の用紙と同じ位置(実測レイアウト)に置く
-  if (!blank) cfg.rows.forEach((r) => {
-    const cell = LAYOUT.variants.seal[cfg.side][String(r.key)]
+  if (!o.blank) cfg.rows.forEach((r) => {
+    const cell = table[String(r.key)]
     if (!cell) return
     const col = cfg.expect[r.key] === 'yes' ? cell.yes : cell.no
-    fill(col[0] * PAGE_W, col[1] * PAGE_H, style)
+    fill(col[0] * PAGE_W, col[1] * PAGE_H + shift, o.style || 'full')
   })
   return data
 }
@@ -208,13 +241,15 @@ function makeDoc(xf, cfg, lay) {
     tokens.push(put('はい', 270, 252, 305, 272))
     tokens.push(put('いいえ', 325, 252, 375, 272))
   }
-  // 各セクションの見出しと、回答欄の列見出し(用紙の右端。これが本来のアンカー)
+  // 各セクションの見出しと、回答欄の列見出し(用紙の右端)
+  const COL_YES = LAYOUT.variants.seal[cfg.side][String(cfg.rows[0].key)].yes[0] * PAGE_W
+  const COL_NO = LAYOUT.variants.seal[cfg.side][String(cfg.rows[0].key)].no[0] * PAGE_W
   lay.headers.forEach((hy, si) => {
     lines.push(put(si === 0 ? cfg.title : '【運動習慣について】', 60, hy - 9, 260, hy + 15))
     tokens.push(put('はい', COL_YES - 22, hy - 13, COL_YES + 22, hy + 13))
     tokens.push(put('いいえ', COL_NO - 28, hy - 13, COL_NO + 28, hy + 13))
   })
-  if (cfg.example) lines.push(put('記入例 「はい」と答えるとき', 80, EXAMPLE_Y - 11, 300, EXAMPLE_Y + 11))
+  if (cfg.example && lay.exampleY != null) lines.push(put('記入例 「はい」と答えるとき', 80, lay.exampleY - 11, 300, lay.exampleY + 11))
 
   /* Document AI は連続する行をまとめて 1 つの段落として返す。設問が 1 問ずつ
      別々の段落になるとは限らず、2〜3 問がまとめられることも多い。
@@ -238,9 +273,11 @@ function makeDoc(xf, cfg, lay) {
       span.left[idx] = 80; span.right[idx] = 600
     }
   })
+  // おもて面の下端の案内(実物にもある。文字範囲から用紙を探す手がかりが下にも伸びる)
+  if (cfg.side === 'front') lines.push(put('うら面につづきます', 300, 1042, 494, 1064))
   for (const g of groups) {
-    const tops = g.map(i => (i < 0 ? EXAMPLE_Y - 11 : span.top[i]))
-    const bots = g.map(i => (i < 0 ? EXAMPLE_Y + 11 : span.bottom[i]))
+    const tops = g.map(i => (i < 0 ? lay.exampleY - 11 : span.top[i]))
+    const bots = g.map(i => (i < 0 ? lay.exampleY + 11 : span.bottom[i]))
     const txt = g.map(i => (i < 0 ? '記入例 「はい」と答えるとき' : cfg.rows[i].text.split('|').join(''))).join('')
     paragraphs.push(put(txt, 80, Math.min(...tops), 600, Math.max(...bots)))
   }
@@ -276,10 +313,12 @@ function withExifOrientation(jpegBuf, orient) {
 
 // ---- 実行 --------------------------------------------------------------------
 let failed = 0
-function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full', side = 'front', persp = 0, noMarkers = false, expectVia = 'markers' } = {}) {
-  const cfg = SIDES[side], lay = layout(cfg)
+function run(label, opts = {}) {
+  const { tiltDeg = 0, orient = 1, blank = false, side = 'front', persp = 0,
+    imgVariant = 'seal', expectVia = 'markers', expectSrc = null } = opts
+  const cfg = SIDES[side], lay = layout(cfg, imgVariant)
   const xf = makeXf((tiltDeg * Math.PI) / 180, persp)
-  const display = makeImage(xf, blank, style, cfg, lay, noMarkers)
+  const display = makeImage(xf, cfg, lay, { ...opts, imgVariant, blank })
   let buf
   if (orient === 6) {
     const st = toStoredOrient6(display)
@@ -295,16 +334,15 @@ function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full', si
     failed++
     return
   }
-  // 期待した経路(四隅マーカー / OCR アンカー)で読めていることも確かめる
+  // 期待した経路で読めていることも確かめる
   const via = res.via || 'anchor'
   if (via !== expectVia) {
     console.error(`✗ ${label}: 読み取り経路が ${via}(期待 ${expectVia})`)
     failed++
     return
   }
-  // 白紙は塗りが無く様式を選ぶ手がかりが無いが、どの様式でも結果(すべて未回答)は同じ
-  if (via === 'markers' && !blank && res.variant !== 'seal') {
-    console.error(`✗ ${label}: 様式の判定が ${res.variant}(期待 seal)`)
+  if (expectSrc && (!res.debug || res.debug.src !== expectSrc)) {
+    console.error(`✗ ${label}: マーカーの検出方法が ${res.debug && res.debug.src}(期待 ${expectSrc})`)
     failed++
     return
   }
@@ -323,7 +361,7 @@ function run(label, { tiltDeg = 0, orient = 1, blank = false, style = 'full', si
 function runUnreadable(label, opts = {}) {
   const cfg = SIDES[opts.side || 'front'], lay = layout(cfg)
   const xf = makeXf(((opts.tiltDeg || 0) * Math.PI) / 180, opts.persp || 0)
-  const display = makeImage(xf, false, 'full', cfg, lay, opts.noMarkers)
+  const display = makeImage(xf, cfg, lay, opts)
   const buf = jpeg.encode({ data: display, width: IMG_W, height: IMG_H }, 92).data
   const res = readKcl(makeDoc(xf, cfg, lay), buf, 'image/jpeg')
   if (res.readable || Object.keys(res.answers || {}).length) {
@@ -351,7 +389,22 @@ function runUnreadable(label, opts = {}) {
       }
     }
   }
-  console.log(`✓ kcllayout: 3 様式 × 2 面の座標表が用紙の設問構成と一致`)
+  // 3 様式は「全行が同じ量だけ上下しているだけ」であること(読み取りはこの前提で
+  // seal の座標表 + 行方向の補正 δ だけを使う)
+  for (const name of ['print', 'walkin']) {
+    for (const side of ['front', 'back']) {
+      const a = LAYOUT.variants.seal[side], b = LAYOUT.variants[name][side]
+      const keys = Object.keys(a)
+      const d0 = b[keys[0]].yes[1] - a[keys[0]].yes[1]
+      for (const k of keys) {
+        assert.ok(Math.abs((b[k].yes[1] - a[k].yes[1]) - d0) < 0.002,
+          `${name}/${side}/${k}: 様式差が一様な上下ずれではありません(読み取りの前提が崩れています)`)
+        assert.ok(Math.abs(b[k].yes[0] - a[k].yes[0]) < 0.002,
+          `${name}/${side}/${k}: 様式間で回答列の x がずれています`)
+      }
+    }
+  }
+  console.log(`✓ kcllayout: 3 様式 × 2 面の座標表が用紙の設問構成と一致(様式差は一様な上下ずれのみ)`)
 }
 
 // EXIF 解析の単体確認
@@ -396,7 +449,21 @@ run('うら面 白紙', { side: 'back', blank: true })
 // 強い遠近のゆがみ
 run('遠近のゆがみ 12% + 傾き 4 度', { persp: 0.12, tiltDeg: 4 })
 run('うら面 + 遠近のゆがみ -12% + 傾き -4 度', { side: 'back', persp: -0.12, tiltDeg: -4 })
-// 四隅マーカーが写っていない(用紙が切れた)ときは、従来の OCR アンカー方式に戻る
+// 様式の違い(印字/当日受付は行位置が 2% ほど違う。OCR 行位置の補正 δ で吸収する)
+run('印字様式(行位置が下に 2%)', { imgVariant: 'print' })
+run('印字様式 + 傾き 3 度 + 遠近 6%', { imgVariant: 'print', tiltDeg: 3, persp: 0.06 })
+run('うら面 + 印字様式', { side: 'back', imgVariant: 'print' })
+run('当日受付様式(行位置が上に 0.6%)', { imgVariant: 'walkin' })
+// 回答欄だけが文字とずれた用紙(反り・局所的な印刷ずれの再現。楕円への吸着で読む)
+run('回答欄だけ 10px 下にずれ(反り相当)', { ovalShift: 10 })
+run('回答欄だけ 10px 上にずれ + 傾き 2 度', { ovalShift: -10, tiltDeg: 2 })
+run('うら面 + 回答欄だけ 8px 下にずれ', { side: 'back', ovalShift: 8 })
+// 机が用紙と同じくらい明るい(明るさで用紙を切り出せない → 文字範囲から探す)
+run('明るい木目の机', { deskLum: 205 })
+run('用紙と同化した白い机', { deskLum: 228, expectSrc: 'text' })
+run('白い机 + 机の上の黒い角(にせマーカー)', { deskLum: 228, distractors: true, expectSrc: 'text' })
+run('白い机 + うら面', { deskLum: 228, side: 'back', expectSrc: 'text' })
+run('白い机 + 印字様式 + 傾き 2 度', { deskLum: 228, imgVariant: 'print', tiltDeg: 2, expectSrc: 'text' })
 // 四隅マーカーが写っていない(用紙が切れた)ときは、誤答を出さず読み取り不可にする
 runUnreadable('マーカーなし(切れた写真)', { noMarkers: true })
 runUnreadable('マーカーなし + 傾き 2 度', { noMarkers: true, tiltDeg: 2 })
