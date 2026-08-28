@@ -280,13 +280,20 @@ function readKcl(document, imageBuffer, mimeType) {
   const rowPos = {}
   for (const [k, ln] of Object.entries(rowLine)) rowPos[k] = lineToPx(ln, W, H)
   const allPos = lines.map(l => ({ ...lineToPx(l, W, H), isQ: qLines.has(l) }))
+  /* 文字が写っている範囲(明るい机での用紙検出のヒント)。OCR はまれに用紙の外
+     (机の木目や影)を文字と誤認するため、各辺とも端の数件を除いた値を使う */
+  const tokens = positioned(document, 'tokens')
+  const boxes = lines.concat(tokens).map(l => lineToPx(l, W, H))
   let hint = null
-  for (const l of lines) {
-    const b = lineToPx(l, W, H)
-    if (!hint) hint = { x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1 }
-    else {
-      hint.x0 = Math.min(hint.x0, b.x0); hint.x1 = Math.max(hint.x1, b.x1)
-      hint.y0 = Math.min(hint.y0, b.y0); hint.y1 = Math.max(hint.y1, b.y1)
+  if (boxes.length) {
+    const pick = (vals, hiSide) => {
+      const s = [...vals].sort((a, b) => a - b)
+      const k = s.length >= 8 ? Math.max(1, Math.min(3, Math.floor(s.length * 0.03))) : 0
+      return hiSide ? s[s.length - 1 - k] : s[k]
+    }
+    hint = {
+      x0: pick(boxes.map(b => b.x0)), y0: pick(boxes.map(b => b.y0)),
+      x1: pick(boxes.map(b => b.x1), true), y1: pick(boxes.map(b => b.y1), true),
     }
   }
 

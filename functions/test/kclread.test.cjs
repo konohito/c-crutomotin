@@ -85,15 +85,15 @@ function layout(cfg, variant = 'seal') {
 /* 用紙座標(page) → 写真座標。実写に合わせて 射影変換(回転 + 遠近のゆがみ)で作る。
    手持ちのスマホは用紙と完全に平行にならないため、上下で幅が変わる台形のゆがみが入る。
    persp は「上端が下端より何割狭いか」の目安(0.06 = 6%)。 */
-function makeXf(tilt, persp = 0) {
+function makeXf(tilt, persp = 0, scale = SCALE) {
   const cos = Math.cos(tilt), sin = Math.sin(tilt)
   const X0 = PAGE_W / 2, Y0 = PAGE_H / 2
-  const cx0 = OFF_X + X0 * SCALE, cy0 = OFF_Y + Y0 * SCALE
+  const cx0 = OFF_X + X0 * scale, cy0 = OFF_Y + Y0 * scale
   // 3x3 の射影行列(u,v は用紙中心からの相対座標)
   const g = 0, h = persp / (PAGE_H / 2)   // v が小さい(上)ほど w が小さくなり拡大 → 台形
   const M = [
-    [cos * SCALE, -sin * SCALE, cx0],
-    [sin * SCALE, cos * SCALE, cy0],
+    [cos * scale, -sin * scale, cx0],
+    [sin * scale, cos * scale, cy0],
     [g, h, 1],
   ]
   const fwd = (X, Y) => {
@@ -118,7 +118,7 @@ function makeXf(tilt, persp = 0) {
     const v = (Mi[1][0] * px + Mi[1][1] * py + Mi[1][2]) / w
     return [X0 + u, Y0 + v]
   }
-  return { fwd, inv }
+  return { fwd, inv, scale }
 }
 
 // ---- 合成画像(机の上に置いた白い用紙に楕円を塗る) ---------------------------
@@ -153,7 +153,7 @@ function makeImage(xf, cfg, lay, o = {}) {
     const offX = style === 'offset' ? OVAL_W * 0.3 : 0
     const offY = style === 'offset' ? OVAL_H * 0.25 : 0
     const [cx, cy] = xf.fwd(cxPage + offX, cyPage + offY)
-    const rx = (OVAL_W / 2) * SCALE * k, ry = (OVAL_H / 2) * SCALE * k
+    const rx = (OVAL_W / 2) * xf.scale * k, ry = (OVAL_H / 2) * xf.scale * k
     if (style === 'line') {
       // 枠を斜めに横切る太い線(「悪い例」の線だけの記入)
       const [x0, y0] = xf.fwd(cxPage - OVAL_W * 0.55, cyPage - OVAL_H * 0.55)
@@ -175,7 +175,7 @@ function makeImage(xf, cfg, lay, o = {}) {
   // 楕円の枠線(実際の用紙には塗っていなくても印刷されている。読み取りの吸着の目印)
   const ringDraw = (cxPage, cyPage) => {
     const [cx, cy] = xf.fwd(cxPage, cyPage)
-    const rx = (OVAL_W / 2) * SCALE, ry = (OVAL_H / 2) * SCALE
+    const rx = (OVAL_W / 2) * xf.scale, ry = (OVAL_H / 2) * xf.scale
     for (let y = Math.floor(cy - ry - 1); y <= Math.ceil(cy + ry + 1); y++) {
       for (let x = Math.floor(cx - rx - 1); x <= Math.ceil(cx + rx + 1); x++) {
         const r2 = ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2
@@ -225,7 +225,7 @@ function makeImage(xf, cfg, lay, o = {}) {
 }
 
 // ---- 合成 Document AI レスポンス ---------------------------------------------
-function makeDoc(xf, cfg, lay, curlAmp = 0) {
+function makeDoc(xf, cfg, lay, curlAmp = 0, stray = false) {
   const curl = (y) => curlAt(curlAmp, y)
   let text = ''
   const tokens = [], lines = [], paragraphs = []
@@ -283,6 +283,8 @@ function makeDoc(xf, cfg, lay, curlAmp = 0) {
   })
   // おもて面の下端の案内(実物にもある。文字範囲から用紙を探す手がかりが下にも伸びる)
   if (cfg.side === 'front') lines.push(put('うら面につづきます', 300, 1042, 494, 1064))
+  // 机の木目などを文字と誤認したトークン(用紙の外)。文字範囲の推定が壊れないこと
+  if (stray) tokens.push(put('11', -70, 500, -40, 522))
   for (const g of groups) {
     const tops = g.map(i => (i < 0 ? exY - 11 : span.top[i]))
     const bots = g.map(i => (i < 0 ? exY + 11 : span.bottom[i]))
@@ -325,7 +327,7 @@ function run(label, opts = {}) {
   const { tiltDeg = 0, orient = 1, blank = false, side = 'front', persp = 0,
     imgVariant = 'seal', expectVia = 'markers', expectSrc = null } = opts
   const cfg = SIDES[side], lay = layout(cfg, imgVariant)
-  const xf = makeXf((tiltDeg * Math.PI) / 180, persp)
+  const xf = makeXf((tiltDeg * Math.PI) / 180, persp, (opts.paperW || 900) / PAGE_W)
   const display = makeImage(xf, cfg, lay, { ...opts, imgVariant, blank })
   let buf
   if (orient === 6) {
@@ -334,7 +336,7 @@ function run(label, opts = {}) {
   } else {
     buf = jpeg.encode({ data: display, width: IMG_W, height: IMG_H }, 92).data
   }
-  const res = readKcl(makeDoc(xf, cfg, lay, opts.curlAmp || 0), buf, 'image/jpeg')
+  const res = readKcl(makeDoc(xf, cfg, lay, opts.curlAmp || 0, opts.stray), buf, 'image/jpeg')
   assert.strictEqual(res.isKcl, true, `${label}: 問診票として判定されること`)
   assert.strictEqual(res.side, side, `${label}: ${side === 'front' ? 'おもて' : 'うら'}面と判定されること`)
   if (!res.readable) {
@@ -475,6 +477,12 @@ run('うら面 + 用紙の反り 18px', { side: 'back', curlAmp: 18 })
 run('うら面 + 反り 16px + 遠近 6%', { side: 'back', curlAmp: 16, persp: 0.06 })
 // 机が用紙と同じくらい明るい(明るさで用紙を切り出せない → 文字範囲から探す)
 run('明るい木目の机', { deskLum: 205 })
+// 用紙が写真に小さめに写った場合(マーカーも小さくなる)
+run('用紙が小さめ(写真幅の 55%)', { paperW: 660 })
+run('用紙が小さめ + 明るい机', { paperW: 660, deskLum: 205 })
+run('用紙が小さめ + 白い机 + 傾き 3 度', { paperW: 660, deskLum: 228, tiltDeg: 3, expectSrc: 'text' })
+// OCR が用紙の外(机の木目)を文字と誤認しても文字範囲の推定が壊れないこと
+run('白い机 + 用紙の外に誤認識の文字', { deskLum: 228, stray: true, expectSrc: 'text' })
 run('用紙と同化した白い机', { deskLum: 228, expectSrc: 'text' })
 run('白い机 + 机の上の黒い角(にせマーカー)', { deskLum: 228, distractors: true, expectSrc: 'text' })
 run('白い机 + うら面', { deskLum: 228, side: 'back', expectSrc: 'text' })

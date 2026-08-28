@@ -78,8 +78,10 @@ function findPaper(sm) {
 }
 
 /* 範囲の中から「マーカーらしい黒いかたまり」(小さくてほぼ正方形)を集める。
-   ID 欄の枠線や文字を拾わないよう、大きさと形で絞る。 */
-function darkSquares(sm, rect) {
+   ID 欄の枠線や文字を拾わないよう、大きさと形で絞る。
+   expectPx を渡すとマーカーの一辺の期待値(縮小画素)として使う。省略時は
+   範囲の幅が用紙の幅とみなせる場合(明るさ検出)の見積もりで代用する。 */
+function darkSquares(sm, rect, expectPx) {
   const { g, w, h } = sm
   const pw = rect.x1 - rect.x0, ph = rect.y1 - rect.y0
   if (pw < 40 || ph < 40) return []
@@ -90,7 +92,7 @@ function darkSquares(sm, rect) {
   }
   const mean = n ? sum / n : 200
   const thr = mean * 0.55
-  const expect = (pw / 794) * 17            // マーカーの一辺(用紙 794px 中 17px)
+  const expect = expectPx || (pw / 794) * 17   // マーカーの一辺(用紙 794px 中 17px)
   const minPx = Math.max(4, Math.round(expect * expect * 0.25))
   const cc = components(g, w, h, (v) => v <= thr, minPx)
   return cc.filter(c => {
@@ -236,21 +238,11 @@ function buildMapping(mk, layout) {
   }
 }
 
-/* OCR の文字範囲を手がかりにマーカーの四角形を探す。
-   文字は必ず用紙の上・マーカーの内側にあるが、版面のどの範囲を占めるかは面によって
-   違う(うら面は下 2 割に文字が無い)。そのため固定量の拡張では足りず、
-   「広めの探索範囲から四隅の候補を集め、版面の形に合い・文字範囲を内側に含む
-   四角形の組み合わせを選ぶ」方式にする。 */
-function findMappingsByText(sm, textRect, layout) {
-  const { w, h, step } = sm
-  const rw = textRect.x1 - textRect.x0, rh = textRect.y1 - textRect.y0
-  if (rw < 40 || rh < 40) return []
-  // 探索範囲: 文字範囲を大きく広げる(うら面はマーカーが文字より 3 割ほど外にある)
-  const rect = {
-    x0: Math.max(0, textRect.x0 - rw * 0.25), x1: Math.min(w - 1, textRect.x1 + rw * 0.25),
-    y0: Math.max(0, textRect.y0 - rh * 0.35), y1: Math.min(h - 1, textRect.y1 + rh * 0.35),
-  }
-  const cand = darkSquares(sm, rect)
+/* 探索範囲 rect から四隅の候補を集め、版面の形に合い・文字範囲をほぼ内側に含む
+   四角形の組み合わせを選ぶ。expectPx はマーカーの一辺の期待値(縮小画素)。 */
+function quadsFromRect(sm, rect, textRect, layout, expectPx) {
+  const { step } = sm
+  const cand = darkSquares(sm, rect, expectPx)
   if (cand.length < 4) return []
   // 文字範囲の中心で四象限に分け、各象限で探索範囲の隅に近い候補を数個ずつ試す
   const cx = (textRect.x0 + textRect.x1) / 2, cy = (textRect.y0 + textRect.y1) / 2
@@ -262,10 +254,12 @@ function findMappingsByText(sm, textRect, layout) {
     q[k].sort((a, b) => Math.hypot(a.cx - corner[k][0], a.cy - corner[k][1]) - Math.hypot(b.cx - corner[k][0], b.cy - corner[k][1]))
     q[k] = q[k].slice(0, 6)
   }
-  // 文字範囲の四隅(表示向き画素)。マーカーの四角形はこれを内側に含むはず
+  /* 文字範囲の四隅(表示向き画素)。マーカーの四角形はこれを内側に含むはず。
+     OCR が用紙の少し外を文字と誤認することがあるため、12% 縮めて余裕を持たせる */
+  const sx = (textRect.x1 - textRect.x0) * 0.12, sy = (textRect.y1 - textRect.y0) * 0.12
   const rc = [
-    [textRect.x0 * step, textRect.y0 * step], [textRect.x1 * step, textRect.y0 * step],
-    [textRect.x1 * step, textRect.y1 * step], [textRect.x0 * step, textRect.y1 * step],
+    [(textRect.x0 + sx) * step, (textRect.y0 + sy) * step], [(textRect.x1 - sx) * step, (textRect.y0 + sy) * step],
+    [(textRect.x1 - sx) * step, (textRect.y1 - sy) * step], [(textRect.x0 + sx) * step, (textRect.y1 - sy) * step],
   ]
   const found = []
   for (const a of q.tl) for (const b of q.tr) for (const c of q.br) for (const d of q.bl) {
@@ -280,6 +274,30 @@ function findMappingsByText(sm, textRect, layout) {
   }
   found.sort((m1, m2) => m1.shapeDev - m2.shapeDev)   // 版面の形に近いものから
   return found.slice(0, 2)
+}
+
+/* OCR の文字範囲を手がかりにマーカーの四角形を探す。
+   文字は必ず用紙の上・マーカーの内側にあるが、版面のどの範囲を占めるかは面によって
+   違う(うら面は下 2 割に文字が無い)。そのため固定量の拡張では足りず、
+   「広めの探索範囲から候補を集めて形で選ぶ」方式にし、それでも見つからなければ
+   写真全体からも探す(用紙が写真に小さめに写っている場合の保険。誤った四角形は
+   形の検算とこの後の設問行との突き合わせで弾かれる)。 */
+function findMappingsByText(sm, textRect, layout) {
+  const { w, h } = sm
+  const rw = textRect.x1 - textRect.x0, rh = textRect.y1 - textRect.y0
+  if (rw < 40 || rh < 40) return []
+  // マーカーの一辺の期待値: 文字範囲は版面のおよそ 78% 幅に収まる
+  const expectPx = (rw / 0.78) * (17 / 794)
+  // 探索範囲: 文字範囲を大きく広げる(うら面はマーカーが文字より 3 割ほど外にある)
+  const near = {
+    x0: Math.max(0, textRect.x0 - rw * 0.25), x1: Math.min(w - 1, textRect.x1 + rw * 0.25),
+    y0: Math.max(0, textRect.y0 - rh * 0.35), y1: Math.min(h - 1, textRect.y1 + rh * 0.35),
+  }
+  const found = quadsFromRect(sm, near, textRect, layout, expectPx)
+  if (found.length < 2) {
+    found.push(...quadsFromRect(sm, { x0: 0, y0: 0, x1: w - 1, y1: h - 1 }, textRect, layout, expectPx))
+  }
+  return found.slice(0, 3)
 }
 
 /* 写真 → 用紙座標の対応付けの候補を列挙する。
