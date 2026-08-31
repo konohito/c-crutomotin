@@ -218,6 +218,14 @@ function buildMapping(mk, layout) {
   if (Math.max(wTop, wBot) / Math.min(wTop, wBot) > 1.7) return null   // 台形が極端すぎる
   if (Math.max(hL, hR) / Math.min(hL, hR) > 1.7) return null
   if (!isConvex([mk.tl, mk.tr, mk.br, mk.bl])) return null
+  /* 対辺の傾きがほぼ揃っていること。片方の角だけ別の黒塊(節・楕円)を拾った
+     「ねじれた四角形」は、縦横比や台形の検算を通っても対辺の傾きが食い違うので落とす。
+     よくある縦方向の遠近(上が奥)では左右辺は最大 10° ほど開くが上下辺は開かないため、
+     上下辺は 7°・左右辺は 12.6° を上限にする。 */
+  const ang = (a, b) => Math.atan2(b[1] - a[1], b[0] - a[0])
+  const angDiff = (x, y) => Math.abs(Math.atan2(Math.sin(x - y), Math.cos(x - y)))
+  if (angDiff(ang(mk.tl, mk.tr), ang(mk.bl, mk.br)) > 0.12) return null   // 上下辺: 約 7 度
+  if (angDiff(ang(mk.tl, mk.bl), ang(mk.tr, mk.br)) > 0.22) return null   // 左右辺: 約 12.6 度
 
   const order = ['tl', 'tr', 'br', 'bl']
   const H = solveHomography(order.map(k => layout.markers[k]), order.map(k => mk[k]))

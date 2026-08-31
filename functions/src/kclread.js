@@ -14,6 +14,7 @@ const { exifOrientation, orientMap } = require('./exif')
 const { paperMappings } = require('./sheetgeom')
 const LAYOUT = require('./kcllayout')
 const jpeg = require('jpeg-js')
+const { PNG } = require('pngjs')
 
 // 印刷順の設問プレフィックス。key は公式 No(12=BMI は用紙に無い) / ex1・ex2(運動習慣)
 const QS = [
@@ -70,7 +71,7 @@ const median = (a) => {
    (3 様式とも全行が同じ量だけ上下しているだけ)や印刷のずれは、OCR の設問行から
    求めた行方向の補正量 δ で吸収する。そのうえで、印刷された楕円の輪郭を
    近傍から探し当てて(スナップ)、用紙の反りなどの局所的なずれも吸収する。 */
-function readMarks(img, om, side, keys, rowPos, allPos, maps) {
+function readMarks(img, om, side, keys, rowPos, allPos, colTok, maps) {
   const table = LAYOUT.variants.seal[side]
   const W = om.W, H = om.H, rw = img.width, data = img.data
 
@@ -83,17 +84,17 @@ function readMarks(img, om, side, keys, rowPos, allPos, maps) {
   }
 
   const wanted = keys.map(k => String(k))
-  for (const map of maps) {
-    /* --- 検算: 位置合わせを設問の文字行と突き合わせる --------------------------
-       各設問の行の中心 y(OCR)を用紙座標に引き直し、座標表の行 y との差を取る。
-       正しい位置合わせなら、差は全行でほぼ同じ小さな値(様式差 ±2% + 印刷ずれ)になる。
-       誤った黒塊をマーカーにしていた場合は差がバラバラ・巨大になるので候補を捨てる。
-       2 行に折り返す設問は 1 行目の文字が回答欄より少し上に出る(-1% 程度)が許容内。 */
-    /* 各設問の行中心を用紙座標に引き直す。2 行に折り返した設問は 1 行目だけだと
-       中心が回答欄より上に出るため、続きの行(すぐ下・左端がほぼ同じ・短い・
-       別の設問ではない)を探して 2 行の中点を行中心にする。これで全設問の行位置が
-       用紙の反り(行ごとに違うずれ)にも正確に追従する。判定は用紙座標で行うので
-       写真の傾き・遠近には影響されない。 */
+  /* --- 候補の検算と選択: 位置合わせを設問の文字行と突き合わせる ----------------
+     各設問の行の中心 y(OCR)を用紙座標に引き直し、座標表の行 y との差 dk を取る。
+     正しい位置合わせなら dk は全行でほぼ同じ小さな値(様式差 ±2% + 反り)になる。
+     誤った黒塊をマーカーにした候補は差がバラバラ・巨大になる。候補は「先に見つかった
+     もの」ではなく、差のばらつき(MAD)が最も小さいものを採る(歪んだ候補が
+     ぎりぎり検算を通って、正しい候補より先に採用されるのを防ぐ)。
+
+     2 行に折り返した設問は 1 行目だけだと中心が回答欄より上に出るため、続きの行
+     (すぐ下・左端がほぼ同じ・短い・別の設問ではない)を探して 2 行の中点を行中心に
+     する。判定は用紙座標で行うので写真の傾き・遠近には影響されない。 */
+  const evalMap = (map) => {
     const toPaper = (b) => {
       const [, py] = map.inv(b.cx, b.cy)
       const [lx] = map.inv(b.x0, b.cy)
@@ -123,10 +124,53 @@ function readMarks(img, om, side, keys, rowPos, allPos, maps) {
       dByKey[k] = d
       ds.push(d)
     }
-    if (!ds.length) continue
+    if (!ds.length) return null
     const delta = median(ds)
-    const nGood = ds.filter(d => Math.abs(d - delta) <= 0.015).length
-    if (Math.abs(delta) > 0.05 || nGood < Math.ceil(ds.length * 0.6)) continue
+    const devs = ds.map(d => Math.abs(d - delta))
+    const nGood = devs.filter(d => d <= 0.015).length
+    if (Math.abs(delta) > 0.05 || nGood < Math.ceil(ds.length * 0.6)) return null
+    /* 回答列の見出し(はい/いいえ)の x でも検算する。設問行の y だけでは
+       「列方向(x)にゆがんだ写像」を見抜けないため(文字は左・回答欄は右にあり、
+       左だけ合っていて右がずれた写像が通ってしまう)。
+       必ず「はい→はい列 / いいえ→いいえ列」の対応で見る。近い方の列と比べる方式だと、
+       ちょうど 1 列ぶん(9%)ずれた写像で「はい」見出しが「いいえ」列に一致してしまい、
+       全問の はい・いいえ が入れ替わる最悪の誤読を見逃す。 */
+    const anyCell = table[wanted.find(k => table[k])]
+    let xe = 0, ye = 0
+    if (anyCell) {
+      const xErrs = [], yErrs = []
+      /* 見出しの期待 y: 各セクション先頭(おもて=記入例、うら=最初の設問と運動習慣)の
+         少し上(約 2.7%)。行の検算は用紙の左側(設問の文字)しか見ないため、
+         「左は合っているが右だけ上下に 1 行ねじれた写像」はここで見抜くしかない。 */
+      const anchors = (side === 'front' ? [table.example] : [table['15'], table.ex1])
+        .filter(Boolean).map(c => c.yes[1] + delta - 0.027)
+      for (const t of colTok) {
+        const [px, py] = map.inv(t.cx, t.cy)
+        if (px < 0.6 || px > 1.1) continue   // 用紙左側の説明文中の「はい・いいえ」は対象外
+        xErrs.push(Math.abs(px - (t.isYes ? anyCell.yes[0] : anyCell.no[0])))
+        if (anchors.length) yErrs.push(Math.min(...anchors.map(e => Math.abs(py - e))))
+      }
+      if (process.env.KCL_DEBUG) {
+        console.error('[map]', map.src, 'delta', delta.toFixed(4), 'mad', median(devs).toFixed(4),
+          'xErr', xErrs.length ? median(xErrs).toFixed(4) : '-', 'yErr', yErrs.length ? median(yErrs).toFixed(4) : '-',
+          'mk', JSON.stringify(map.markers, (k, v) => typeof v === 'number' ? Math.round(v) : v))
+      }
+      if (xErrs.length && median(xErrs) > 0.012) return null
+      if (yErrs.length && median(yErrs) > 0.015) return null
+      xe = xErrs.length ? median(xErrs) : 0
+      ye = yErrs.length ? median(yErrs) : 0
+    }
+    // 行の残差 + 見出しアンカーの誤差を合わせた総合スコア(小さいほど良い)で候補を選ぶ
+    return { map, dByKey, delta, mad: median(devs), score: median(devs) + xe + ye }
+  }
+  let best = null
+  for (const m of maps) {
+    const ev = evalMap(m)
+    if (ev && (!best || ev.score < best.score)) best = ev
+  }
+  {
+    if (!best) return null
+    const { map, dByKey, delta } = best
 
     /* 楕円の内側だけを見る窓。長方形だと四隅が印刷された枠線にかかり、
        未回答でも濃度が出てしまうため、窓自体を楕円形にして枠線の内側だけを見る。
@@ -186,17 +230,34 @@ function readMarks(img, om, side, keys, rowPos, allPos, maps) {
       return best.s >= 20 ? best : { s: best.s, dx: 0, dy: 0 }
     }
 
+    /* 行の y: その設問自身の文字行の差 dByKey を常に使う(文字と回答欄は同じ行に
+       あるため、写像が多少ゆがんでいても inv→at を通ることで行方向のずれが
+       打ち消され、正しい行に窓が乗る)。折り返し設問も 2 行の中点を使っているので
+       偏りは無い。文字行が読めなかった設問だけ、上下の近い設問の補正を距離で
+       内挿する(全体 δ より局所的に正確。ゆがんだ写像でも隣の行の値なら近い)。 */
+    const keysWithD = wanted.filter(k => table[k] && dByKey[k] != null)
+    const yFor = (cell) => {
+      let lo = null, hi = null
+      for (const j of keysWithD) {
+        const yj = table[j].yes[1]
+        if (yj <= cell.yes[1]) { if (!lo || yj > table[lo].yes[1]) lo = j }
+        else if (!hi || yj < table[hi].yes[1]) hi = j
+      }
+      if (lo && hi) {
+        const y0 = table[lo].yes[1], y1 = table[hi].yes[1]
+        const t = y1 > y0 ? (cell.yes[1] - y0) / (y1 - y0) : 0
+        return cell.yes[1] + dByKey[lo] * (1 - t) + dByKey[hi] * t
+      }
+      const j = lo || hi
+      return cell.yes[1] + (j ? dByKey[j] : delta)
+    }
     const answers = {}
     const perQ = {}
     for (const k of wanted) {
       const cell = table[k]
       if (!cell) continue
-      /* 行の y: その設問自身の文字行の差 dByKey を優先する(文字と回答欄は同じ行に
-         あるため、用紙の反りで行ごとにずれが違っても正確に追従できる)。
-         折り返し設問も 2 行の中点を使っているので偏りは無い。全体の δ から大きく
-         外れた値だけは行の取り違えとみなして δ に落とす(その先はスナップが拾う)。 */
       const dk = dByKey[k]
-      const yk = cell.yes[1] + (dk != null && Math.abs(dk - delta) <= 0.025 ? dk : delta)
+      const yk = dk != null ? cell.yes[1] + dk : yFor(cell)
       const { s: ringS, dx, dy } = snap(cell, yk)
       const py = map.at(cell.yes[0] + dx, yk + dy)
       const pn = map.at(cell.no[0] + dx, yk + dy)
@@ -210,11 +271,11 @@ function readMarks(img, om, side, keys, rowPos, allPos, maps) {
       const thr = Math.min(paper * 0.62, paper - 28)
       const fY = scan(py[0], py[1], thr, bw, bh).frac
       const fN = scan(pn[0], pn[1], thr, bw, bh).frac
-      let fy = fY >= 0.30, fn = fN >= 0.30
-      if (!fy && !fn) {
-        if (fY >= 0.12 && fY > fN * 3) fy = true
-        else if (fN >= 0.12 && fN > fY * 3) fn = true
-      }
+      /* 塗りの判定は片側 30% 以上のみ。以前あった「12% でも反対側の 3 倍なら採用」の
+         救済則は、窓が枠線をかすった時に白紙でも誤読する事故のもとだった。
+         楕円窓 + 輪郭への吸着後は、小さな塗り・薄い塗りでも本物なら 30% を大きく
+         超えるため、救済は不要になっている。 */
+      const fy = fY >= 0.30, fn = fN >= 0.30
       answers[k] = fy && fn ? 'multi' : fy ? 'yes' : fn ? 'no' : null
       perQ[k] = {
         fy: Math.round(fY * 100) / 100, fn: Math.round(fN * 100) / 100,
@@ -223,10 +284,12 @@ function readMarks(img, om, side, keys, rowPos, allPos, maps) {
     }
     return {
       answers,
-      debug: { src: map.src, delta: Math.round(delta * 1e4) / 1e4, rows: ds.length, perQ },
+      debug: {
+        src: map.src, delta: Math.round(delta * 1e4) / 1e4,
+        mad: Math.round(best.mad * 1e4) / 1e4, rows: Object.keys(dByKey).length, perQ,
+      },
     }
   }
-  return null
 }
 
 // document(OCR) + 画像バイト列 → { isKcl, side, answers:{key:'yes'|'no'|'multi'|null}, readable }
@@ -248,69 +311,85 @@ function readKcl(document, imageBuffer, mimeType) {
   const unreadable = (reason) => ({ isKcl: true, side, answers: {}, readable: false, reason })
   if (!keys.length) return unreadable('設問の文字を読み取れませんでした（用紙全体がはっきり写るように撮り直してください）')
 
-  // 画像復号(JPEG のみ。失敗時は要確認のまま返す)
+  // 画像復号。形式はファイルの中身(magic bytes)で判別する(拡張子・MIME は当てにならない)
   let img = null
   try {
-    if (imageBuffer && (!mimeType || /jpe?g/i.test(String(mimeType)))) {
-      img = jpeg.decode(imageBuffer, { maxMemoryUsageInMB: 400, formatAsRGBA: true })
+    if (imageBuffer && imageBuffer.length > 8) {
+      if (imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8) {
+        img = jpeg.decode(imageBuffer, { maxMemoryUsageInMB: 400, formatAsRGBA: true })
+      } else if (imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50) {
+        const p = PNG.sync.read(imageBuffer)
+        img = { width: p.width, height: p.height, data: p.data }
+      }
     }
   } catch { img = null }
-  if (!img) return unreadable(`画像を読み込めませんでした(${mimeType || '不明な形式'}。JPEG で撮影・保存してください)`)
+  if (!img) return unreadable(`画像を読み込めませんでした(${mimeType || '不明な形式'}。JPEG か PNG で撮影・保存してください)`)
 
-  // スマホ写真は EXIF に「表示時に何度回すか」を持つ。Document AI は回転を補正した
-  // 向きで座標を返すため、生画素をそのまま参照すると座標系がずれる。表示向きに引き直す。
+  /* スマホ写真は EXIF に「表示時に何度回すか」を持つ。Document AI は回転を補正した
+     向きで座標を返すため、生画素をそのまま参照すると座標系がずれる。
+     EXIF が無い・誤っている・180 度逆さのまま等の写真もあるため、向きは決め打ちせず
+     候補(EXIF の向きを最優先に全回転)を順に試し、設問文字との検算に通った向きを採る。
+     Document AI の座標系と縦横比が合わない候補はあらかじめ除く。 */
   const orient = exifOrientation(imageBuffer)
-  const om = orientMap(orient, img.width, img.height)
-  const W = om.W, H = om.H
-
-  // それでも縦横が入れ替わっている場合(EXIF 以外の要因で補正が入った等)は、
-  // 誤った値を出さずに要確認へ回す。
   const dim = ((document.pages || [])[0] || {}).dimension
-  if (dim && dim.width && dim.height) {
-    const rDoc = dim.width / dim.height, rImg = W / H
-    if (Math.abs(rDoc - rImg) / rDoc > 0.08 && Math.abs(1 / rDoc - rImg) * rDoc < 0.08) {
-      return unreadable('画像の向きが認識結果と一致しませんでした(撮影時の回転情報)')
+  const omCands = []
+  for (const o of [orient, 1, 6, 8, 3]) {
+    if (omCands.some(c => c.o === o)) continue
+    const om = orientMap(o, img.width, img.height)
+    if (dim && dim.width && dim.height) {
+      const rDoc = dim.width / dim.height
+      if (Math.abs(rDoc - om.W / om.H) / rDoc > 0.08) continue
     }
+    omCands.push({ o, om })
   }
+  if (!omCands.length) return unreadable('画像の向きが認識結果と一致しませんでした(撮影時の回転情報)')
 
-  /* 設問行と全行の位置を表示向きの画素に直す(折り返し設問の続き行の特定は、
-     傾いた写真だと画素座標では行の高さが正しく取れないため、位置合わせ後に
-     用紙座標へ引き直してから readMarks 内で行う)。 */
-  const qLines = new Set(Object.values(rowLine))
-  const rowPos = {}
-  for (const [k, ln] of Object.entries(rowLine)) rowPos[k] = lineToPx(ln, W, H)
-  const allPos = lines.map(l => ({ ...lineToPx(l, W, H), isQ: qLines.has(l) }))
-  /* 文字が写っている範囲(明るい机での用紙検出のヒント)。OCR はまれに用紙の外
-     (机の木目や影)を文字と誤認するため、各辺とも端の数件を除いた値を使う */
   const tokens = positioned(document, 'tokens')
-  const boxes = lines.concat(tokens).map(l => lineToPx(l, W, H))
-  let hint = null
-  if (boxes.length) {
-    const pick = (vals, hiSide) => {
-      const s = [...vals].sort((a, b) => a - b)
-      const k = s.length >= 8 ? Math.max(1, Math.min(3, Math.floor(s.length * 0.03))) : 0
-      return hiSide ? s[s.length - 1 - k] : s[k]
+  const qLines = new Set(Object.values(rowLine))
+  let sawMaps = false
+  for (const { o, om } of omCands) {
+    const W = om.W, H = om.H
+    /* 設問行と全行の位置を表示向きの画素に直す(折り返し設問の続き行の特定は、
+       傾いた写真だと画素座標では行の高さが正しく取れないため、位置合わせ後に
+       用紙座標へ引き直してから readMarks 内で行う)。 */
+    const rowPos = {}
+    for (const [k, ln] of Object.entries(rowLine)) rowPos[k] = lineToPx(ln, W, H)
+    const allPos = lines.map(l => ({ ...lineToPx(l, W, H), isQ: qLines.has(l) }))
+    // 回答列の見出しトークン(はい/いいえ)。写像の列方向(x)の検算に使う
+    const colTok = tokens.filter(t => { const n = norm(t.text); return n === 'はい' || n === 'いいえ' })
+      .map(t => ({ ...lineToPx(t, W, H), isYes: norm(t.text) === 'はい' }))
+    /* 文字が写っている範囲(明るい机での用紙検出のヒント)。OCR はまれに用紙の外
+       (机の木目や影)を文字と誤認するため、各辺とも端の数件を除いた値を使う */
+    const boxes = lines.concat(tokens).map(l => lineToPx(l, W, H))
+    let hint = null
+    if (boxes.length) {
+      const pick = (vals, hiSide) => {
+        const s = [...vals].sort((a, b) => a - b)
+        const k = s.length >= 8 ? Math.max(1, Math.min(3, Math.floor(s.length * 0.03))) : 0
+        return hiSide ? s[s.length - 1 - k] : s[k]
+      }
+      hint = {
+        x0: pick(boxes.map(b => b.x0)), y0: pick(boxes.map(b => b.y0)),
+        x1: pick(boxes.map(b => b.x1), true), y1: pick(boxes.map(b => b.y1), true),
+      }
     }
-    hint = {
-      x0: pick(boxes.map(b => b.x0)), y0: pick(boxes.map(b => b.y0)),
-      x1: pick(boxes.map(b => b.x1), true), y1: pick(boxes.map(b => b.y1), true),
-    }
+
+    /* --- 本命の経路: 四隅マーカーから用紙座標に引き直して回答欄を直接見る ---
+       マーカー候補は複数の探し方(明るさ / OCR 文字範囲)から集め、
+       OCR の設問行の位置と突き合わせて検算に通ったものだけを使う。 */
+    const maps = paperMappings(img, om, LAYOUT, hint)
+    if (!maps.length) continue
+    sawMaps = true
+    const marks = readMarks(img, om, side, keys, rowPos, allPos, colTok, maps)
+    if (marks) return { isKcl: true, side, answers: marks.answers, readable: true, orient: o, via: 'markers', debug: marks.debug }
   }
 
-  /* --- 本命の経路: 四隅マーカーから用紙座標に引き直して回答欄を直接見る ---
-     マーカー候補は複数の探し方(明るさ / OCR 文字範囲)から集め、
-     OCR の設問行の位置と突き合わせて検算に通ったものだけを使う。 */
-  const maps = paperMappings(img, om, LAYOUT, hint)
-  if (maps.length) {
-    const marks = readMarks(img, om, side, keys, rowPos, allPos, maps)
-    if (marks) return { isKcl: true, side, answers: marks.answers, readable: true, orient, via: 'markers', debug: marks.debug }
-    return unreadable('マーカーは検出できましたが、位置合わせが設問の文字位置と合いませんでした（用紙を平らに置き、真上から全体が入るように撮り直してください）')
-  }
-
-  /* 四隅マーカーが見つからないときは、無理に推定せず要確認へ回す。
-     文字位置からの推定は遠近のゆがみで「はい・いいえ」が入れ替わることがあり、
+  /* どの向きでも成立しなかったときは、無理に推定せず要確認へ回す。
+     位置の推定を誤ると「はい・いいえ」が入れ替わることがあり、
      誤った回答が登録される方が、読めないより危険なため。 */
-  return unreadable('用紙の四隅にある黒い位置合わせマーカーを検出できませんでした（用紙全体が入るように、真上から撮り直してください）')
+  return unreadable(sawMaps
+    ? 'マーカーは検出できましたが、位置合わせが設問の文字位置と合いませんでした（用紙を平らに置き、真上から全体が入るように撮り直してください）'
+    : '用紙の四隅にある黒い位置合わせマーカーを検出できませんでした（用紙全体が入るように、真上から撮り直してください）')
 }
 
 module.exports = { readKcl, QS }
