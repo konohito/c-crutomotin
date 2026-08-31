@@ -39,6 +39,26 @@ function run(label, opts = {}) {
     return
   }
   const want = (r) => (blank ? null : cfg.expect[r.key])
+  if (expectVia === 'rows') {
+    /* rows 経路は「怪しい行は読まない」設計なので、誤読ゼロ + 読取率で判定する */
+    const wrong = cfg.rows.filter(r => {
+      const got = res.answers[r.key]
+      return (got === 'yes' || got === 'no') && got !== want(r)
+    }).map(r => `No.${r.key}: 期待 ${want(r)} / 実際 ${res.answers[r.key]}`)
+    const read = cfg.rows.filter(r => res.answers[r.key] === want(r)).length
+    if (wrong.length) {
+      console.error(`✗ ${label}: ${wrong.length} 問を誤読\n  ` + wrong.join('\n  '))
+      failed++
+      return
+    }
+    if (read < Math.ceil(cfg.rows.length * 0.75)) {
+      console.error(`✗ ${label}: 読取が ${read}/${cfg.rows.length} 問(75% 未満)`)
+      failed++
+      return
+    }
+    console.log(`✓ ${label}: 誤読なし・${read}/${cfg.rows.length} 問読み取り`)
+    return
+  }
   const wrong = cfg.rows.filter(r => res.answers[r.key] !== want(r))
     .map(r => `No.${r.key}: 期待 ${want(r)} / 実際 ${res.answers[r.key]}`)
   if (wrong.length) {
@@ -202,9 +222,29 @@ run('用紙に小さな染み', { strayInk: true })
     console.log('✓ OCR の行読み落とし(2 問): 読み落とした設問は未回答扱い・残り 11 問は正しく読み取り')
   }
 }
-// 四隅マーカーが写っていない(用紙が切れた)ときは、誤答を出さず読み取り不可にする
-runUnreadable('マーカーなし(切れた写真)', { noMarkers: true })
-runUnreadable('マーカーなし + 傾き 2 度', { noMarkers: true, tiltDeg: 2 })
+// 四隅マーカーが写っていない(用紙が切れた)写真は、設問行の右の楕円ペアを
+// 直接探す第 2 経路(rows)で読める
+run('マーカーなし(切れた写真)', { noMarkers: true, expectVia: 'rows' })
+run('マーカーなし + 傾き 2 度', { noMarkers: true, tiltDeg: 2, expectVia: 'rows' })
+run('マーカーなし + 明るい机 + 傾き -3 度', { noMarkers: true, deskLum: 205, tiltDeg: -3, expectVia: 'rows' })
+run('マーカーなし + うら面', { noMarkers: true, side: 'back', expectVia: 'rows' })
+run('マーカーなし + 白紙', { noMarkers: true, blank: true, expectVia: 'rows' })
+run('マーカーなし + 反り 14px', { noMarkers: true, curlAmp: 14, expectVia: 'rows' })
+// 設問の文字がまったく読めない写真は、誤答を出さず読み取り不可にする
+{
+  const cfg = H.SIDES.front, lay = H.layout(cfg, 'seal')
+  const xf = H.makeXf(0, 0, 900 / H.PAGE_W)
+  const dropKeys = new Set(cfg.rows.map(r => String(r.key)))
+  const display = H.makeImage(xf, cfg, lay, {})
+  const buf = H.encodeShot(display, {})
+  const res = readKcl(H.makeDoc(xf, cfg, lay, { dropKeys }), buf, 'image/jpeg')
+  if (res.readable || Object.keys(res.answers || {}).length) {
+    console.error('✗ 設問の文字が読めない写真: 読み取り不可になるべきなのに回答を返した')
+    failed++
+  } else {
+    console.log(`✓ 設問の文字が読めない写真: 誤答を出さず読み取り不可（${res.reason}）`)
+  }
+}
 
 if (failed) { console.error(`\n${failed} 件失敗`); process.exit(1) }
 console.log('\nkclread: すべて成功')

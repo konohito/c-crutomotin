@@ -298,6 +298,239 @@ function readMarks(img, om, side, keys, rowPos, allPos, colTok, maps) {
   }
 }
 
+/* 第 2 の読み取り経路: マーカーに頼らず、各設問の文字行のすぐ右にある
+   楕円のペア(はい・いいえ)を写真から直接探して読む。
+   - 「はい」は必ずペアの左・「いいえ」は右(印刷の構造)なので、列の取り違えが起きない
+   - 各行を自分の文字行を起点に探すので、反り・写像のゆがみ・マーカーの誤検出と無関係
+   - 全行のペアの x が(傾きぶんを除き)一直線に並ぶことを検算し、外れた行は未回答に落とす
+   四隅マーカー方式が成立しない写真(検算で却下・用紙が切れてマーカーが無い等)の救済。 */
+function readByRows(img, om, keys, rowPos, allPos, hint) {
+  if (!hint) return null
+  const W = om.W, H = om.H, rw = img.width, data = img.data
+  const lumAt = (fx, fy) => {
+    const xi = fx <= 0 ? 0 : fx >= W - 1 ? W - 1 : Math.round(fx)
+    const yi = fy <= 0 ? 0 : fy >= H - 1 ? H - 1 : Math.round(fy)
+    const [rx, ry] = om.at(xi, yi)
+    const i = ((ry * rw) + rx) * 4
+    return 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+  }
+  const paperW = (hint.x1 - hint.x0) / 0.855         // 文字範囲(見出し含む)は版面の実測 85.5% 幅
+  if (!(paperW > 120)) return null
+  const ovalW = LAYOUT.oval.w * paperW
+  const ovalH = LAYOUT.oval.h * (paperW / LAYOUT.aspect)
+  const S = (0.89797 - 0.80479) * paperW             // はい・いいえ の中心間
+  const rxr = (ovalW / 2) * 0.9, ryr = (ovalH / 2) * 0.9
+  const ringLum = (cx, cy) => {
+    let s = 0
+    for (let a = 0; a < 12; a++) {
+      const t = (a / 12) * 2 * Math.PI
+      s += lumAt(cx + rxr * Math.cos(t), cy + ryr * Math.sin(t))
+    }
+    return s / 12
+  }
+  // ペアの中間 = 紙面(基準の白)。行ごとに取るので影・照明ムラに強い
+  const refLum = (cx, cy) => (lumAt(cx, cy) + lumAt(cx - ovalW, cy) + lumAt(cx + ovalW, cy)
+    + lumAt(cx, cy - ovalH * 0.35) + lumAt(cx, cy + ovalH * 0.35)) / 5
+
+  // 楕円のすぐ外側(1.6 倍径)は紙の白のはず。用紙の外(机)に「枠線らしき暗さ」を
+  // 見つけてしまう誤ロックをここで弾く。中心の推定が数 px ずれても壊れないよう、
+  // 8 点の中央値で見る(机の上なら全点が暗い)
+  const outerLum = (cx, cy) => {
+    const v = []
+    for (let a = 0; a < 8; a++) {
+      const t = (a / 8) * 2 * Math.PI
+      v.push(lumAt(cx + rxr * 1.6 * Math.cos(t), cy + ryr * 1.6 * Math.sin(t)))
+    }
+    return median(v)
+  }
+  // 位置の微調整: ペアの輪郭スコアが最大になる位置へ 1px 刻みで寄せる(窓ずれ対策)。
+  // 行間へ流れて隣の行に吸い付かないよう、動ける範囲は 8px までにする
+  const refine = (f) => {
+    let cur = f
+    for (let i = 0; i < 8; i++) {
+      let bestN = cur
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = cur.x + dx, y = cur.y + dy
+        const ref = refLum(x + cur.S / 2, y + cur.d2 / 2)
+        const s = (ref - ringLum(x, y)) + (ref - ringLum(x + cur.S, y + cur.d2))
+        if (s > bestN.s) bestN = { ...cur, s, x, y }
+      }
+      if (bestN === cur) break
+      cur = bestN
+    }
+    return cur
+  }
+  const wanted = keys.map(k => String(k))
+  /* 各設問の行中心 y。2 行に折り返した設問は続きの行(すぐ下・左端がほぼ同じ・短い・
+     別の設問ではない)を探して 2 行の中点にする。長さの単位は楕円高(≒1 行の高さ)を
+     使う(傾いた写真では行の外接箱が縦に膨らみ、当てにならないため)。 */
+  const rowCy = {}
+  for (const k of wanted) {
+    const b = rowPos[k]
+    if (!b) continue
+    let cont = null
+    for (const c of allPos) {
+      if (c.isQ || c === b) continue
+      const dy = c.cy - b.cy
+      if (dy < 0.6 * ovalH || dy > 1.9 * ovalH) continue
+      if (Math.abs(c.x0 - b.x0) > 0.035 * paperW) continue
+      if (c.x1 > b.x0 + (b.x1 - b.x0) * 0.75) continue
+      if (!cont || Math.abs(dy - 1.18 * ovalH) < Math.abs(cont.cy - b.cy - 1.18 * ovalH)) cont = c
+    }
+    rowCy[k] = cont ? (b.cy + cont.cy) / 2 : b.cy
+  }
+  /* 写真の傾き: 設問行の左端(用紙上では縦一直線)の写真上の流れから推定する。
+     行中心の y は設問文字の位置で測るが、回答欄はそこから右に離れており、
+     傾き 5 度では y が ±25px もずれる。放置すると探索帯に自分のペアが入らず、
+     代わりに隣の行のペアが入って行を取り違える。 */
+  let tiltSlope = 0
+  {
+    const pts = wanted.map(k => rowPos[k]).filter(Boolean)
+    if (pts.length >= 5) {
+      let sy = 0, sv = 0, syy = 0, syv = 0
+      for (const b of pts) { sy += b.cy; sv += b.x0; syy += b.cy * b.cy; syv += b.cy * b.x0 }
+      const nn = pts.length, dn = nn * syy - sy * sy
+      if (dn) tiltSlope = (nn * syv - sy * sv) / dn
+    }
+  }
+  /* この経路は行ごとの局所探索なので、強い傾き・遠近では行の取り違えの恐れがある。
+     その領域はマーカー方式の担当とし、ここでは安全に手を引く(約 3 度まで)。 */
+  if (Math.abs(tiltSlope) > 0.055) return null
+  const colXa = hint.x0 + 0.848 * (hint.x1 - hint.x0)   // はい列のおおよその x
+  const rowShift = (b) => -tiltSlope * (colXa - b.cx)   // 回答欄位置での行 y の傾き補正
+  const found = {}
+  for (const k of wanted) {
+    const b = rowPos[k]
+    if (!b) continue
+    /* 探索範囲: 文字の右端から文字範囲(見出し含む)の右端まで、行中心(傾き補正済み)
+       ±0.55 楕円ぶん。右端を超えると用紙の外(机)を「濃い枠線」と誤認し、上下に
+       広げると隣の行や記入例のペアに吸い付くため、どちらも自分の行の範囲に固定する。 */
+    const x0 = b.x1 + 0.012 * paperW
+    /* 右端の余白 0.05W は写真の傾きによる列の流れのぶん(±3 度で ±3% ほど)。
+       文字範囲の推定はまれに見出しトークンを外れ値として削って右端を過小評価する。
+       余白を広げても、机に食み出した誤ロックは楕円外周の白紙検査が弾く。 */
+    const x1 = Math.min(W - 2, b.x1 + 0.42 * paperW, hint.x1 + 0.05 * paperW) - S
+    const yc = rowCy[k] + rowShift(b)
+    const y0 = yc - 0.55 * ovalH, y1 = yc + 0.55 * ovalH
+    if (x1 <= x0) continue
+    let best = null
+    const stx = Math.max(2, ovalW * 0.16), sty = Math.max(2, ovalH * 0.12), st2 = Math.max(2, S * 0.04)
+    /* ペア間隔も行ごとに探索する。遠近のゆがみが強い写真では行によって紙面の縮尺が
+       ±12% ほど変わるため、一定の間隔ではロックが緩んで隣へ流れる */
+    for (const sS of [0.9, 0.95, 1, 1.05, 1.1]) {
+      const Sr = S * sS
+      for (let y = y0; y <= y1; y += sty) {
+        for (let x = x0; x <= x1; x += stx) {
+          for (let d2 = -0.12 * Sr; d2 <= 0.121 * Sr; d2 += st2) {   // 傾きぶんの右楕円の上下
+            const ref = refLum(x + Sr / 2, y + d2 / 2)
+            const s = (ref - ringLum(x, y)) + (ref - ringLum(x + Sr, y + d2))
+            if (!best || s > best.s) best = { s, x, y, d2, S: Sr }
+          }
+        }
+      }
+    }
+    if (process.env.KCL_DEBUG && best) {
+      console.error('[rows]', k, 'x', Math.round(best.x), 'y', Math.round(best.y), 's', Math.round(best.s),
+        'lineX1', Math.round(b.x1), 'cy', Math.round(b.cy))
+    }
+    if (!best || best.s < 30) continue
+    best = refine(best)
+    const ref = refLum(best.x + best.S / 2, best.y + best.d2 / 2)
+    if (Math.min(outerLum(best.x, best.y), outerLum(best.x + best.S, best.y + best.d2)) < ref - 55) continue
+    found[k] = best
+  }
+  const ks = Object.keys(found)
+  if (process.env.KCL_DEBUG) console.error('[rows] found', ks.length, '/', wanted.length)
+  if (ks.length < Math.max(3, Math.ceil(wanted.length * 0.4))) return null
+
+  /* 検算: 「はい」列の x とペア間隔 S は、写真の傾き・遠近では y に対する一次でしか
+     変化しないはず。それぞれ一次でフィットし、外れた行はペアの取り違えの恐れが
+     あるため候補から外す。 */
+  const fitLin = (pick) => {
+    let sy = 0, sv = 0, syy = 0, syv = 0
+    for (const k of ks) { const f = found[k]; const v = pick(f); sy += f.y; sv += v; syy += f.y * f.y; syv += f.y * v }
+    const n2 = ks.length
+    const dnm = n2 * syy - sy * sy
+    const b = dnm ? (n2 * syv - sy * sv) / dnm : 0
+    return { b, a: (sv - b * sy) / n2 }
+  }
+  const n = ks.length
+  const fx = fitLin(f => f.x)
+  const fS = fitLin(f => f.S)
+  const icpt = fx.a, slope = fx.b
+  let good = ks.filter(k => Math.abs(found[k].x - (icpt + slope * found[k].y)) <= 0.02 * paperW
+    && Math.abs(found[k].S - (fS.a + fS.b * found[k].y)) <= 0.05 * S)
+  if (process.env.KCL_DEBUG) console.error('[rows] good', good.length, '/', n, 'slope', slope.toFixed(4), 'S', fS.a.toFixed(1), fS.b.toFixed(4))
+  if (good.length < Math.max(3, Math.ceil(n * 0.6))) return null
+  // ページ全体でペア間隔が 9% 以上変わる(=遠近が強い)写真もこの経路では読まない
+  {
+    const yList = good.map(k => found[k].y)
+    const span = Math.max(...yList) - Math.min(...yList)
+    if (span > 0 && Math.abs(fS.b) * span > 0.09 * S) return null
+  }
+
+  /* 見つからなかった・外れた行は、フィットした列の直線上に限定してもう一度探す
+     (位置がほぼ確定しているぶん、弱い枠線でも安全に拾える)。 */
+  for (const k of wanted) {
+    if (good.includes(k)) continue
+    const b = rowPos[k]
+    if (!b) continue
+    const yc = rowCy[k] + rowShift(b)
+    const y0 = yc - 0.55 * ovalH, y1 = yc + 0.55 * ovalH
+    let best = null
+    const sty = Math.max(2, ovalH * 0.1)
+    for (let y = y0; y <= y1; y += sty) {
+      const xc = icpt + slope * y
+      const Sr = fS.a + fS.b * y
+      const st2 = Math.max(2, Sr * 0.04)
+      for (let dx = -0.006 * paperW; dx <= 0.0061 * paperW; dx += Math.max(2, 0.003 * paperW)) {
+        for (let d2 = -0.09 * Sr; d2 <= 0.091 * Sr; d2 += st2) {
+          const ref = refLum(xc + dx + Sr / 2, y + d2 / 2)
+          const s = (ref - ringLum(xc + dx, y)) + (ref - ringLum(xc + dx + Sr, y + d2))
+          if (!best || s > best.s) best = { s, x: xc + dx, y, d2, S: Sr }
+        }
+      }
+    }
+    if (!best || best.s < 24) continue
+    best = refine(best)
+    const ref = refLum(best.x + best.S / 2, best.y + best.d2 / 2)
+    if (Math.min(outerLum(best.x, best.y), outerLum(best.x + best.S, best.y + best.d2)) < ref - 55) continue
+    found[k] = best
+    good.push(k)
+  }
+
+  // 塗り判定(枠線の内側だけを見る楕円窓)。検出したペアの中心と間隔をそのまま使う
+  const scan = (px, py, thr, bw, bh) => {
+    let s = 0, cnt = 0, dark = 0
+    const xa = Math.max(0, Math.round(px - bw / 2)), xb = Math.min(W - 1, Math.round(px + bw / 2))
+    const ya = Math.max(0, Math.round(py - bh / 2)), yb = Math.min(H - 1, Math.round(py + bh / 2))
+    const st = Math.max(1, Math.round((xb - xa) / 14) || 1)
+    for (let y = ya; y <= yb; y += st) {
+      for (let x = xa; x <= xb; x += st) {
+        if (((x - px) / (bw / 2)) ** 2 + ((y - py) / (bh / 2)) ** 2 > 1) continue
+        const lum = lumAt(x, y)
+        s += lum; cnt++
+        if (lum < thr) dark++
+      }
+    }
+    return { mean: cnt ? s / cnt : 255, frac: cnt ? dark / cnt : 0 }
+  }
+  const answers = {}
+  const perQ = {}
+  for (const k of good) {
+    const f = found[k]
+    const bw = ovalW * 0.72 * (f.S / S), bh = ovalH * 0.72 * (f.S / S)   // 行の縮尺(遠近)に追従
+    const paper = scan(f.x + f.S / 2, f.y + f.d2 / 2, -1, bw, bh).mean
+    const thr = Math.min(paper * 0.62, paper - 28)
+    const fY = scan(f.x, f.y, thr, bw, bh).frac
+    const fN = scan(f.x + f.S, f.y + f.d2, thr, bw, bh).frac
+    const fy = fY >= 0.30, fn = fN >= 0.30
+    answers[k] = fy && fn ? 'multi' : fy ? 'yes' : fn ? 'no' : null
+    perQ[k] = { fy: Math.round(fY * 100) / 100, fn: Math.round(fN * 100) / 100, ring: Math.round(f.s) }
+  }
+  return { answers, debug: { src: 'rows', rows: good.length, perQ } }
+}
+
 // document(OCR) + 画像バイト列 → { isKcl, side, answers:{key:'yes'|'no'|'multi'|null}, readable }
 function readKcl(document, imageBuffer, mimeType) {
   const nt = norm(document.text || '')
@@ -390,6 +623,33 @@ function readKcl(document, imageBuffer, mimeType) {
     const marks = readMarks(img, om, side, keys, rowPos, allPos, colTok, maps)
     if (marks.ok) return { isKcl: true, side, answers: marks.answers, readable: true, orient: o, via: 'markers', debug: marks.debug }
     for (const t of marks.tried) allTried.push({ o, ...t })
+  }
+
+  /* マーカー方式がどの向きでも成立しないとき(マーカーが写っていない・検算で全候補
+     却下)は、設問の文字行の右にある楕円ペアを直接探す第 2 の経路で読む。
+     こちらは向きの検算手段を持たないため、最も信頼できる向き(EXIF どおり)だけで行う
+     (向きを取り違えたまま読むと はい・いいえ が反転しかねないため)。 */
+  {
+    const { o, om } = omCands[0]
+    const W = om.W, H = om.H
+    const rowPos = {}
+    for (const [k, ln] of Object.entries(rowLine)) rowPos[k] = lineToPx(ln, W, H)
+    const allPos = lines.map(l => ({ ...lineToPx(l, W, H), isQ: qLines.has(l) }))
+    const boxes = lines.concat(tokens).map(l => lineToPx(l, W, H))
+    let hint = null
+    if (boxes.length) {
+      const pick = (vals, hiSide) => {
+        const s = [...vals].sort((a, b) => a - b)
+        const k = s.length >= 8 ? Math.max(1, Math.min(3, Math.floor(s.length * 0.03))) : 0
+        return hiSide ? s[s.length - 1 - k] : s[k]
+      }
+      hint = {
+        x0: pick(boxes.map(b => b.x0)), y0: pick(boxes.map(b => b.y0)),
+        x1: pick(boxes.map(b => b.x1), true), y1: pick(boxes.map(b => b.y1), true),
+      }
+    }
+    const byRows = readByRows(img, om, keys, rowPos, allPos, hint)
+    if (byRows) return { isKcl: true, side, answers: byRows.answers, readable: true, orient: o, via: 'rows', debug: byRows.debug }
   }
 
   /* どの向きでも成立しなかったときは、無理に推定せず要確認へ回す。
