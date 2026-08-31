@@ -275,6 +275,22 @@ function makeImage(xf, cfg, lay, o = {}) {
   })
 
   // --- 撮影品質の劣化(描画後にかける) ---
+  // 腕のようなくっきりした影の帯(縁の半影は数 px だけ)。位置・向き・幅は乱数
+  if (o.armShadow) {
+    const ang = (rng() - 0.5) * 1.2
+    const cs = Math.cos(ang), sn = Math.sin(ang)
+    const bw2 = (0.10 + rng() * 0.12) * IMG_W / 2
+    const c = (0.2 + rng() * 0.6) * IMG_W
+    for (let y = 0; y < IMG_H; y++) {
+      for (let x = 0; x < IMG_W; x++) {
+        const d = Math.abs((x - c) * cs + (y - IMG_H / 2) * sn)
+        if (d > bw2 + 6) continue
+        const f = d < bw2 ? 0.72 : 0.72 + 0.28 * ((d - bw2) / 6)
+        const i = (y * IMG_W + x) * 4
+        data[i] = Math.round(data[i] * f); data[i + 1] = Math.round(data[i + 1] * f); data[i + 2] = Math.round(data[i + 2] * f)
+      }
+    }
+  }
   if (o.shadow) {
     for (let y = 0; y < IMG_H; y++) {
       for (let x = 0; x < IMG_W; x++) {
@@ -431,8 +447,18 @@ function encodeShot(display, { orient = 1, exifOn = true, fmt = 'jpeg', quality 
   return exifOn && orient !== 1 ? withExifOrientation(buf, orient) : buf
 }
 
+// シード付き乱数(mulberry32)。同じシードなら毎回同じ列になる
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 module.exports = {
-  PAGE_W, PAGE_H, OVAL_W, OVAL_H, LINE_H, IMG_W, IMG_H, OFF_X, OFF_Y, SCALE,
+  PAGE_W, PAGE_H, OVAL_W, OVAL_H, LINE_H, IMG_W, IMG_H, OFF_X, OFF_Y, SCALE, mulberry32,
   FRONT_ROWS, BACK_ROWS, FRONT_EXPECT, BACK_EXPECT, SIDES,
   layout, makeXf, curlAt, makeImage, makeDoc,
   storedFromDisplay, withExifOrientation, encodeShot,

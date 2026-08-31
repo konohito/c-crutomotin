@@ -57,7 +57,8 @@ for (let i = 0; i < N; i++) {
     strayInk: rnd() < 0.3,
     stray: rnd() < 0.2,
     blank: rnd() < 0.08,
-    inkLum: rnd() < 0.12 ? 120 : 38,
+    inkLum: (() => { const r = rnd(); return r < 0.76 ? 38 : r < 0.84 ? 120 : r < 0.92 ? 150 : 165 })(),
+    armShadow: rnd() < 0.22,
     dropKeys: null,
   }
   const cfg = H.SIDES[p.side]

@@ -217,6 +217,15 @@ function readMarks(img, om, side, keys, rowPos, allPos, colTok, maps) {
       }
       return s / 5
     }
+    const outerMed = (cx, cy) => {   // 楕円のすぐ外側(1.6 倍径)の紙面。その楕円だけの局所基準
+      const v = []
+      for (let a = 0; a < 8; a++) {
+        const t = (a / 8) * 2 * Math.PI
+        const p = map.at(cx + rx0 * 1.6 * Math.cos(t), cy + ry0 * 1.6 * Math.sin(t))
+        v.push(lumAt(p[0], p[1]))
+      }
+      return median(v)
+    }
     /* 近い候補を優先する距離ペナルティ付きで探す。探索の上限(±0.0154)は
        隣の行(0.033 間隔)の楕円に窓が届かない範囲に抑えてあるので、
        広げても「隣の行を読む」誤りにはならない(届かなければ未回答に落ちるだけ)。 */
@@ -264,6 +273,22 @@ function readMarks(img, om, side, keys, rowPos, allPos, colTok, maps) {
       const dk = dByKey[k]
       const yk = dk != null ? cell.yes[1] + dk : yFor(cell)
       const { s: ringS, dx, dy } = snap(cell, yk)
+      /* 確定した窓が「他の行のアンカー(その行の文字から決まる位置)」から楕円 1 個ぶん
+         以内なら、隣の行のインクに触れる恐れがあるため読まずに未回答へ落とす。
+         (スナップの端 + 窓の半径が、わずかな行位置の誤差と重なった時の取り違え対策) */
+      const fin = yk + dy
+      let rival = Infinity
+      for (const j of wanted) {
+        if (j === k || !table[j]) continue
+        const aj = table[j].yes[1] + (dByKey[j] != null ? dByKey[j] : delta)
+        rival = Math.min(rival, Math.abs(fin - aj))
+      }
+      if (table.example) rival = Math.min(rival, Math.abs(fin - (table.example.yes[1] + delta)))
+      if (rival < 0.0187) {
+        answers[k] = null
+        perQ[k] = { fy: 0, fn: 0, dy: Math.round((fin - cell.yes[1]) * 1e4) / 1e4, ring: Math.round(ringS), near: 1 }
+        continue
+      }
       const py = map.at(cell.yes[0] + dx, yk + dy)
       const pn = map.at(cell.no[0] + dx, yk + dy)
       const pm = map.at((cell.yes[0] + cell.no[0]) / 2 + dx, yk + dy)
@@ -272,15 +297,30 @@ function readMarks(img, om, side, keys, rowPos, allPos, colTok, maps) {
       const bw = LAYOUT.oval.w * 0.72 * pxPerUnit
       // y は「版面の高さに対する比率」なので、版面の縦横比で幅基準の縮尺に換算する
       const bh = LAYOUT.oval.h * 0.72 * (pxPerUnit / LAYOUT.aspect)
+      /* 紙面(基準の白)は「ペアの中間」と「その楕円のすぐ外側」の暗い方を使う。
+         腕の影の縁が中間と楕円の間を横切ると、明るい基準×暗い窓で誤検出するため、
+         楕円ごとの外周基準で影ごと閾値を下げる。 */
+      const oY = outerMed(cell.yes[0] + dx, yk + dy)
+      const oN = outerMed(cell.no[0] + dx, yk + dy)
       const paper = scan(pm[0], pm[1], -1, bw, bh).mean
-      const thr = Math.min(paper * 0.62, paper - 28)
-      const fY = scan(py[0], py[1], thr, bw, bh).frac
-      const fN = scan(pn[0], pn[1], thr, bw, bh).frac
+      const pY = Math.min(paper, oY), pN = Math.min(paper, oN)
+      const fY = scan(py[0], py[1], Math.min(pY * 0.62, pY - 28), bw, bh).frac
+      const fN = scan(pn[0], pn[1], Math.min(pN * 0.62, pN - 28), bw, bh).frac
       /* 塗りの判定は片側 30% 以上のみ。以前あった「12% でも反対側の 3 倍なら採用」の
          救済則は、窓が枠線をかすった時に白紙でも誤読する事故のもとだった。
          楕円窓 + 輪郭への吸着後は、小さな塗り・薄い塗りでも本物なら 30% を大きく
          超えるため、救済は不要になっている。 */
-      const fy = fY >= 0.30, fn = fN >= 0.30
+      let fy = fY >= 0.30, fn = fN >= 0.30
+      /* 鉛筆などの薄い塗り: 濃さの基準(紙の 62%)には届かないが、楕円ごとの
+         すぐ外側の紙と比べて「片側だけ・むらなく」暗い場合に限り塗りとみなす。
+         基準を楕円ごとに取るので、腕の影がかかっても影ごと基準が下がって誤検出しない。
+         影の縁が楕円を半分だけ横切った場合は「むらなく(55%)」の条件で弾く。 */
+      if (!fy && !fn && ringS >= 60) {
+        const gY = scan(py[0], py[1], oY - 32, bw, bh).frac
+        const gN = scan(pn[0], pn[1], oN - 32, bw, bh).frac
+        if (gY >= 0.55 && gN <= 0.15) fy = true
+        else if (gN >= 0.55 && gY <= 0.15) fn = true
+      }
       answers[k] = fy && fn ? 'multi' : fy ? 'yes' : fn ? 'no' : null
       perQ[k] = {
         fy: Math.round(fY * 100) / 100, fn: Math.round(fN * 100) / 100,
@@ -519,12 +559,26 @@ function readByRows(img, om, keys, rowPos, allPos, hint) {
   const perQ = {}
   for (const k of good) {
     const f = found[k]
+    // 確定した位置が他の行の中心に近すぎたら読まない(行の取り違え対策)
+    let rival = Infinity
+    for (const j of wanted) {
+      if (j === k || rowCy[j] == null || !rowPos[j]) continue
+      rival = Math.min(rival, Math.abs(f.y - (rowCy[j] + rowShift(rowPos[j]))))
+    }
+    if (rival < ovalH * 0.72) { answers[k] = null; perQ[k] = { fy: 0, fn: 0, ring: Math.round(f.s), near: 1 }; continue }
     const bw = ovalW * 0.72 * (f.S / S), bh = ovalH * 0.72 * (f.S / S)   // 行の縮尺(遠近)に追従
     const paper = scan(f.x + f.S / 2, f.y + f.d2 / 2, -1, bw, bh).mean
     const thr = Math.min(paper * 0.62, paper - 28)
     const fY = scan(f.x, f.y, thr, bw, bh).frac
     const fN = scan(f.x + f.S, f.y + f.d2, thr, bw, bh).frac
-    const fy = fY >= 0.30, fn = fN >= 0.30
+    let fy = fY >= 0.30, fn = fN >= 0.30
+    // 鉛筆などの薄い塗り(マーカー経路と同じ基準。楕円ごとの外周紙面と比べる)
+    if (!fy && !fn && f.s >= 60) {
+      const gY = scan(f.x, f.y, outerLum(f.x, f.y) - 32, bw, bh).frac
+      const gN = scan(f.x + f.S, f.y + f.d2, outerLum(f.x + f.S, f.y + f.d2) - 32, bw, bh).frac
+      if (gY >= 0.55 && gN <= 0.15) fy = true
+      else if (gN >= 0.55 && gY <= 0.15) fn = true
+    }
     answers[k] = fy && fn ? 'multi' : fy ? 'yes' : fn ? 'no' : null
     perQ[k] = { fy: Math.round(fY * 100) / 100, fn: Math.round(fN * 100) / 100, ring: Math.round(f.s) }
   }
