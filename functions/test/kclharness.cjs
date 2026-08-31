@@ -72,11 +72,15 @@ function layout(cfg, variant = 'seal') {
   const table = LAYOUT.variants[variant][cfg.side]
   const rowY = cfg.rows.map(r => table[String(r.key)].yes[1] * PAGE_H)
   const exampleY = table.example ? table.example.yes[1] * PAGE_H : null
-  // 見出し(はい/いいえ)の y: 各セクション先頭行の少し上
-  const headers = [(exampleY != null ? exampleY : rowY[0]) - 30]
-  cfg.rows.forEach((r, i) => {
-    if (i > 0 && (r.section || 0) !== (cfg.rows[i - 1].section || 0)) headers.push(rowY[i] - 30)
-  })
+  // 見出し(はい/いいえ)の y: 実測値(kcllayout.heads)。無ければ各セクション先頭行の少し上
+  const heads = (LAYOUT.variants[variant].heads || {})[cfg.side] || []
+  let headers = heads.map(h => h.yes[1] * PAGE_H)
+  if (!headers.length) {
+    headers = [(exampleY != null ? exampleY : rowY[0]) - 30]
+    cfg.rows.forEach((r, i) => {
+      if (i > 0 && (r.section || 0) !== (cfg.rows[i - 1].section || 0)) headers.push(rowY[i] - 30)
+    })
+  }
   return { rowY, headers, exampleY }
 }
 

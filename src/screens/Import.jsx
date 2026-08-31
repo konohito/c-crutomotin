@@ -539,19 +539,38 @@ function ProdImport() {
             {assign.kcl && assign.kcl.debug && (() => {
               const dbg = assign.kcl.debug
               const rows = kclSideList(assign.kcl.side)
+              const srcLabel = (s) => (s === 'text' ? '文字範囲' : s === 'bright' ? '明るさ' : String(s || '—'))
+              const gateLabel = { rows: '設問行の突き合わせ', colX: '列見出しの位置(横)', colY: '列見出しの位置(縦)' }
               return (
                 <details style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
                   <summary style={{ cursor: 'pointer' }}>読み取り診断（開発用）</summary>
                   <div style={{ marginTop: 6, border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '8px 10px' }}>
+                    {/* 読取不可のとき: 検算した位置合わせ候補と却下理由の一覧 */}
+                    {dbg.tried && (
+                      <div className="t-num" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {dbg.tried.map((t, i) => (
+                          <div key={i}>
+                            候補{i + 1}: {srcLabel(t.src)} / 向き{t.o ?? '—'} / δ {t.delta != null ? (t.delta * 100).toFixed(2) + '%' : '—'}
+                            {' '}/ 残差 {t.mad != null ? (t.mad * 100).toFixed(2) + '%' : '—'}
+                            {t.xe != null ? ` / 見出し横 ${(t.xe * 100).toFixed(2)}%` : ''}
+                            {t.ye != null ? ` / 見出し縦 ${(t.ye * 100).toFixed(2)}%` : ''}
+                            {' → '}{t.gate ? `却下(${gateLabel[t.gate] || t.gate})` : '合格'}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {dbg.src != null && (
                     <div>
-                      マーカー検出: {dbg.src === 'text' ? '文字範囲' : dbg.src === 'bright' ? '明るさ' : String(dbg.src || '—')}
+                      マーカー検出: {srcLabel(dbg.src)}
                       　·　行補正 δ <span className="t-num">{(dbg.delta * 100).toFixed(2)}%</span>
                       　·　検算 <span className="t-num">{dbg.rows}</span> 行
                     </div>
+                    )}
+                    {dbg.perQ && (
                     <div className="t-num" style={{ display: 'grid', gridTemplateColumns: '36px 1fr 1fr 1fr 1fr', gap: '1px 10px', marginTop: 6 }}>
                       <b>No</b><b>はい濃度</b><b>いいえ濃度</b><b>行ずれ</b><b>枠線</b>
                       {rows.flatMap(q => {
-                        const d = dbg.perQ && dbg.perQ[q.no]
+                        const d = dbg.perQ[q.no]
                         if (!d) return []
                         return [
                           <span key={q.no + 'n'} style={{ fontWeight: 700 }}>{q.paper}</span>,
@@ -562,6 +581,7 @@ function ProdImport() {
                         ]
                       })}
                     </div>
+                    )}
                     <div style={{ marginTop: 5, color: 'var(--fg-4)' }}>
                       濃度 30% 以上で塗りと判定。行ずれは版面高さ比の補正量、枠線は楕円の輪郭の検出強度。
                     </div>

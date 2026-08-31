@@ -309,10 +309,11 @@ function KclSectionHead({ title }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', padding: '3px 0 4px', borderBottom: '1px solid #000' }}>
       <span style={{ fontSize: 20, fontWeight: 700 }}>{title}</span>
-      {/* 回答列の見出し。バブルと同じ幅・間隔で真上に隣接させる */}
+      {/* 回答列の見出し。バブルと同じ幅・間隔で真上に隣接させる。
+          data-kclhead は読み取り側の位置検算アンカーを実測するための目印(measure-kcl-layout.mjs) */}
       <KclAnsCols>
-        <span style={{ width: KCL_BUBBLE_W, display: 'inline-flex', justifyContent: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}>はい</span>
-        <span style={{ width: KCL_BUBBLE_W, display: 'inline-flex', justifyContent: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}>いいえ</span>
+        <span data-kclhead="yes" style={{ width: KCL_BUBBLE_W, display: 'inline-flex', justifyContent: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}>はい</span>
+        <span data-kclhead="no" style={{ width: KCL_BUBBLE_W, display: 'inline-flex', justifyContent: 'center', fontSize: 21, fontWeight: 700, lineHeight: 1.1, whiteSpace: 'nowrap' }}>いいえ</span>
       </KclAnsCols>
     </div>
   )

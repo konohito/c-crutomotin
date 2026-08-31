@@ -84,6 +84,8 @@ function readMarks(img, om, side, keys, rowPos, allPos, colTok, maps) {
   }
 
   const wanted = keys.map(k => String(k))
+  const r4 = (v) => Math.round(v * 1e4) / 1e4
+  const tried = []   // 検算した候補の記録(却下理由込み。読取不可時の原因調査用)
   /* --- 候補の検算と選択: 位置合わせを設問の文字行と突き合わせる ----------------
      各設問の行の中心 y(OCR)を用紙座標に引き直し、座標表の行 y との差 dk を取る。
      正しい位置合わせなら dk は全行でほぼ同じ小さな値(様式差 ±2% + 反り)になる。
@@ -124,44 +126,47 @@ function readMarks(img, om, side, keys, rowPos, allPos, colTok, maps) {
       dByKey[k] = d
       ds.push(d)
     }
-    if (!ds.length) return null
+    if (!ds.length) { tried.push({ src: map.src, gate: 'rows' }); return null }
     const delta = median(ds)
     const devs = ds.map(d => Math.abs(d - delta))
-    const nGood = devs.filter(d => d <= 0.015).length
-    if (Math.abs(delta) > 0.05 || nGood < Math.ceil(ds.length * 0.6)) return null
-    /* 回答列の見出し(はい/いいえ)の x でも検算する。設問行の y だけでは
-       「列方向(x)にゆがんだ写像」を見抜けないため(文字は左・回答欄は右にあり、
-       左だけ合っていて右がずれた写像が通ってしまう)。
-       必ず「はい→はい列 / いいえ→いいえ列」の対応で見る。近い方の列と比べる方式だと、
-       ちょうど 1 列ぶん(9%)ずれた写像で「はい」見出しが「いいえ」列に一致してしまい、
-       全問の はい・いいえ が入れ替わる最悪の誤読を見逃す。 */
+    const mad = median(devs)
+    const nGood = devs.filter(d => d <= 0.018).length
+    const rec = { src: map.src, delta: r4(delta), mad: r4(mad) }
+    /* 回答列の見出し(はい/いいえ)の x・y でも検算する。設問行の y だけでは
+       「右側(回答欄)だけずれた写像」を見抜けないため(文字は左・回答欄は右にあり、
+       左だけ合っていて右が 1 行/1 列ずれた写像が通ってしまう)。
+       x は必ず「はい→はい列 / いいえ→いいえ列」の文言対応で見る。近い方の列と比べる
+       方式だと、ちょうど 1 列ぶん(9%)ずれた写像で「はい」見出しが「いいえ」列に
+       一致してしまい、全問の はい・いいえ が入れ替わる最悪の誤読を見逃す。
+       期待位置は用紙の実測値(kcllayout.heads。measure-kcl-layout.mjs が生成)を使う。 */
     const anyCell = table[wanted.find(k => table[k])]
-    let xe = 0, ye = 0
+    const heads = ((LAYOUT.variants.seal.heads || {})[side]) || []
+    let xe = null, ye = null
     if (anyCell) {
       const xErrs = [], yErrs = []
-      /* 見出しの期待 y: 各セクション先頭(おもて=記入例、うら=最初の設問と運動習慣)の
-         少し上(約 2.7%)。行の検算は用紙の左側(設問の文字)しか見ないため、
-         「左は合っているが右だけ上下に 1 行ねじれた写像」はここで見抜くしかない。 */
-      const anchors = (side === 'front' ? [table.example] : [table['15'], table.ex1])
-        .filter(Boolean).map(c => c.yes[1] + delta - 0.027)
+      const expYes = heads.length ? heads[0].yes[0] : anyCell.yes[0]
+      const expNo = heads.length ? heads[0].no[0] : anyCell.no[0]
+      const expYs = heads.map(h => h.yes[1] + delta)
       for (const t of colTok) {
         const [px, py] = map.inv(t.cx, t.cy)
         if (px < 0.6 || px > 1.1) continue   // 用紙左側の説明文中の「はい・いいえ」は対象外
-        xErrs.push(Math.abs(px - (t.isYes ? anyCell.yes[0] : anyCell.no[0])))
-        if (anchors.length) yErrs.push(Math.min(...anchors.map(e => Math.abs(py - e))))
+        xErrs.push(Math.abs(px - (t.isYes ? expYes : expNo)))
+        if (expYs.length) yErrs.push(Math.min(...expYs.map(e => Math.abs(py - e))))
       }
-      if (process.env.KCL_DEBUG) {
-        console.error('[map]', map.src, 'delta', delta.toFixed(4), 'mad', median(devs).toFixed(4),
-          'xErr', xErrs.length ? median(xErrs).toFixed(4) : '-', 'yErr', yErrs.length ? median(yErrs).toFixed(4) : '-',
-          'mk', JSON.stringify(map.markers, (k, v) => typeof v === 'number' ? Math.round(v) : v))
-      }
-      if (xErrs.length && median(xErrs) > 0.012) return null
-      if (yErrs.length && median(yErrs) > 0.015) return null
-      xe = xErrs.length ? median(xErrs) : 0
-      ye = yErrs.length ? median(yErrs) : 0
+      xe = xErrs.length ? r4(median(xErrs)) : null
+      ye = yErrs.length ? r4(median(yErrs)) : null
+      if (xe != null) rec.xe = xe
+      if (ye != null) rec.ye = ye
     }
+    if (process.env.KCL_DEBUG) {
+      console.error('[map]', JSON.stringify(rec), 'mk', JSON.stringify(map.markers, (k, v) => typeof v === 'number' ? Math.round(v) : v))
+    }
+    if (Math.abs(delta) > 0.05 || nGood < Math.ceil(ds.length * 0.6)) { rec.gate = 'rows'; tried.push(rec); return null }
+    if (xe != null && xe > 0.015) { rec.gate = 'colX'; tried.push(rec); return null }
+    if (ye != null && ye > 0.014) { rec.gate = 'colY'; tried.push(rec); return null }
+    tried.push(rec)   // gate なし = 検算合格
     // 行の残差 + 見出しアンカーの誤差を合わせた総合スコア(小さいほど良い)で候補を選ぶ
-    return { map, dByKey, delta, mad: median(devs), score: median(devs) + xe + ye }
+    return { map, dByKey, delta, mad, score: mad + (xe || 0) + (ye || 0) }
   }
   let best = null
   for (const m of maps) {
@@ -169,7 +174,7 @@ function readMarks(img, om, side, keys, rowPos, allPos, colTok, maps) {
     if (ev && (!best || ev.score < best.score)) best = ev
   }
   {
-    if (!best) return null
+    if (!best) return { ok: false, tried }
     const { map, dByKey, delta } = best
 
     /* 楕円の内側だけを見る窓。長方形だと四隅が印刷された枠線にかかり、
@@ -283,10 +288,11 @@ function readMarks(img, om, side, keys, rowPos, allPos, colTok, maps) {
       }
     }
     return {
+      ok: true,
       answers,
       debug: {
-        src: map.src, delta: Math.round(delta * 1e4) / 1e4,
-        mad: Math.round(best.mad * 1e4) / 1e4, rows: Object.keys(dByKey).length, perQ,
+        src: map.src, delta: r4(delta), mad: r4(best.mad),
+        rows: Object.keys(dByKey).length, perQ,
       },
     }
   }
@@ -308,7 +314,7 @@ function readKcl(document, imageBuffer, mimeType) {
     if (ln) { keys.push(key); rowLine[String(key)] = ln }
   }
   const side = keys.some(k => typeof k === 'number' && k <= 11) ? 'front' : (keys.length ? 'back' : null)
-  const unreadable = (reason) => ({ isKcl: true, side, answers: {}, readable: false, reason })
+  const unreadable = (reason, debug) => ({ isKcl: true, side, answers: {}, readable: false, reason, debug: debug || null })
   if (!keys.length) return unreadable('設問の文字を読み取れませんでした（用紙全体がはっきり写るように撮り直してください）')
 
   // 画像復号。形式はファイルの中身(magic bytes)で判別する(拡張子・MIME は当てにならない)
@@ -347,6 +353,7 @@ function readKcl(document, imageBuffer, mimeType) {
   const tokens = positioned(document, 'tokens')
   const qLines = new Set(Object.values(rowLine))
   let sawMaps = false
+  const allTried = []   // 検算に落ちた候補の記録(読取不可時に原因を示すため保存する)
   for (const { o, om } of omCands) {
     const W = om.W, H = om.H
     /* 設問行と全行の位置を表示向きの画素に直す(折り返し設問の続き行の特定は、
@@ -381,15 +388,18 @@ function readKcl(document, imageBuffer, mimeType) {
     if (!maps.length) continue
     sawMaps = true
     const marks = readMarks(img, om, side, keys, rowPos, allPos, colTok, maps)
-    if (marks) return { isKcl: true, side, answers: marks.answers, readable: true, orient: o, via: 'markers', debug: marks.debug }
+    if (marks.ok) return { isKcl: true, side, answers: marks.answers, readable: true, orient: o, via: 'markers', debug: marks.debug }
+    for (const t of marks.tried) allTried.push({ o, ...t })
   }
 
   /* どの向きでも成立しなかったときは、無理に推定せず要確認へ回す。
      位置の推定を誤ると「はい・いいえ」が入れ替わることがあり、
-     誤った回答が登録される方が、読めないより危険なため。 */
+     誤った回答が登録される方が、読めないより危険なため。
+     どの検算にどの値で落ちたかは debug.tried に残す(現地での原因調査用)。 */
   return unreadable(sawMaps
     ? 'マーカーは検出できましたが、位置合わせが設問の文字位置と合いませんでした（用紙を平らに置き、真上から全体が入るように撮り直してください）'
-    : '用紙の四隅にある黒い位置合わせマーカーを検出できませんでした（用紙全体が入るように、真上から撮り直してください）')
+    : '用紙の四隅にある黒い位置合わせマーカーを検出できませんでした（用紙全体が入るように、真上から撮り直してください）',
+  allTried.length ? { tried: allTried.slice(0, 12) } : null)
 }
 
 module.exports = { readKcl, QS }
