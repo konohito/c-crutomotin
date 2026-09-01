@@ -228,37 +228,56 @@ function ProdImport() {
   // (null を混ぜると参照のたびに空チェックが要り、抜けると画面全体が落ちるため)
   const [batches, setBatches] = useState([])
   const [batchesLoaded, setBatchesLoaded] = useState(false)
-  const [batchId, setBatchId] = useState('')
+  /* 一覧は「測定日(撮影日)」単位でまとめる。同じ日に何回かに分けてアップロードしても
+     (バッチは回ごとに分かれる)、現場で見たいのは日付ごとの1つのリストのため。
+     各行の操作は行が属するバッチ(rec.batchId)に対して行う。 */
+  const [dateKey, setDateKey] = useState('')
   const sweptRef = useRef(false)
   const [queue, setQueue] = useState([])
   const [review, setReview] = useState(null)
   const [bulkBusy, setBulkBusy] = useState(false)
   const [rejTarget, setRejTarget] = useState(null)
   const [rejBusy, setRejBusy] = useState(false)
+  const [bulkRejOpen, setBulkRejOpen] = useState(false)
+  const [bulkRejBusy, setBulkRejBusy] = useState(false)
 
   useEffect(() => {
     let unsub = () => {}
     watchBatches((list) => {
       setBatches(list); setBatchesLoaded(true)
       const open = list.filter(b => !b.finishedAt)
-      setBatchId(prev => prev || (open[0] ? open[0].id : ''))
+      setDateKey(prev => prev || (open[0] ? batchDate(open[0].id) : ''))
       if (!sweptRef.current) { sweptRef.current = true; sweepFinishedBatches(list).catch(() => {}) }
     }).then(fn => { unsub = fn }).catch(() => { setBatches([]); setBatchesLoaded(true) })
     return () => unsub()
   }, [])
 
+  // 選択中の日付に属するバッチ群(古いアップロード回から順に並べる)
+  const group = batches.filter(b => batchDate(b.id) === dateKey).slice().reverse()
+  const groupKey = group.map(b => b.id).join(',')
   useEffect(() => {
-    if (!batchId) { setQueue([]); return }
-    let unsub = () => {}
-    watchRecognitions(batchId, setQueue).then(fn => { unsub = fn }).catch(() => {})
-    return () => unsub()
-  }, [batchId])
+    if (!groupKey) { setQueue([]); return }
+    const ids = groupKey.split(',')
+    const rows = {}
+    const unsubs = []
+    let alive = true
+    const flush = () => {
+      if (!alive) return
+      setQueue(ids.flatMap(bid => rows[bid] || []))
+    }
+    for (const bid of ids) {
+      watchRecognitions(bid, (list) => {
+        rows[bid] = list.map(r => ({ ...r, batchId: r.batchId || bid }))
+        flush()
+      }).then(fn => { if (alive) unsubs.push(fn); else fn() }).catch(() => {})
+    }
+    return () => { alive = false; unsubs.forEach(fn => fn()) }
+  }, [groupKey])
 
   // 却下済みは一覧から隠す（文書は監査のため Firestore に残る）
   // 当日受付用紙(R7-02W)は専用の「当日受付 取り込み」画面で扱うため、通常キューには出さない
   // 送信枚数と読み取り件数の差(＝まだ読み取れていない用紙)
-  const curBatch = batches.find(b => b.id === batchId)
-  const uploadedN = (curBatch && curBatch.uploadCount) || 0
+  const uploadedN = group.reduce((s, b) => s + (b.uploadCount || 0), 0)
   const missingN = Math.max(0, uploadedN - queue.length)
   const nWalkIn = queue.filter(r => r.walkIn && r.status !== 'rejected').length
   const enriched = queue.filter(r => r.status !== 'rejected' && !r.walkIn).map(rec => ({ rec, u: matchUser(rec) }))
@@ -291,10 +310,10 @@ function ProdImport() {
   const doCommitKcl = async () => {
     if (!assignU) { showToast('利用者を選択してください'); return }
     try {
-      await commitKclRecognition({ batchId, recognitionId: assign.id, user: assignU, answers: ansEdit, year: D.CUR })
+      await commitKclRecognition({ batchId: assign.batchId, recognitionId: assign.id, user: assignU, answers: ansEdit, year: D.CUR })
       const clean = {}
       Object.entries(ansEdit).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
-      assignU.kcl[D.CUR] = { raw: { ...((assignU.kcl[D.CUR] || {}).raw || {}), ...clean }, date: batchDate(batchId) }
+      assignU.kcl[D.CUR] = { raw: { ...((assignU.kcl[D.CUR] || {}).raw || {}), ...clean }, date: batchDate(assign.batchId) }
       deleteSheetImage(assign.storagePath).catch(() => {})
       setAssign(null); setAssignU(null)
       set(s2 => ({ rev: s2.rev + 1 }))
@@ -316,19 +335,21 @@ function ProdImport() {
   //  一覧から見えなくなる取りこぼしを防ぐ)
   const markedRef = useRef(new Set())
   useEffect(() => {
-    if (!batchId || !queue.length) return
-    const batch = batches.find(b => b.id === batchId)
-    if (batchAllDone(batch, queue) && !markedRef.current.has(batchId)) {
-      markedRef.current.add(batchId)
-      markBatchDone(batchId).catch(() => {})
+    if (!groupKey || !queue.length) return
+    for (const batch of group) {
+      const rows = queue.filter(r => r.batchId === batch.id)
+      if (rows.length && batchAllDone(batch, rows) && !markedRef.current.has(batch.id)) {
+        markedRef.current.add(batch.id)
+        markBatchDone(batch.id).catch(() => {})
+      }
     }
-  }, [queue, batchId, batches])
+  }, [queue, groupKey, batches])
 
   const doReject = async () => {
     if (!rejTarget || rejBusy) return
     setRejBusy(true)
     try {
-      await rejectRecognition({ batchId, recognitionId: rejTarget.id })
+      await rejectRecognition({ batchId: rejTarget.batchId, recognitionId: rejTarget.id })
       deleteSheetImage(rejTarget.storagePath).catch(() => {})
       showToast('読み取りを却下しました')
       setRejTarget(null)
@@ -339,16 +360,16 @@ function ProdImport() {
   const commitOne = async ({ rec, u }) => {
     // 問診票(様式 R7-03)の読み取りは回答のみを保存し、測定値の記録には触れない
     if (rec.kcl) {
-      await commitKclRecognition({ batchId, recognitionId: rec.id, user: u, answers: rec.kcl.answers, year: D.CUR })
+      await commitKclRecognition({ batchId: rec.batchId, recognitionId: rec.id, user: u, answers: rec.kcl.answers, year: D.CUR })
       const clean = {}
       Object.entries(rec.kcl.answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
-      u.kcl[D.CUR] = { raw: { ...((u.kcl[D.CUR] || {}).raw || {}), ...clean }, date: batchDate(batchId) }
+      u.kcl[D.CUR] = { raw: { ...((u.kcl[D.CUR] || {}).raw || {}), ...clean }, date: batchDate(rec.batchId) }
       deleteSheetImage(rec.storagePath).catch(() => {})
       return
     }
     const finalValues = {}
     D.SHEET_COLS.forEach(cid => { finalValues[cid] = rec.fields && rec.fields[cid] ? rec.fields[cid].value : null })
-    await commitRecognition({ batchId, recognitionId: rec.id, user: u, finalValues, meta: { year: D.CUR, date: batchDate(batchId) } })
+    await commitRecognition({ batchId: rec.batchId, recognitionId: rec.id, user: u, finalValues, meta: { year: D.CUR, date: batchDate(rec.batchId) } })
     const nums = {}
     D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
     await saveMeasurement(u.id, D.CUR, nums)
@@ -365,6 +386,25 @@ function ProdImport() {
     setBulkBusy(false)
     set(s => ({ rev: s.rev + 1 }))
     showToast(`${ok} 件を本登録しました${ng ? `（失敗 ${ng} 件）` : ''}`)
+  }
+
+  // 一括却下: 本登録していない行(要確認・エラー含む)をまとめて却下する
+  // (テスト撮影や撮り直し前の分を 1 件ずつ消さなくて済むように)
+  const pending = enriched.filter(x => x.rec.status !== 'committed')
+  const rejectPending = async () => {
+    if (!pending.length || bulkRejBusy) return
+    setBulkRejBusy(true)
+    let ok = 0, ng = 0
+    for (const { rec } of pending) {
+      try {
+        await rejectRecognition({ batchId: rec.batchId, recognitionId: rec.id })
+        deleteSheetImage(rec.storagePath).catch(() => {})
+        ok++
+      } catch { ng++ }
+    }
+    setBulkRejBusy(false)
+    setBulkRejOpen(false)
+    showToast(`${ok} 件を却下しました${ng ? `（失敗 ${ng} 件）` : ''}`)
   }
 
   return (
@@ -387,10 +427,24 @@ function ProdImport() {
             </div>
           )}
         </div>
-        {batches.length > 0 && (
-          <Select value={batchId} onChange={(e) => setBatchId(e.target.value)}
-            options={batches.filter(b => !b.finishedAt || b.id === batchId).map(b => ({ v: b.id, l: `${batchDate(b.id)} · ${b.id}（${b.uploadCount || b.sheetCount || 0} 枚）` }))} />
-        )}
+        {batches.length > 0 && (() => {
+          /* 日付ごとに1つの選択肢にまとめる(同じ日の複数アップロード回を合算)。
+             全バッチが処理完了の日付は選択中でない限り隠す(従来のバッチと同じ扱い) */
+          const byDate = []
+          for (const b of batches) {
+            const d = batchDate(b.id)
+            let o = byDate.find(x => x.d === d)
+            if (!o) { o = { d, n: 0, open: false }; byDate.push(o) }
+            o.n += b.uploadCount || b.sheetCount || 0
+            if (!b.finishedAt) o.open = true
+          }
+          const visible = byDate.filter(o => o.open || o.d === dateKey)
+          if (!visible.length) return null
+          return (
+            <Select value={dateKey} onChange={(e) => setDateKey(e.target.value)}
+              options={visible.map(o => ({ v: o.d, l: `${o.d}（${o.n} 枚）` }))} />
+          )
+        })()}
         {queue.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <Pill lg bg="var(--success-50)" fg="var(--success-700)">登録済 <span className="t-num" style={{ fontWeight: 600 }}>{nDone}</span></Pill>
@@ -399,6 +453,12 @@ function ProdImport() {
             {ready.length > 0 && (
               <button className="btn btn-primary" style={{ height: 36 }} disabled={bulkBusy} onClick={commitReady}>
                 {bulkBusy ? '登録中…' : `自動判定 ${ready.length} 件を一括本登録`}
+              </button>
+            )}
+            {pending.length > 0 && (
+              <button className="btn btn-outline" style={{ height: 36, color: 'var(--danger-700)', borderColor: 'var(--danger-500)' }}
+                disabled={bulkRejBusy} onClick={() => setBulkRejOpen(true)}>
+                {bulkRejBusy ? '却下中…' : `未登録 ${pending.length} 件を一括却下`}
               </button>
             )}
           </div>
@@ -494,7 +554,7 @@ function ProdImport() {
       )}
 
       {review && (
-        <RecReviewModal rec={review} batchId={batchId} onClose={() => setReview(null)}
+        <RecReviewModal rec={review} batchId={review.batchId} onClose={() => setReview(null)}
           onDone={() => set(s => ({ rev: s.rev + 1 }))} />
       )}
 
@@ -677,6 +737,13 @@ function ProdImport() {
           body="関係ない画像や誤アップロードを一覧から取り除きます。却下した読み取りは一覧に表示されなくなります（記録自体は監査のため残ります）。"
           confirmLabel="却下する" busy={rejBusy}
           onConfirm={doReject} onClose={() => { if (!rejBusy) setRejTarget(null) }} />
+      )}
+      {bulkRejOpen && (
+        <ConfirmModal danger icon="warn"
+          title={`未登録 ${pending.length} 件をまとめて却下`}
+          body="この日付の一覧に残っている、まだ本登録していない読み取りをすべて却下します（テスト撮影や撮り直し前の分を一度に片づける操作です。記録自体は監査のため残ります）。"
+          confirmLabel="すべて却下する" busy={bulkRejBusy}
+          onConfirm={rejectPending} onClose={() => { if (!bulkRejBusy) setBulkRejOpen(false) }} />
       )}
     </div>
   )
