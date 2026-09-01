@@ -8,9 +8,12 @@ export const KCL_EX = [
   { no: 'ex2', text: '自宅や自宅外で、ストレッチや筋トレなどの運動を週1回以上は行なっていますか' },
 ]
 // 印刷レイアウトと一致: おもて面=前半 13 問 / うら面=残り 11 問 + 運動習慣 2 問
+// paper は用紙に印刷された番号(公式 No.12=BMI は用紙に無いため連番を振り直してある。
+// おもて①〜⑬・うら⑭〜㉔・運動習慣①②)。原本画像と見比べる画面ではこちらを表示する
 export const kclSideList = (side) => {
-  const front = QS.slice(0, 13).map(q => ({ no: String(q.no), text: q.text }))
-  const back = QS.slice(13).map(q => ({ no: String(q.no), text: q.text })).concat(KCL_EX.map(q => ({ no: q.no, text: q.text })))
+  const front = QS.slice(0, 13).map((q, i) => ({ no: String(q.no), paper: String(i + 1), text: q.text }))
+  const back = QS.slice(13).map((q, i) => ({ no: String(q.no), paper: String(14 + i), text: q.text }))
+    .concat(KCL_EX.map((q, i) => ({ no: q.no, paper: '運' + (i + 1), text: q.text })))
   return side === 'front' ? front : side === 'back' ? back : front.concat(back)
 }
 
@@ -52,17 +55,17 @@ export function kclAutoOk(kcl) {
   return s.multi === 0 && s.unread === 0 && s.read >= Math.ceil(s.total * 0.85)
 }
 
-// 読み取り結果の一覧チップ(読み取り専用・当日受付カードなどで使用)
+// 読み取り結果の一覧チップ(読み取り専用・当日受付カードなどで使用)。番号は用紙の印刷どおり
 export function KclAnswerChips({ kcl }) {
   const list = kclSideList(kcl && kcl.side)
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px' }}>
-      {list.map(({ no }) => {
+      {list.map(({ no, paper }) => {
         const k = ansKind(kcl && kcl.answers, no)
         const [label, fg, bg] = ANS_STYLE[k]
         return (
           <span key={no} style={{ fontSize: 11.5, borderRadius: 6, padding: '2px 7px', color: fg, background: bg, border: k === 'empty' ? '1px solid var(--border-subtle)' : 'none' }}>
-            <b className="t-num">{no.startsWith('ex') ? '運' + no.slice(2) : no}</b> {label}
+            <b className="t-num">{paper}</b> {label}
           </span>
         )
       })}

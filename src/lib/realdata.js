@@ -140,12 +140,17 @@ export async function loadRealData() {
     msnap.forEach(d => { const m = d.data(); (byUser[m.userId] ||= []).push(m) })
     const list = usnap.docs.map(d => toEngineUser({ id: d.id, ...d.data() }, byUser[d.id] || []))
       .filter(u => u.name)
-    // 市町村（嘉島町）と行政区を選択肢に登録
-    const wards = [...new Set(list.map(u => u.venueName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
-    const muniId = list[0]?.muni || 'kashima'
-    const muniName = list[0]?.muniName || '嘉島町'
-    const region = list[0]?.region || '嘉島町圏域'
-    replaceMunis([{ id: muniId, name: muniName, region, tel: '', venues: wards.map((w, i) => [900 + i, w]) }])
+    // 市町村と行政区を選択肢に登録(複数市町村に対応: 嘉島町 + 熊本市各区 など)。
+    // 利用者数の多い市町村を先頭にする(当日受付などの既定値が従来どおり嘉島町になるように)
+    const muniIds = [...new Set(list.map(u => u.muni).filter(Boolean))]
+      .sort((a, b) => list.filter(u => u.muni === b).length - list.filter(u => u.muni === a).length)
+    let vc = 900
+    const munis = muniIds.map((id) => {
+      const us = list.filter(u => u.muni === id)
+      const wards = [...new Set(us.map(u => u.venueName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
+      return { id, name: us[0].muniName || String(id), region: us[0].region || '', tel: '', venues: wards.map(w => [vc++, w]) }
+    })
+    replaceMunis(munis.length ? munis : [{ id: 'kashima', name: '嘉島町', region: '嘉島町圏域', tel: '', venues: [] }])
     setUsers(list)
     return { loaded: true }
   } catch (e) {

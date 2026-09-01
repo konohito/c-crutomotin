@@ -74,11 +74,15 @@ const measureOne = async () => {
         ovals[key] = ovals[key] || {}
         ovals[key][col] = center(el, box)
       })
+      // 回答列の見出し(はい/いいえ)。読み取り側の位置検算アンカーに使う(セクション順)
+      const heads = []
+      pg.querySelectorAll('[data-kclhead="yes"]').forEach(el => heads.push({ yes: center(el, box) }))
+      pg.querySelectorAll('[data-kclhead="no"]').forEach((el, i) => { if (heads[i]) heads[i].no = center(el, box) })
       const fr = pg.querySelector('[data-kcl]')?.getBoundingClientRect()
       return {
         w: Math.round(box.width * 100) / 100, h: Math.round(box.height * 100) / 100,
         oval: fr ? [Math.round((fr.width / box.width) * 1e5) / 1e5, Math.round((fr.height / box.height) * 1e5) / 1e5] : null,
-        markers, ovals,
+        markers, ovals, heads,
       }
     })
   })
@@ -106,7 +110,13 @@ console.log('版面(実測px):', front.w, '×', front.h, '楕円(版面比):', f
 console.log('四隅マーカー:', JSON.stringify(front.markers))
 
 const fmt = (o, pad) => Object.entries(o).sort().map(([k, v]) => `${pad}'${k}': { yes: [${v.yes}], no: [${v.no}] },`).join('\n')
+const fmtHeads = (hs) => (hs || []).map(h => `{ yes: [${h.yes}], no: [${h.no}] }`).join(', ')
 const variantSrc = Object.entries(VARIANTS).map(([name, v]) => `    ${name}: {
+      // 回答列の見出し(はい/いいえ)の実測位置。読み取りの位置検算アンカー
+      heads: {
+        front: [${fmtHeads(v[0].heads)}],
+        back: [${fmtHeads(v[1].heads)}],
+      },
       front: {
 ${fmt(v[0].ovals, '        ')}
       },

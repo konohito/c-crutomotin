@@ -534,6 +534,63 @@ function ProdImport() {
                 </div>
               )
             })()}
+            {/* 読み取り診断(開発用)。バックエンドが保存した設問ごとの濃度・位置補正を表示し、
+                読み落としの原因(位置ずれ / 塗りが薄い / 枠線を見失った)を現地で切り分けられるようにする */}
+            {assign.kcl && assign.kcl.debug && (() => {
+              const dbg = assign.kcl.debug
+              const rows = kclSideList(assign.kcl.side)
+              const srcLabel = (s) => (s === 'text' ? '文字範囲' : s === 'bright' ? '明るさ' : s === 'rows' ? '設問行から直接' : String(s || '—'))
+              const gateLabel = { rows: '設問行の突き合わせ', colX: '列見出しの位置(横)', colY: '列見出しの位置(縦)', orient: '写真の向きの確定' }
+              return (
+                <details style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
+                  <summary style={{ cursor: 'pointer' }}>読み取り診断（開発用）</summary>
+                  <div style={{ marginTop: 6, border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '8px 10px' }}>
+                    {/* 読取不可のとき: 検算した位置合わせ候補と却下理由の一覧 */}
+                    {dbg.tried && (
+                      <div className="t-num" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        {dbg.tried.map((t, i) => (
+                          <div key={i}>
+                            候補{i + 1}: {srcLabel(t.src)} / 向き{t.o ?? '—'} / δ {t.delta != null ? (t.delta * 100).toFixed(2) + '%' : '—'}
+                            {' '}/ 残差 {t.mad != null ? (t.mad * 100).toFixed(2) + '%' : '—'}
+                            {t.xe != null ? ` / 見出し横 ${(t.xe * 100).toFixed(2)}%` : ''}
+                            {t.ye != null ? ` / 見出し縦 ${(t.ye * 100).toFixed(2)}%` : ''}
+                            {t.note ? ` / ${t.note}` : ''}
+                            {' → '}{t.gate ? `却下(${gateLabel[t.gate] || t.gate})` : '合格'}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {dbg.src != null && (
+                    <div>
+                      位置決め: {srcLabel(dbg.src)}
+                      {dbg.delta != null && <>　·　行補正 δ <span className="t-num">{(dbg.delta * 100).toFixed(2)}%</span></>}
+                      　·　検算 <span className="t-num">{dbg.rows}</span> 行
+                      {dbg.o != null && <>　·　向き <span className="t-num">{dbg.o}</span>(文字の写り <span className="t-num">{dbg.oCover}</span>)</>}
+                    </div>
+                    )}
+                    {dbg.perQ && (
+                    <div className="t-num" style={{ display: 'grid', gridTemplateColumns: '36px 1fr 1fr 1fr 1fr', gap: '1px 10px', marginTop: 6 }}>
+                      <b>No</b><b>はい濃度</b><b>いいえ濃度</b><b>行ずれ</b><b>枠線</b>
+                      {rows.flatMap(q => {
+                        const d = dbg.perQ[q.no]
+                        if (!d) return []
+                        return [
+                          <span key={q.no + 'n'} style={{ fontWeight: 700 }}>{q.paper}</span>,
+                          <span key={q.no + 'y'}>{Math.round(d.fy * 100)}%</span>,
+                          <span key={q.no + 'i'}>{Math.round(d.fn * 100)}%</span>,
+                          <span key={q.no + 'd'}>{(d.dy * 100).toFixed(2)}%</span>,
+                          <span key={q.no + 'r'}>{d.ring}</span>,
+                        ]
+                      })}
+                    </div>
+                    )}
+                    <div style={{ marginTop: 5, color: 'var(--fg-4)' }}>
+                      濃度 30% 以上で塗りと判定。行ずれは版面高さ比の補正量、枠線は楕円の輪郭の検出強度。
+                    </div>
+                  </div>
+                </details>
+              )
+            })()}
             {/* 台帳照合 */}
             <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 10, padding: '10px 12px' }}>
               {assignU ? (
@@ -560,7 +617,7 @@ function ProdImport() {
             </div>
             {/* 設問別の読み取り結果と修正 */}
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {kclSideList(assign.kcl && assign.kcl.side).map(({ no, text }) => {
+              {kclSideList(assign.kcl && assign.kcl.side).map(({ no, paper, text }) => {
                 const k = ansKind(assign.kcl && assign.kcl.answers, no)
                 const [label, fg, bg] = ANS_STYLE[k]
                 const v = ansEdit[no] ?? null
@@ -573,7 +630,8 @@ function ProdImport() {
                 )
                 return (
                   <div key={no} style={{ display: 'grid', gridTemplateColumns: '34px 1fr 92px auto', gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <span className="t-num" style={{ fontSize: 12.5, fontWeight: 700 }}>{no.startsWith('ex') ? '運' + no.slice(2) : no}</span>
+                    {/* 番号は用紙の印刷どおり(公式 No.12=BMI は用紙に無いため連番を振り直してある) */}
+                    <span className="t-num" title={no.startsWith('ex') ? '' : `公式 No.${no}`} style={{ fontSize: 12.5, fontWeight: 700 }}>{paper}</span>
                     <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={text}>{text}</span>
                     {/* 読み取り結果(確からしさ)。修正は右のボタンで */}
                     <span style={{ fontSize: 11.5, fontWeight: 700, textAlign: 'center', borderRadius: 6, padding: '3px 0', color: fg, background: bg, border: k === 'empty' ? '1px solid var(--border-subtle)' : 'none' }}>{label}</span>
@@ -581,6 +639,13 @@ function ProdImport() {
                   </div>
                 )
               })}
+              {/* 公式 No.12(BMI)が一覧に無い理由の説明。「設問が抜けている」という問い合わせ対策 */}
+              {assign.kcl && assign.kcl.side !== 'back' && (
+                <div style={{ fontSize: 11.5, color: 'var(--fg-4)', padding: '7px 2px 0' }}>
+                  番号は用紙の印刷どおりです。基本チェックリスト公式 No.12「BMIが18.5未満ですか」は
+                  本人が回答する設問ではないため用紙・この一覧にはなく、当日の身長・体重の測定値から自動で採点されます（25点満点には含まれます）。
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button className="btn" onClick={() => setAssign(null)}>閉じる</button>

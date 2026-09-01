@@ -35,17 +35,29 @@ async function main() {
       muni: u.muni || 'kashima', muniName: u.muniName || '嘉島町', region: u.region || '嘉島町圏域',
       ward: u.ward || '', careLevel: u.careLevel || '', phone: u.phone || '',
       flags: u.flags || [],
+      ...(u.extId ? { extId: String(u.extId) } : {}),   // 取り込み元台帳での ID(熊本市など)
     }, { merge: true })
     users++; if (++n >= 400) await flush()
 
-    for (const [year, m] of Object.entries(u.meas || {})) {
-      const values = {}
-      for (const k of MEAS_FIELDS) values[k] = (m[k] === undefined ? null : m[k])
-      batch.set(db.collection('measurements').doc(`${u.id}_${year}`), {
+    // 測定と基本チェックリストのある年度をまとめて 1 通の measurements ドキュメントに
+    const yearsAll = new Set([...Object.keys(u.meas || {}), ...Object.keys(u.kcl || {})])
+    for (const year of yearsAll) {
+      const m = (u.meas || {})[year] || {}
+      const doc = {
         userId: String(u.id), year: Number(year), date: m.date || null,
-        values, inbodySmi: (u.inbody && u.inbody[year] && u.inbody[year].smi != null) ? u.inbody[year].smi : null,
+        inbodySmi: (u.inbody && u.inbody[year] && u.inbody[year].smi != null) ? u.inbody[year].smi : null,
         review: !!m.review, source: m.source || '',
-      }, { merge: true })
+      }
+      if ((u.meas || {})[year]) {
+        const values = {}
+        for (const k of MEAS_FIELDS) values[k] = (m[k] === undefined ? null : m[k])
+        doc.values = values
+      } else {
+        doc.inbodyOnly = true   // 体力測定なし(KCL のみ)の年はスコア・参加年に数えない
+      }
+      // 基本チェックリストの実回答(raw: {'設問No': 'yes'|'no'})。アプリは kclAnswers を読む
+      if (u.kcl && u.kcl[year]) doc.kclAnswers = u.kcl[year]
+      batch.set(db.collection('measurements').doc(`${u.id}_${year}`), doc, { merge: true })
       meas++; if (++n >= 400) await flush()
     }
   }

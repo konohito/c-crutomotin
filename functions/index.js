@@ -92,7 +92,8 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '1GiB', timeoutSeconds:
     try {
       const kcl = readKcl(document, content, obj.contentType || 'image/jpeg')
       if (kcl.isKcl) {
-        rec.kcl = { side: kcl.side || null, answers: kcl.answers || {}, readable: !!kcl.readable, reason: kcl.reason || null, via: kcl.via || null }
+        // debug は原因調査用(位置合わせの補正量・設問ごとの濃度)。画面には出さない
+        rec.kcl = { side: kcl.side || null, answers: kcl.answers || {}, readable: !!kcl.readable, reason: kcl.reason || null, via: kcl.via || null, debug: kcl.debug || null }
         rec.needsReview = true
         // シール/手書きの ID にはラベル語が無いことがある → 単独の 5 桁数字を ID として拾う
         if (!rec.ocrId) {
