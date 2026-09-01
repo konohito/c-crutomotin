@@ -15,6 +15,7 @@ const { processDocument } = require('./src/documentai')
 const { mapDocumentToSheet } = require('./src/mapping')
 const { parseStoragePath, buildRecognitionDoc } = require('./src/recognition')
 const { readKcl } = require('./src/kclread')
+const { readSheetVision, mergeKcl, kclFromVision } = require('./src/visionread')
 
 admin.initializeApp()
 
@@ -102,6 +103,29 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '1GiB', timeoutSeconds:
         }
       }
     } catch (err2) { console.error('kclread error:', name, err2) }
+    /* ビジョン AI(Gemini)でも写真を読み、結果を統合する。
+       - 問診票: 幾何ロジックの読みと統合(読めなかった設問の補完 + 正反対の主張は要確認へ)
+       - ID・氏名: OCR で取れなかったときの補完(照合で名前が出ないケースの救済)
+       - 文字認識ごと失敗した問診票の写真: ビジョン AI 単独で読む
+       呼び出しに失敗しても従来の結果のまま進む(ログにだけ残す)。 */
+    try {
+      const vis = await readSheetVision(content, obj.contentType || 'image/jpeg')
+      if (vis) {
+        if (!rec.ocrId && vis.id) rec.ocrId = vis.id
+        if (!rec.ocrName && vis.name) rec.ocrName = vis.name
+        if (!rec.ocrKana && vis.kana) rec.ocrKana = vis.kana
+        if (rec.kcl && vis.type === 'kcl') {
+          rec.kcl = mergeKcl(rec.kcl, vis)
+        } else if (!rec.kcl && vis.type === 'kcl') {
+          const kv = kclFromVision(vis)
+          if (kv) {
+            rec.kcl = kv
+            rec.needsReview = true
+          }
+        }
+        if (rec.kcl && rec.kcl.debug) rec.kcl.debug.visionModel = vis.model || null
+      }
+    } catch (err3) { console.error('visionread error:', name, err3.message || err3) }
     await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: FieldValue.serverTimestamp() })
     // 飛び込み用紙(様式 R7-02W)はトップレベルの walkins にも複製し、
     // 「飛び込み読み込み」画面が索引なしの単純クエリで購読できるようにする
