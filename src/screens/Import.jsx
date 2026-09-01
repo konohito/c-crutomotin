@@ -568,6 +568,12 @@ function ProdImport() {
                       {dbg.o != null && <>　·　向き <span className="t-num">{dbg.o}</span>(文字の写り <span className="t-num">{dbg.oCover}</span>)</>}
                     </div>
                     )}
+                    {/* ビジョン AI が呼べなかったときはその理由を表示(権限・API 無効などの切り分け) */}
+                    {dbg.visionError && (
+                    <div style={{ marginTop: 4, color: 'var(--danger-700)' }}>
+                      ビジョンAI エラー: {dbg.visionError}
+                    </div>
+                    )}
                     {/* ビジョン AI の読み取り統合の内訳(一致=幾何ロジックと同じ読み / 補完=AIだけが読めた / 衝突=正反対で要確認へ) */}
                     {dbg.vision && (
                     <div style={{ marginTop: 4 }}>
