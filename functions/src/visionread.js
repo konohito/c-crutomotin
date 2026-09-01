@@ -90,7 +90,12 @@ async function callVertex(imageBuffer, mimeType) {
       })
       const txt = await res.text()
       if (res.status === 404) { lastErr = new Error(`モデル ${model} が見つかりません`); continue }
-      if (!res.ok) throw new Error(`Vertex AI ${res.status}: ${txt.slice(0, 300)}`)
+      if (!res.ok) {
+        // Vertex のエラー JSON から要点(message)だけを取り出す(権限不足・API 無効などの切り分け用)
+        let msg = txt.slice(0, 300)
+        try { const ej = JSON.parse(txt); if (ej.error && ej.error.message) msg = ej.error.message.slice(0, 300) } catch { /* 生テキストのまま */ }
+        throw new Error(`Vertex AI ${res.status}: ${msg}`)
+      }
       const data = JSON.parse(txt)
       const parts = (((data.candidates || [])[0] || {}).content || {}).parts || []
       const out = parts.map(p => p.text || '').join('')

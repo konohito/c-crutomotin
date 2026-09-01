@@ -125,7 +125,13 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '1GiB', timeoutSeconds:
         }
         if (rec.kcl && rec.kcl.debug) rec.kcl.debug.visionModel = vis.model || null
       }
-    } catch (err3) { console.error('visionread error:', name, err3.message || err3) }
+    } catch (err3) {
+      console.error('visionread error:', name, err3.message || err3)
+      // 失敗理由を読み取り診断に表示し、現地で原因(権限・API 無効など)を切り分けられるようにする
+      if (rec.kcl) {
+        rec.kcl.debug = { ...(rec.kcl.debug || {}), visionError: String(err3.message || err3).slice(0, 300) }
+      }
+    }
     await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: FieldValue.serverTimestamp() })
     // 飛び込み用紙(様式 R7-02W)はトップレベルの walkins にも複製し、
     // 「飛び込み読み込み」画面が索引なしの単純クエリで購読できるようにする
