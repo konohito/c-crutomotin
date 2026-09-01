@@ -66,7 +66,7 @@ jobs:
             echo "DOCAI_LOCATION=${{ vars.DOCAI_LOCATION || 'us' }}"
             echo "DOCAI_PROCESSOR_ID=${{ vars.DOCAI_PROCESSOR_ID }}"
             echo "OCR_ALLOW_ORIGIN=${{ vars.OCR_ALLOW_ORIGIN || 'https://cruto-motion.web.app' }}"
-            echo "GEMINI_MODEL=${{ vars.GEMINI_MODEL || 'gemini-2.5-pro' }}"
+            echo "GEMINI_MODEL=${{ vars.GEMINI_MODEL || '' }}"
             echo "VISION_READ=${{ vars.VISION_READ || '1' }}"
           } > .env
 
