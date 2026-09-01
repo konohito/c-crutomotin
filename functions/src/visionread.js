@@ -16,7 +16,13 @@ const { GoogleAuth } = require('google-auth-library')
 const { QS } = require('./kclread')
 
 const ENABLED = process.env.VISION_READ !== '0'
-const MODELS = [...new Set([process.env.GEMINI_MODEL || 'gemini-2.5-pro', 'gemini-2.5-pro', 'gemini-2.5-flash'])]
+/* モデル候補(先頭から順に試し、無い/混雑なら次へ)。GEMINI_MODEL で先頭を差し替え可能。
+   新しい世代ほど読み取り精度が高い想定で、最新 → 安定版の順に並べる。 */
+const MODELS = [...new Set([
+  process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
+  'gemini-3.1-pro-preview', 'gemini-3-pro-preview',
+  'gemini-2.5-pro', 'gemini-2.5-flash',
+])]
 const MAX_BYTES = 15 * 1024 * 1024   // Vertex のインライン上限(20MB)手前で足切り
 const TIMEOUT_MS = 90 * 1000
 
@@ -89,7 +95,9 @@ async function callVertex(imageBuffer, mimeType) {
         body, signal: ctl.signal,
       })
       const txt = await res.text()
+      // モデルが存在しない(404)・混雑や割当超過(429)は次の候補モデルで続行する
       if (res.status === 404) { lastErr = new Error(`モデル ${model} が見つかりません`); continue }
+      if (res.status === 429) { lastErr = new Error(`モデル ${model} が混雑/割当超過です`); continue }
       if (!res.ok) {
         // Vertex のエラー JSON から要点(message)だけを取り出す(権限不足・API 無効などの切り分け用)
         let msg = txt.slice(0, 300)
