@@ -1,6 +1,7 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import D from '../data/engine.js'
 import { useStore, readCsvFile } from '../store.jsx'
+import { importNormalized, dbEnabled } from '../lib/db.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -19,7 +20,45 @@ export default function CsvImport() {
   const { state, set, showToast } = useStore()
   const fileRef = useRef(null)
 
-  const onFile = (file) => readCsvFile({ file, state, set, showToast })
+  /* 過去データ(正規化 JSON)のブラウザ取り込み。
+     etl スクリプト(functions/scripts/etl-*.py)の出力をそのままドラッグすると、
+     内容の確認カードを出してから users / measurements へ投入する。
+     ターミナルや gcloud を使わずに過去年度のデータを取り込むための経路。 */
+  const [jsonImp, setJsonImp] = useState(null)   // { name, data, years: {年度: 人数} }
+  const [jsonBusy, setJsonBusy] = useState(0)    // 0=確認待ち / >0=処理済み人数 / -1=完了
+
+  const onJson = async (file) => {
+    if (!dbEnabled()) { showToast('公開デモでは JSON 取り込みは使えません'); return }
+    let data
+    try { data = JSON.parse(await file.text()) } catch { showToast('JSON を読み込めませんでした'); return }
+    if (!Array.isArray(data) || !data.some(u => u && u.id && u.name)) {
+      showToast('正規化 JSON(etl スクリプトの出力)ではないようです'); return
+    }
+    const years = {}
+    for (const u of data) {
+      for (const y of new Set([...Object.keys(u.meas || {}), ...Object.keys(u.kcl || {})])) years[y] = (years[y] || 0) + 1
+    }
+    setJsonImp({ name: file.name, data, years })
+    setJsonBusy(0)
+  }
+  const runJson = async () => {
+    setJsonBusy(1)
+    try {
+      const res = await importNormalized(jsonImp.data, (u) => setJsonBusy(u))
+      setJsonBusy(-1)
+      showToast(`取り込み完了: ${res.users} 名 / 測定 ${res.meas} 件。台帳を読み込み直します`)
+      setTimeout(() => window.location.reload(), 1500)
+    } catch (e) {
+      setJsonBusy(0)
+      showToast('取り込みに失敗しました: ' + ((e && e.message) || e))
+    }
+  }
+
+  const onFile = (file) => {
+    if (!file) return
+    if (/\.json$/i.test(file.name || '')) { onJson(file); return }
+    readCsvFile({ file, state, set, showToast })
+  }
 
   return (
     <div className="screen" style={{ maxWidth: 860 }}>
@@ -40,14 +79,38 @@ export default function CsvImport() {
         <div style={{ width: 52, height: 52, borderRadius: 12, background: 'var(--brand-50)', color: 'var(--brand-600)', display: 'grid', placeItems: 'center' }}>
           <Icon name="file" size={26} />
         </div>
-        <div style={{ fontSize: 15.5, fontWeight: 700, marginTop: 4 }}>名簿・記録・InBody の CSV をここにドラッグ＆ドロップ</div>
-        <div style={{ fontSize: 12.5, color: 'var(--fg-3)' }}>Excel / LookinBody の書き出し（Shift_JIS / UTF-8）に対応 · 1 行 = 1 名 · 形式は自動判別</div>
+        <div style={{ fontSize: 15.5, fontWeight: 700, marginTop: 4 }}>名簿・記録・InBody の CSV / 過去データの JSON をここにドラッグ＆ドロップ</div>
+        <div style={{ fontSize: 12.5, color: 'var(--fg-3)' }}>Excel / LookinBody の書き出し（Shift_JIS / UTF-8）と、過去データの正規化 JSON に対応 · 形式は自動判別</div>
         <button className="btn btn-primary" style={{ marginTop: 8 }}>
           <Icon name="upload" size={15} strokeWidth={1.8} />
           ファイルを選択…
         </button>
-        <input type="file" accept=".csv,text/csv" ref={fileRef} onChange={(e) => { onFile(e.target.files && e.target.files[0]); e.target.value = '' }} style={{ display: 'none' }} />
+        <input type="file" accept=".csv,text/csv,.json,application/json" ref={fileRef} onChange={(e) => { onFile(e.target.files && e.target.files[0]); e.target.value = '' }} style={{ display: 'none' }} />
       </div>
+
+      {/* 正規化 JSON の取り込み確認(件数を見せてから投入する) */}
+      {jsonImp && (
+        <Card pad>
+          <div className="t-h4">過去データの取り込み（正規化 JSON）</div>
+          <div style={{ fontSize: 12.5, color: 'var(--fg-2)', marginTop: 8, lineHeight: 1.8 }}>
+            <span className="t-num">{jsonImp.name}</span> · <b>{jsonImp.data.filter(u => u && u.id && u.name).length} 名</b>
+            {Object.keys(jsonImp.years).length > 0 && (
+              <>　·　年度別: {Object.entries(jsonImp.years).sort((a, b) => a[0].localeCompare(b[0])).map(([y, c]) => `${y}年 ${c}名`).join(' / ')}</>
+            )}
+            <br />既存の台帳は消えません（同じ ID の方は情報を補完・更新します）。
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14 }}>
+            {jsonBusy === 0 && (
+              <>
+                <button className="btn btn-primary" onClick={runJson}>この内容で取り込む</button>
+                <button className="btn btn-outline" onClick={() => setJsonImp(null)}>やめる</button>
+              </>
+            )}
+            {jsonBusy > 0 && <div style={{ fontSize: 13, color: 'var(--fg-2)' }}>取り込み中… <span className="t-num">{jsonBusy}</span> 名</div>}
+            {jsonBusy === -1 && <div style={{ fontSize: 13, color: 'var(--success-700)', fontWeight: 700 }}>完了しました。台帳を読み込み直します…</div>}
+          </div>
+        </Card>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: 16, alignItems: 'start' }}>
         <Card pad>

@@ -258,3 +258,52 @@ export async function commitRecognition({ batchId, recognitionId, user, finalVal
   await batch.commit()
   return mid
 }
+
+/* 過去データ(正規化 JSON)のブラウザ取り込み。
+   functions/scripts/etl-*.py が出力する normalized*.json を、職員ログインのまま
+   そのまま投入する(ターミナル・gcloud 不要)。書き込み内容は scripts/seed-firestore.mjs と同一:
+   - users/{id}            … 名簿(merge。既存の方は上書きせず補完)
+   - measurements/{id}_{年} … 年度ごとの測定値 + 基本チェックリスト回答(kclAnswers)
+   onProgress(処理済み人数) で進捗を返す。 */
+export async function importNormalized(data, onProgress) {
+  if (!dbEnabled()) throw new Error('Firebase 未設定です(公開デモでは使えません)')
+  const { fs, db } = await getFs()
+  const MEAS_FIELDS = ['walk5', 'walk5max', 'balR', 'balL', 'gripR', 'gripL', 'tug', 'height', 'weight', 'bmi']
+  let batch = fs.writeBatch(db), n = 0, users = 0, meas = 0
+  const flush = async () => { await batch.commit(); batch = fs.writeBatch(db); n = 0 }
+  for (const u of data) {
+    if (!u || !u.id || !u.name) continue
+    batch.set(fs.doc(db, 'users', String(u.id)), {
+      id: String(u.id), name: u.name || '', kana: u.kana || '', sex: u.sex || null,
+      birthDate: u.birthDate || '', birth: u.birth || null,
+      muni: u.muni || '', muniName: u.muniName || '', region: u.region || '',
+      ward: u.ward || '', careLevel: u.careLevel || '', phone: u.phone || '',
+      flags: u.flags || [],
+      ...(u.extId ? { extId: String(u.extId) } : {}),   // 取り込み元台帳での ID
+    }, { merge: true })
+    users++; if (++n >= 400) await flush()
+
+    const yearsAll = new Set([...Object.keys(u.meas || {}), ...Object.keys(u.kcl || {})])
+    for (const year of yearsAll) {
+      const m = (u.meas || {})[year] || {}
+      const doc = {
+        userId: String(u.id), year: Number(year), date: m.date || null,
+        inbodySmi: (u.inbody && u.inbody[year] && u.inbody[year].smi != null) ? u.inbody[year].smi : null,
+        review: !!m.review, source: m.source || '',
+      }
+      if ((u.meas || {})[year]) {
+        const values = {}
+        for (const k of MEAS_FIELDS) values[k] = (m[k] === undefined ? null : m[k])
+        doc.values = values
+      } else {
+        doc.inbodyOnly = true   // 体力測定なし(KCL のみ)の年はスコア・参加年に数えない
+      }
+      if (u.kcl && u.kcl[year]) doc.kclAnswers = u.kcl[year]
+      batch.set(fs.doc(db, 'measurements', `${u.id}_${year}`), doc, { merge: true })
+      meas++; if (++n >= 400) await flush()
+    }
+    if (onProgress) onProgress(users)
+  }
+  if (n > 0) await batch.commit()
+  return { users, meas }
+}
