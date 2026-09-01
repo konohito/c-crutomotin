@@ -539,8 +539,8 @@ function ProdImport() {
             {assign.kcl && assign.kcl.debug && (() => {
               const dbg = assign.kcl.debug
               const rows = kclSideList(assign.kcl.side)
-              const srcLabel = (s) => (s === 'text' ? '文字範囲' : s === 'bright' ? '明るさ' : String(s || '—'))
-              const gateLabel = { rows: '設問行の突き合わせ', colX: '列見出しの位置(横)', colY: '列見出しの位置(縦)' }
+              const srcLabel = (s) => (s === 'text' ? '文字範囲' : s === 'bright' ? '明るさ' : s === 'rows' ? '設問行から直接' : String(s || '—'))
+              const gateLabel = { rows: '設問行の突き合わせ', colX: '列見出しの位置(横)', colY: '列見出しの位置(縦)', orient: '写真の向きの確定' }
               return (
                 <details style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
                   <summary style={{ cursor: 'pointer' }}>読み取り診断（開発用）</summary>
@@ -554,6 +554,7 @@ function ProdImport() {
                             {' '}/ 残差 {t.mad != null ? (t.mad * 100).toFixed(2) + '%' : '—'}
                             {t.xe != null ? ` / 見出し横 ${(t.xe * 100).toFixed(2)}%` : ''}
                             {t.ye != null ? ` / 見出し縦 ${(t.ye * 100).toFixed(2)}%` : ''}
+                            {t.note ? ` / ${t.note}` : ''}
                             {' → '}{t.gate ? `却下(${gateLabel[t.gate] || t.gate})` : '合格'}
                           </div>
                         ))}
@@ -561,9 +562,10 @@ function ProdImport() {
                     )}
                     {dbg.src != null && (
                     <div>
-                      マーカー検出: {srcLabel(dbg.src)}
-                      　·　行補正 δ <span className="t-num">{(dbg.delta * 100).toFixed(2)}%</span>
+                      位置決め: {srcLabel(dbg.src)}
+                      {dbg.delta != null && <>　·　行補正 δ <span className="t-num">{(dbg.delta * 100).toFixed(2)}%</span></>}
                       　·　検算 <span className="t-num">{dbg.rows}</span> 行
+                      {dbg.o != null && <>　·　向き <span className="t-num">{dbg.o}</span>(文字の写り <span className="t-num">{dbg.oCover}</span>)</>}
                     </div>
                     )}
                     {dbg.perQ && (

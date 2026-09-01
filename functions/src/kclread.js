@@ -637,11 +637,70 @@ function readKcl(document, imageBuffer, mimeType) {
   }
   if (!omCands.length) return unreadable('画像の向きが認識結果と一致しませんでした(撮影時の回転情報)')
 
+  /* 向き候補ごとに「設問行の箱に文字のインクが写っている割合」を測る。
+     四隅マーカーは用紙上でほぼ点対称に置かれているため、上下逆さの候補でも
+     四隅の四角形・設問行の突き合わせ・列見出しの検算がすべて数値上通ってしまう
+     (ホモグラフィが正しい向きと一致する)。その場合も画素の中身は逆さであり、
+     回答欄の位置に写るのは対称の位置の設問文・丸数字で、文字を塗りと誤認して
+     はい・いいえを逆に読む誤読が起きる。OCR の行の箱を実際にサンプリングすれば
+     逆さの候補はインクの写りがまばらになるので、明らかに劣る候補はここで除く。 */
+  const inkCover = (om) => {
+    const W = om.W, H = om.H, rw = img.width, data = img.data
+    const lum = (fx, fy) => {
+      const xi = fx <= 0 ? 0 : fx >= W - 1 ? W - 1 : Math.round(fx)
+      const yi = fy <= 0 ? 0 : fy >= H - 1 ? H - 1 : Math.round(fy)
+      const [rx, ry] = om.at(xi, yi)
+      const i = ((ry * rw) + rx) * 4
+      return 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]
+    }
+    /* 1 行ぶんの箱を横 24 列 × 縦 7 点でサンプリングし、「インクのある列」が
+       箱の左端から右端まで(4 分割のすべてで)そろっているかを見る。
+       正しい向きなら設問の文字が箱の幅いっぱいに並ぶので 4/4 になる。
+       逆さ・回転違いでは対称の位置の余白や別の行の一部が写り、列のそろいが
+       端で欠ける(傾いた写真でも、外接箱のどの列にも文字のどこかが入るため
+       この指標は傾きに影響されない)。 */
+    const ls = Object.values(rowLine).map(l => lineToPx(l, W, H))
+    const stepN = Math.max(1, Math.floor(ls.length / 8))
+    const covs = []
+    for (let li = 0; li < ls.length; li += stepN) {
+      const b = ls[li]
+      const x0 = b.x0 + (b.x1 - b.x0) * 0.03, x1 = b.x1 - (b.x1 - b.x0) * 0.03
+      const y0 = b.y0 + (b.y1 - b.y0) * 0.04, y1 = b.y1 - (b.y1 - b.y0) * 0.04
+      // 縦の点は細い横画(2〜3px)を取りこぼさない 2px 間隔で(傾いた写真は箱が縦に膨らむ)
+      const COLS = 24, ROWS = Math.min(24, Math.max(9, Math.ceil((y1 - y0) / 2)))
+      const lums = []
+      for (let c = 0; c < COLS; c++) {
+        for (let r2 = 0; r2 < ROWS; r2++) {
+          lums.push(lum(x0 + ((x1 - x0) * (c + 0.5)) / COLS, y0 + ((y1 - y0) * r2) / (ROWS - 1)))
+        }
+      }
+      const sorted = [...lums].sort((a, b2) => a - b2)
+      const thr = sorted[Math.floor(sorted.length * 0.85)] * 0.72
+      const hit = []
+      for (let c = 0; c < COLS; c++) {
+        let h2 = false
+        for (let r2 = 0; r2 < ROWS; r2++) if (lums[c * ROWS + r2] < thr) { h2 = true; break }
+        hit.push(h2)
+      }
+      let qOk = 0
+      for (let q = 0; q < 4; q++) {
+        const a2 = (COLS / 4) * q, b2 = (COLS / 4) * (q + 1)
+        let nHit = 0
+        for (let c = a2; c < b2; c++) if (hit[c]) nHit++
+        if (nHit >= (b2 - a2) * 0.34) qOk++
+      }
+      covs.push(qOk / 4)
+    }
+    return covs.length ? median(covs) : 0
+  }
+  const omScored = omCands.map(c => ({ ...c, s: inkCover(c.om) })).sort((a, b) => b.s - a.s)
+  const omUse = omScored.filter(c => c.s >= omScored[0].s - 0.25)
+
   const tokens = positioned(document, 'tokens')
   const qLines = new Set(Object.values(rowLine))
   let sawMaps = false
   const allTried = []   // 検算に落ちた候補の記録(読取不可時に原因を示すため保存する)
-  for (const { o, om } of omCands) {
+  for (const { o, om } of omUse) {
     const W = om.W, H = om.H
     /* 設問行と全行の位置を表示向きの画素に直す(折り返し設問の続き行の特定は、
        傾いた写真だと画素座標では行の高さが正しく取れないため、位置合わせ後に
@@ -681,10 +740,43 @@ function readKcl(document, imageBuffer, mimeType) {
 
   /* マーカー方式がどの向きでも成立しないとき(マーカーが写っていない・検算で全候補
      却下)は、設問の文字行の右にある楕円ペアを直接探す第 2 の経路で読む。
-     こちらは向きの検算手段を持たないため、最も信頼できる向き(EXIF どおり)だけで行う
-     (向きを取り違えたまま読むと はい・いいえ が反転しかねないため)。 */
+     この経路は写像の検算(四隅)を持たないため、先に向きを 2 段で確かめる:
+     (1) 用紙が OCR 座標系で正立していること。設問行の箱が横長で、印刷順に上から
+         並んでいること。横倒し・逆さの座標系のまま「行の右」を探すと、そこに
+         あるのは別の設問の欄で、はい・いいえの取り違えが起きる。
+     (2) 画素の向き(om)が OCR と合っていること。EXIF が失われた写真では 90 度
+         回転の 2 候補(互いに 180 度違い)が残る。以前は最初の候補を無検算で
+         使っており、逆さの候補を掴むと対称の位置の文字・丸数字を楕円ペアと誤認し、
+         別の行を左右逆に読む誤読(はい・いいえの反転)が実地で起きていた。
+         設問行の箱の中を実際にサンプリングし、文字のインクが箱の幅いっぱいに
+         写っている候補を選ぶ(逆さだと箱の位置に写るのは余白や別の行の一部で、
+         インクの入り方がまばらになる)。 */
   {
-    const { o, om } = omCands[0]
+    // (1) 用紙の正立(OCR 座標系。om の縦横比は候補間で同じなので先頭で代表して見る)
+    const geomOk = (() => {
+      const om0 = omCands[0].om
+      const ps = []
+      for (const [k] of QS) {
+        const ln = rowLine[String(k)]
+        if (ln) ps.push(lineToPx(ln, om0.W, om0.H))
+      }
+      if (ps.length < 5) return false
+      const asp = median(ps.map(b => (b.x1 - b.x0) / Math.max(1, b.y1 - b.y0)))
+      if (asp < 1.5) return false                      // 箱が横長でない = 用紙が横倒し
+      let bad = 0
+      for (let i = 1; i < ps.length; i++) if (ps[i].cy <= ps[i - 1].cy) bad++
+      return bad <= 1                                  // 印刷順に上から並んでいる
+    })()
+    // (2) 画素の向き: 冒頭で測ったインクの写り(omScored)の最良候補を使う
+    const chosen = geomOk ? omScored[0] : null
+    const second = omScored.length > 1 ? omScored[1].s : 0
+    const oOk = chosen && chosen.s >= 0.75 && (omScored.length === 1 || chosen.s >= second + 0.25)
+    if (!oOk) {
+      // 向きを確定できない写真をこの経路で無理に読むと誤読側に倒れるため手を引く
+      allTried.push({ src: 'rows', gate: 'orient', note: !geomOk ? '用紙が正立していない/設問行が不足'
+        : `文字の写り ${omScored.map(c => `向き${c.o}:${c.s.toFixed(2)}`).join(' / ')}` })
+    } else {
+    const { o, om } = chosen
     const W = om.W, H = om.H
     const rowPos = {}
     for (const [k, ln] of Object.entries(rowLine)) rowPos[k] = lineToPx(ln, W, H)
@@ -703,7 +795,11 @@ function readKcl(document, imageBuffer, mimeType) {
       }
     }
     const byRows = readByRows(img, om, keys, rowPos, allPos, hint)
-    if (byRows) return { isKcl: true, side, answers: byRows.answers, readable: true, orient: o, via: 'rows', debug: byRows.debug }
+    if (byRows) {
+      const debug = { ...byRows.debug, o, oCover: Math.round(chosen.s * 100) / 100 }
+      return { isKcl: true, side, answers: byRows.answers, readable: true, orient: o, via: 'rows', debug }
+    }
+    }
   }
 
   /* どの向きでも成立しなかったときは、無理に推定せず要確認へ回す。

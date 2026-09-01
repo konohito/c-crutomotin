@@ -61,6 +61,13 @@ for (let i = 0; i < N; i++) {
     armShadow: rnd() < 0.22,
     dropKeys: null,
   }
+  /* マーカーが写っていない写真(rows 経路)。この経路は強い傾き・遠近では
+     手を引く設計なので、経路の守備範囲内の条件に限って混ぜる。
+     'bottom' は用紙の下端切れ(下 2 隅だけ欠け)の再現。 */
+  if (Math.abs(p.tiltDeg) < 2.5 && Math.abs(p.persp) < 0.07) {
+    const r = rnd()
+    p.noMarkers = r < 0.12 ? true : r < 0.2 ? 'bottom' : false
+  }
   const cfg = H.SIDES[p.side]
   if (rnd() < 0.15) {
     const ks = cfg.rows.map(r => String(r.key))

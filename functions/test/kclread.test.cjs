@@ -238,6 +238,20 @@ run('マーカーなし + 明るい机 + 傾き -3 度', { noMarkers: true, desk
 run('マーカーなし + うら面', { noMarkers: true, side: 'back', expectVia: 'rows' })
 run('マーカーなし + 白紙', { noMarkers: true, blank: true, expectVia: 'rows' })
 run('マーカーなし + 反り 14px', { noMarkers: true, curlAmp: 14, expectVia: 'rows' })
+/* 向き情報が失われた写真では 90 度回転の 2 候補(互いに 180 度違い)が残る。
+   マーカー方式は設問行との突き合わせで正しい向きを選べるが、rows 経路は以前
+   最初の候補を無検算で使っており、逆さの候補を掴むと対称の位置の文字・丸数字を
+   楕円ペアと誤認して別の行を左右逆に読む誤読(はい・いいえの反転)が実地で起きた。
+   現在は設問行の箱のインクの写りで向きを選んでから読む。 */
+run('マーカーなし + 90 度回転保存 + EXIF なし', { noMarkers: true, orient: 6, exifOn: false, expectVia: 'rows' })
+run('マーカーなし + 反対向き 90 度 + EXIF なし', { noMarkers: true, orient: 8, exifOn: false, expectVia: 'rows' })
+run('マーカーなし + 上下逆さ + EXIF なし', { noMarkers: true, orient: 3, exifOn: false, expectVia: 'rows' })
+run('うら面 + マーカーなし + 反対向き 90 度 + EXIF なし', { side: 'back', noMarkers: true, orient: 8, exifOn: false, expectVia: 'rows' })
+run('うら面 + マーカーなし + 上下逆さ + EXIF なし', { side: 'back', noMarkers: true, orient: 3, exifOn: false, expectVia: 'rows' })
+/* 用紙の下端が切れて下 2 隅のマーカーが写っていない写真(実地で多い)。
+   誤った四角形(下隅に塗り楕円などを拾う)は検算で却下され、rows 経路で読めること */
+run('下 2 隅のマーカーなし(用紙の下端切れ)', { noMarkers: 'bottom', expectVia: 'rows' })
+run('うら面 + 下 2 隅のマーカーなし + 傾き 2 度', { side: 'back', noMarkers: 'bottom', tiltDeg: 2, expectVia: 'rows' })
 // 設問の文字がまったく読めない写真は、誤答を出さず読み取り不可にする
 {
   const cfg = H.SIDES.front, lay = H.layout(cfg, 'seal')

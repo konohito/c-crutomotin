@@ -195,8 +195,80 @@ function makeImage(xf, cfg, lay, o = {}) {
       }
     }
   }
-  // 四隅の位置合わせマーカー(読み取りはこれを基準に用紙座標へ引き直す)
-  const MK = o.noMarkers ? {} : LAYOUT.markers
+  /* --- 印刷されている文字のインク(実物の再現) ---------------------------------
+     実際の用紙には設問文・見出し・行頭の丸数字が黒く印刷されている。これを描かないと
+     「向きを取り違えて対称の位置を読む」誤読(文字や丸数字を塗りと誤認する)が
+     合成写真では再現できない。座標は makeDoc の put と同じ式を使うこと。 */
+  const glyphs = (x0, y0, x1, y1) => {
+    const ch = Math.max(6, (y1 - y0) * 0.9)
+    const n = Math.max(1, Math.round((x1 - x0) / ch))
+    for (let ci = 0; ci < n; ci++) {
+      const cx0 = x0 + ((x1 - x0) * ci) / n, cx1 = x0 + ((x1 - x0) * (ci + 1)) / n
+      const kind = (ci * 7 + Math.round(x0) * 3 + Math.round(y0)) % 4
+      for (let Y = y0 + (y1 - y0) * 0.12; Y <= y1 - (y1 - y0) * 0.12; Y += 1) {
+        for (let X = cx0 + (cx1 - cx0) * 0.1; X <= cx1 - (cx1 - cx0) * 0.1; X += 1) {
+          const u = (X - cx0) / (cx1 - cx0), v = (Y - y0) / (y1 - y0)
+          // 実際の印刷文字のインク被覆率(3〜4 割)に合わせた画のパターン
+          const on = kind === 0 ? ((u > 0.15 && u < 0.3) || (v > 0.44 && v < 0.56))
+            : kind === 1 ? (u < 0.12 || u > 0.88 || v < 0.14 || v > 0.86)
+            : kind === 2 ? ((v > 0.2 && v < 0.34) || (v > 0.66 && v < 0.8))
+            : Math.abs(u - v) < 0.14
+          if (!on) continue
+          const [ix, iy] = xf.fwd(X, Y)
+          ink(ix, iy, 45)
+        }
+      }
+    }
+  }
+  // 行頭の丸数字(丸い枠 + 中の数字)。左端に縦一列に並ぶ = 逆さ読みの誤ロック源になりやすい
+  const numCircle = (cyPage) => {
+    const cx = 64, r = 11
+    for (let Y = cyPage - r - 1; Y <= cyPage + r + 1; Y++) {
+      for (let X = cx - r - 1; X <= cx + r + 1; X++) {
+        const d2 = ((X - cx) / r) ** 2 + ((Y - cyPage) / r) ** 2
+        const inner = d2 < 0.62 && Math.abs(X - cx) < r * 0.42 && Math.abs(Y - cyPage) < r * 0.62 &&
+          ((X - cx + 100) % 3 < 1.5)   // 数字らしい縦の画
+        if (!(d2 <= 1 && d2 >= 0.62) && !inner) continue
+        const [ix, iy] = xf.fwd(X, Y)
+        ink(ix, iy, 45)
+      }
+    }
+  }
+  {
+    glyphs(60, 100, 620, 130)                                        // 表題
+    if (cfg.intro) glyphs(90, 250, 700, 274)                         // 記入方法の説明
+    const COLY = table[String(cfg.rows[0].key)].yes[0] * PAGE_W
+    const COLN = table[String(cfg.rows[0].key)].no[0] * PAGE_W
+    lay.headers.forEach((hy0, si) => {
+      const hy = hy0 + curl(hy0)
+      glyphs(60, hy - 9, 260, hy + 15)                               // セクション見出し
+      glyphs(COLY - 22, hy - 13, COLY + 22, hy + 13)                 // 「はい」列見出し
+      glyphs(COLN - 28, hy - 13, COLN + 28, hy + 13)                 // 「いいえ」列見出し
+    })
+    if (cfg.example && lay.exampleY != null) {
+      const ey = lay.exampleY + curl(lay.exampleY)
+      glyphs(80, ey - 11, 300, ey + 11)
+    }
+    cfg.rows.forEach((r, idx) => {
+      const cy = lay.rowY[idx] + curl(lay.rowY[idx])
+      const parts = r.text.split('|')
+      if (parts.length === 1) {
+        glyphs(80, cy - LINE_H / 2, 600, cy + LINE_H / 2)
+      } else {
+        const y1 = cy - LINE_H * 0.62, y2 = cy + LINE_H * 0.62
+        glyphs(80, y1 - LINE_H / 2, 600, y1 + LINE_H / 2)
+        glyphs(96, y2 - LINE_H / 2, 300, y2 + LINE_H / 2)
+      }
+      numCircle(cy)
+    })
+    if (cfg.side === 'front') glyphs(300, 1042, 494, 1064)           // 下端の案内
+  }
+
+  // 四隅の位置合わせマーカー(読み取りはこれを基準に用紙座標へ引き直す)。
+  // noMarkers: true=マーカーなし / 'bottom'=下 2 隅だけ写っていない(用紙の下端切れ)
+  const MK = o.noMarkers === true ? {}
+    : o.noMarkers === 'bottom' ? { tl: LAYOUT.markers.tl, tr: LAYOUT.markers.tr }
+    : LAYOUT.markers
   const mkHalf = (17 / 2)
   for (const k of Object.keys(MK)) {
     const cxP = MK[k][0] * PAGE_W, cyP = MK[k][1] * PAGE_H

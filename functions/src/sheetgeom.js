@@ -100,6 +100,11 @@ function darkSquares(sm, rect, expectPx) {
     if (cw < expect * 0.4 || cw > expect * 3) return false
     if (ch < expect * 0.4 || ch > expect * 3) return false
     if (cw / ch < 0.5 || cw / ch > 2) return false     // ほぼ正方形(丸も含む)
+    /* べた塗りであること。マーカーは中まで黒い正方形だが、印刷された文字(漢字)や
+       行頭の丸数字は線の集まりで、外接箱に対するインクの割合が低い。
+       これを通すと文字のかたまりを隅に拾った「わずかにずれた四角形」ができ、
+       検算をすり抜けて行ずれの誤読につながる。 */
+    if (c.n < cw * ch * 0.55) return false
     return c.cx >= rect.x0 && c.cx <= rect.x1 && c.cy >= rect.y0 && c.cy <= rect.y1
   })
 }
@@ -250,7 +255,13 @@ function buildMapping(mk, layout) {
    四角形の組み合わせを選ぶ。expectPx はマーカーの一辺の期待値(縮小画素)。 */
 function quadsFromRect(sm, rect, textRect, layout, expectPx) {
   const { step } = sm
-  const cand = darkSquares(sm, rect, expectPx)
+  /* マーカーは必ず文字範囲の外(用紙の余白)にある。印刷された文字・丸数字は
+     マーカーと同じ大きさの黒いかたまりに見えるため、文字範囲の内側の候補は除く
+     (わずかに範囲を狭めてから判定し、境界上のマーカーを誤って落とさない)。 */
+  const txw = (textRect.x1 - textRect.x0) * 0.02, txh = (textRect.y1 - textRect.y0) * 0.02
+  const inText = (c) => c.cx > textRect.x0 + txw && c.cx < textRect.x1 - txw
+    && c.cy > textRect.y0 + txh && c.cy < textRect.y1 - txh
+  const cand = darkSquares(sm, rect, expectPx).filter(c => !inText(c))
   if (cand.length < 4) return []
   // 文字範囲の中心で四象限に分け、各象限で探索範囲の隅に近い候補を数個ずつ試す
   const cx = (textRect.x0 + textRect.x1) / 2, cy = (textRect.y0 + textRect.y1) / 2
@@ -281,7 +292,7 @@ function quadsFromRect(sm, rect, textRect, layout, expectPx) {
     found.push(map)
   }
   found.sort((m1, m2) => m1.shapeDev - m2.shapeDev)   // 版面の形に近いものから
-  return found.slice(0, 2)
+  return found.slice(0, 3)
 }
 
 /* OCR の文字範囲を手がかりにマーカーの四角形を探す。
@@ -305,7 +316,7 @@ function findMappingsByText(sm, textRect, layout) {
   if (found.length < 2) {
     found.push(...quadsFromRect(sm, { x0: 0, y0: 0, x1: w - 1, y1: h - 1 }, textRect, layout, expectPx))
   }
-  return found.slice(0, 3)
+  return found.slice(0, 4)
 }
 
 /* 写真 → 用紙座標の対応付けの候補を列挙する。
