@@ -39,6 +39,10 @@ export const MUNIS = [
 export const YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
 export const CUR = 2025; // 令和7年度
 export const ERA = { 2020: '令和2', 2021: '令和3', 2022: '令和4', 2023: '令和5', 2024: '令和6', 2025: '令和7' };
+/* 印刷用紙・画面見出しに使う「いまの年度」の和暦ラベル(4 月切り替えで自動更新)。
+   データ上の年度キー(CUR)とは別物: 用紙の題字は常に実際の年度を表示する。
+   例: 2026年4月〜2027年3月 → 令和8年度 */
+export const fiscalEra = (d = new Date()) => `令和${d.getFullYear() - (d.getMonth() < 3 ? 1 : 0) - 2018}年度`;
 
 // 記録用紙の列(測定項目)
 export const COLS = [
@@ -376,5 +380,5 @@ export function replaceMunis(list) {
   regions.forEach(r => REGIONS.push(r));
 }
 
-const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, COLS, AXES, SHEET_COLS, STAFF, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf, ensureKcl, newUserId, setUsers, replaceMunis };
+const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, COLS, AXES, SHEET_COLS, STAFF, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf, ensureKcl, newUserId, setUsers, replaceMunis, fiscalEra };
 export default D;

@@ -68,7 +68,7 @@ export default function ReviewModal() {
             <div style={{ background: '#fff', padding: '14px 16px', transform: 'rotate(-0.6deg)', boxShadow: 'var(--shadow-md)' }}>
               <div style={{ border: '2px solid var(--slate-800)', padding: '10px 12px' }}>
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', borderBottom: '2px solid var(--slate-800)', paddingBottom: 6 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em' }}>令和7年度 体力測定 記録用紙</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.05em' }}>{D.fiscalEra()} 体力測定 記録用紙</div>
                   <div style={{ fontSize: 8, color: 'var(--slate-500)' }}>様式2</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--slate-300)', alignItems: 'baseline' }}>
