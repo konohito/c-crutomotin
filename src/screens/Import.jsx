@@ -715,7 +715,7 @@ function DemoImport() {
           <Icon name="imp" size={22} />
         </div>
         <div style={{ flex: 1, minWidth: 220 }}>
-          <div style={{ fontSize: 15, fontWeight: 600 }}>{D.batchMeta.venue} — 令和7年度 測定会</div>
+          <div style={{ fontSize: 15, fontWeight: 600 }}>{D.batchMeta.venue} — {D.fiscalEra()} 測定会</div>
           <div style={{ fontSize: 12.5, color: 'var(--fg-3)', marginTop: 2 }}>
             測定日 <span className="t-num">{D.batchMeta.date}</span> · 記録用紙 <span className="t-num">{N}</span> 枚 · モバイル撮影から受信済み
           </div>

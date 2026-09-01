@@ -50,7 +50,7 @@ export default function Roster() {
         <Select value={state.rosWard} onChange={(e) => set({ rosWard: e.target.value, rosPage: 0 })}
           options={[opt('all', 'すべての' + wardLabel())].concat(wardOptions(state.rosMuni).map(w => opt(w, w)))} />
         <Select value={state.rosStatus} onChange={(e) => set({ rosStatus: e.target.value, rosPage: 0 })}
-          options={[opt('all', 'すべての状態'), opt('measured', '令和7年度 測定済'), opt('unmeasured', '令和7年度 未測定'), opt('new', '今年度の新規')]} />
+          options={[opt('all', 'すべての状態'), opt('measured', '今年度 測定済'), opt('unmeasured', '今年度 未測定'), opt('new', '今年度の新規')]} />
         <Select value={state.rosSort} onChange={(e) => set({ rosSort: e.target.value, rosPage: 0 })}
           options={[opt('id', 'ID 順'), opt('kana', 'ふりがな順'), opt('age', '年齢が高い順')]} />
         <div style={{ flex: 1 }} />

@@ -62,7 +62,7 @@ function SheetPage({ p, walkIn }) {
             <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 {walkIn ? 'R7-02W' : 'R7-02'}</div>
             <div style={{ fontSize: 9.5, color: 'var(--slate-500)', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.04em', marginTop: 7 }}>令和7年度 体力測定 記録用紙</div>
+          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.04em', marginTop: 7 }}>{D.fiscalEra()} 体力測定 記録用紙</div>
           <div style={{ fontSize: 13.5, color: 'var(--slate-600)', marginTop: 2 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
         </div>
         <div style={{ color: 'var(--danger-500)', paddingTop: 2, flexShrink: 0 }}>
@@ -381,7 +381,7 @@ function KclPageFront({ p, walkIn }) {
             <div style={{ fontSize: 9.5, color: '#444', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
           {/* 印字スタイルは右の ID 表が広いぶんタイトルを少し縮めて 1 行に収める */}
-          <div style={{ fontSize: (p || walkIn) ? 23 : 26, fontWeight: 700, letterSpacing: '0.02em', marginTop: 8, whiteSpace: 'nowrap' }}>令和7年度 からだデータ測定会 問診票</div>
+          <div style={{ fontSize: (p || walkIn) ? 23 : 26, fontWeight: 700, letterSpacing: '0.02em', marginTop: 8, whiteSpace: 'nowrap' }}>{D.fiscalEra()} からだデータ測定会 問診票</div>
         </div>
         {(p || walkIn) ? <KclIdTable p={p || BLANK_P} /> : (
           /* ID・氏名シール貼付欄(シール 38.1×21.2mm + 貼りズレ余白 約2mm。

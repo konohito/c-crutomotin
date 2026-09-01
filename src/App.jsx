@@ -32,7 +32,7 @@ import ScreenErrorBoundary from './ui/errorboundary.jsx'
 const BASE = import.meta.env.BASE_URL
 
 const TITLES = {
-  dash: ['ダッシュボード', '令和7年度 介護予防・体力測定の状況'],
+  dash: ['ダッシュボード', '介護予防・体力測定の状況'],
   imp: ['取り込み', '記録用紙のスキャン読み取りと本登録'],
   walkin: ['当日受付 取り込み', '台帳未登録の当日参加者の受付・登録（様式 R7-02W）'],
   csv: ['利用者情報取り込み', '名簿・記録 CSV からの一括登録'],

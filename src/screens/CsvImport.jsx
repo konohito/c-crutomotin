@@ -130,7 +130,7 @@ export default function CsvImport() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
             <Rule n={1}><b>参加者 ID → 氏名</b> の順で台帳と自動照合し、既存の方は情報を更新します</Rule>
             <Rule n={2}>見つからない方は<b>新規登録</b>されます（ID は自動採番）</Rule>
-            <Rule n={3}>測定値の列があれば<b>令和7年度の結果</b>として登録し、チャートに反映します</Rule>
+            <Rule n={3}>測定値の列があれば<b>今年度の結果</b>として登録し、チャートに反映します</Rule>
             <Rule n={4}>骨格筋量・SMI などの列がある場合は <b>InBody（体組成）データ</b>として台帳に紐づけ、結果票に出力できます</Rule>
           </div>
         </Card>

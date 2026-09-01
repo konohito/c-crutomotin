@@ -129,7 +129,7 @@ function MobileDemo() {
                   <div style={{ width: 236, background: '#fff', padding: '14px 16px', transform: 'rotate(-1.2deg)', boxShadow: 'var(--shadow-lg)', position: 'relative' }}>
                     <div style={{ border: '2px solid var(--slate-800)', padding: '8px 10px' }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', borderBottom: '2px solid var(--slate-800)', paddingBottom: 5 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>令和7年度 体力測定 記録用紙</div>
+                        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>{D.fiscalEra()} 体力測定 記録用紙</div>
                         <div style={{ fontSize: 7, color: 'var(--slate-500)' }}>様式2</div>
                       </div>
                       <div style={{ display: 'flex', gap: 6, padding: '5px 0', borderBottom: '1px solid var(--slate-300)', alignItems: 'baseline' }}>

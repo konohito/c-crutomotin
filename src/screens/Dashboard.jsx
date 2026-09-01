@@ -180,7 +180,7 @@ export default function Dashboard() {
       {/* 統計カード */}
       <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${demo ? 4 : 3}, 1fr)`, gap: 16 }}>
         <StatCard label="登録利用者" value={D.users.length} unit="名" foot={<>うち今年度の新規 <span className="t-num">{newN}</span> 名</>} />
-        <StatCard label="令和7年度 測定済" value={done} unit="名" foot={<>参加率 <span className="t-num">{Math.round((done / Math.max(1, D.users.length)) * 100)}</span>%</>} />
+        <StatCard label="今年度 測定済" value={done} unit="名" foot={<>参加率 <span className="t-num">{Math.round((done / Math.max(1, D.users.length)) * 100)}</span>%</>} />
         {demo && <StatCard label="要確認" labelColor="var(--warning-700)" value={pend.length} valueColor={pend.length ? 'var(--warning-700)' : 'var(--fg-1)'} unit="件" foot="読み取り結果の確認待ち" onClick={() => set({ screen: 'imp' })} />}
         <StatCard label="参加者の平均年齢" value={statAge} unit="歳" foot={<>女性 <span className="t-num">{statFRate}</span>% · 85歳以上 <span className="t-num">{statOld}</span> 名</>} />
       </div>
