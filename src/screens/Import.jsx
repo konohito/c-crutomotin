@@ -568,6 +568,16 @@ function ProdImport() {
                       {dbg.o != null && <>　·　向き <span className="t-num">{dbg.o}</span>(文字の写り <span className="t-num">{dbg.oCover}</span>)</>}
                     </div>
                     )}
+                    {/* ビジョン AI の読み取り統合の内訳(一致=幾何ロジックと同じ読み / 補完=AIだけが読めた / 衝突=正反対で要確認へ) */}
+                    {dbg.vision && (
+                    <div style={{ marginTop: 4 }}>
+                      ビジョンAI: {dbg.visionModel || '—'}
+                      {dbg.vision.agree != null && <>　·　一致 <span className="t-num">{dbg.vision.agree}</span></>}
+                      {dbg.vision.filled != null && <>　·　補完 <span className="t-num">{dbg.vision.filled}</span></>}
+                      {dbg.vision.conflicts != null && <>　·　衝突 <span className="t-num">{dbg.vision.conflicts}</span></>}
+                      {dbg.vision.unclear != null && <>　·　判定不能 <span className="t-num">{dbg.vision.unclear}</span></>}
+                    </div>
+                    )}
                     {dbg.perQ && (
                     <div className="t-num" style={{ display: 'grid', gridTemplateColumns: '36px 1fr 1fr 1fr 1fr', gap: '1px 10px', marginTop: 6 }}>
                       <b>No</b><b>はい濃度</b><b>いいえ濃度</b><b>行ずれ</b><b>枠線</b>
