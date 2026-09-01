@@ -534,7 +534,7 @@ function ProdImport() {
                 </div>
               )
             })()}
-            {/* 読み取り診断(開発用)。バックエンドが保存した設問ごとの濃度・位置補正を表示し、
+            {/* 読み取り診断。バックエンドが保存した設問ごとの濃度・位置補正を表示し、
                 読み落としの原因(位置ずれ / 塗りが薄い / 枠線を見失った)を現地で切り分けられるようにする */}
             {assign.kcl && assign.kcl.debug && (() => {
               const dbg = assign.kcl.debug
@@ -543,7 +543,7 @@ function ProdImport() {
               const gateLabel = { rows: '設問行の突き合わせ', colX: '列見出しの位置(横)', colY: '列見出しの位置(縦)', orient: '写真の向きの確定' }
               return (
                 <details style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>
-                  <summary style={{ cursor: 'pointer' }}>読み取り診断（開発用）</summary>
+                  <summary style={{ cursor: 'pointer' }}>読み取り診断</summary>
                   <div style={{ marginTop: 6, border: '1px solid var(--border-subtle)', borderRadius: 8, padding: '8px 10px' }}>
                     {/* 読取不可のとき: 検算した位置合わせ候補と却下理由の一覧 */}
                     {dbg.tried && (
