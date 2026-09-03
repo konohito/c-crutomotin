@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { saveUserFields, saveMeasurement } from '../lib/realdata.js'
+import { saveUserFields, saveMeasurement, saveKclAnswers } from '../lib/realdata.js'
 import { eraOf } from '../lib/helpers.js'
 import { Modal, ModalHead, Select } from '../ui/kit.jsx'
+import { kclSideList } from '../ui/kclanswers.jsx'
 
 export const CARE_OPTS = [
   { v: '', l: '（自立・未設定）' }, { v: '要支援1', l: '要支援1' }, { v: '要支援2', l: '要支援2' },
@@ -116,6 +117,72 @@ export function EditMeasModal() {
       </div>
       <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '0 20px', lineHeight: 1.6 }}>BMI は身長・体重から自動計算されます。空欄は「未測定」として保存します。</div>
       <div className="modal-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '16px 20px 20px' }}>
+        <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '保存中…' : '保存'}</button>
+      </div>
+    </Modal>
+  )
+}
+
+// ---- 基本チェックリスト回答の編集（1 年度分） ----
+// 読み取りミスのまま本登録した「はい/いいえ」を、個人ページから後追いで訂正するためのモーダル。
+export function EditKclModal() {
+  const { state, set, showToast } = useStore()
+  const ek = state.editKcl
+  const u = ek && D.users.find(x => x.id === ek.id)
+  const years = u ? Object.keys(u.kcl || {}).map(Number).sort((a, b) => b - a) : []
+  const initFor = (uu, yy) => {
+    const raw = (((uu || {}).kcl || {})[yy] || {}).raw || {}
+    const o = {}
+    kclSideList().forEach(q => { const v = raw[q.no]; o[q.no] = (v === 'yes' || v === 'no') ? v : null })
+    return o
+  }
+  const [y, setY] = useState(() => (ek && ek.year) || years[0] || D.CUR)
+  const [ans, setAns] = useState(() => initFor(u, (ek && ek.year) || years[0] || D.CUR))
+  const [busy, setBusy] = useState(false)
+  if (!u) return null
+  const changeYear = (e) => { const ny = +e.target.value; setY(ny); setAns(initFor(u, ny)) }
+  const close = () => set({ editKcl: null })
+  const save = async () => {
+    setBusy(true)
+    try {
+      await saveKclAnswers(u.id, y, ans)
+      showToast(`${eraOf(y)}年度の問診回答を保存しました`)
+      set({ editKcl: null, rev: state.rev + 1 })
+    } catch (e2) { showToast('保存に失敗しました: ' + (e2.message || '')); setBusy(false) }
+  }
+  return (
+    <Modal onClose={close} width={560}>
+      <ModalHead icon="sheet" iconBg="var(--brand-50)" iconFg="var(--brand-600)" title="基本チェックリスト回答を編集" sub={`${u.name} · ID ${u.id}`} onClose={close} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px 0' }}>
+        <span style={{ fontSize: 12, color: 'var(--fg-2)', fontWeight: 600 }}>年度</span>
+        <Select value={String(y)} onChange={changeYear}
+          options={(years.includes(y) ? years : [y, ...years]).map(yy => ({ v: String(yy), l: eraOf(yy) + '年度' }))} />
+        <span style={{ fontSize: 11, color: 'var(--fg-4)' }}>番号は用紙の印刷どおり（おもて①〜⑬・うら⑭〜㉔・運動習慣）</span>
+      </div>
+      <div className="modal-body" style={{ padding: '12px 20px 4px', maxHeight: '58vh', overflowY: 'auto' }}>
+        {kclSideList().map(({ no, paper, text }) => {
+          const v = ans[no] ?? null
+          const seg = (val, lb) => (
+            <button key={lb} onClick={() => setAns(prev => ({ ...prev, [no]: val }))}
+              style={{ height: 26, padding: '0 10px', fontSize: 12, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                border: `1px solid ${v === val ? 'var(--brand-500)' : 'var(--border-default)'}`,
+                background: v === val ? 'var(--brand-50)' : 'var(--bg-surface)',
+                color: v === val ? 'var(--brand-700)' : 'var(--fg-2)' }}>{lb}</button>
+          )
+          return (
+            <div key={no} style={{ display: 'grid', gridTemplateColumns: '34px 1fr auto', gap: 8, alignItems: 'center', padding: '5px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+              <span className="t-num" title={no.startsWith('ex') ? '' : `公式 No.${no}`} style={{ fontSize: 12.5, fontWeight: 700 }}>{paper}</span>
+              <span style={{ fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={text}>{text}</span>
+              <span style={{ display: 'flex', gap: 4 }}>{seg('yes', 'はい')}{seg('no', 'いいえ')}{seg(null, '未回答')}</span>
+            </div>
+          )
+        })}
+        <div style={{ fontSize: 11, color: 'var(--fg-4)', padding: '8px 0 4px', lineHeight: 1.6 }}>
+          公式 No.12「BMIが18.5未満ですか」は本人が回答する設問ではないため一覧になく、身長・体重の測定値から自動で採点されます。
+        </div>
+      </div>
+      <div className="modal-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 20px 20px' }}>
         <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
         <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '保存中…' : '保存'}</button>
       </div>

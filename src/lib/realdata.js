@@ -126,6 +126,27 @@ export async function saveMeasurement(id, year, values) {
   return s
 }
 
+// 年度の基本チェックリスト回答を保存（はい/いいえのみ残し、丸ごと置き換える）
+// 誤読の訂正で「未回答」に戻した設問がきちんと消えるように、
+// setDoc(merge) のキー単位マージではなく updateDoc でマップごと置き換える。
+export async function saveKclAnswers(id, year, answers) {
+  const clean = {}
+  Object.entries(answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
+  const u = D.users.find(x => x.id === id)
+  if (u) {
+    u.kcl = u.kcl || {}
+    u.kcl[year] = { raw: clean, date: (u.kcl[year] || {}).date || null }
+  }
+  if (dbEnabled()) {
+    const { fs, db } = await getFs()
+    const ref = fs.doc(db, 'measurements', `${id}_${year}`)
+    // セキュリティルールが userId/year を要求するため、先に merge で確保しておく
+    await fs.setDoc(ref, { userId: id, year: Number(year) }, { merge: true })
+    await fs.updateDoc(ref, { kclAnswers: clean })
+  }
+  return clean
+}
+
 // Firestore から全利用者・全測定を読み込み、エンジンへ適用する。
 // 戻り値: { loaded: 実データを適用したか, denied: 権限なし(未承認の職員) }
 export async function loadRealData() {

@@ -5,7 +5,7 @@ import { dbEnabled, wardLabel, watchWalkins, updateWalkin, deleteWalkin, clearWa
 import { createUserDoc, saveMeasurement } from '../lib/realdata.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
-import { KclAnswerChips } from '../ui/kclanswers.jsx'
+import { KclAnswerChips, kclSideList, ansKind, ANS_STYLE } from '../ui/kclanswers.jsx'
 
 /* 当日受付 取り込み — 台帳に登録の無い当日参加者の受付キュー。
    当日受付用の記録用紙・問診票(様式 R7-02W / R7-03W)をスキャンすると、通常の取り込みではなくここに届く。
@@ -32,6 +32,10 @@ const DEMO_ENTRIES = [
   {
     id: 'demo-1', walkinStatus: 'pending', batchId: 'demo', ocrName: '当日 一郎', ocrKana: 'とうじつ いちろう',
     fields: { height: { value: 158.2 }, weight: { value: 54.0 }, gripR: { value: 28.5 }, gripL: { value: 27.0 }, walk5: { value: 3.4 }, walk5max: { value: 2.8 }, tug: { value: 7.9 }, balR: { value: 42.0 }, balL: { value: 38.5 } },
+  },
+  {
+    id: 'demo-2', walkinStatus: 'pending', batchId: 'demo', ocrName: '当日 花子', ocrKana: 'とうじつ はなこ',
+    kcl: { side: 'front', readable: true, answers: { 1: 'no', 2: 'no', 3: 'yes', 4: 'no', 5: 'no', 6: 'no', 7: 'yes', 8: 'no', 9: 'no', 10: 'yes', 11: 'no', 13: 'multi' } },
   },
 ]
 
@@ -64,6 +68,11 @@ export default function WalkIn() {
   const [imgs, setImgs] = useState({})
   const [zoomImg, setZoomImg] = useState('')
   const [linkQ, setLinkQ] = useState('')
+  // 登録前の読み取り内容の修正(読み取りミスをそのまま登録しない):
+  // vals = 記録用紙の測定値(文字列) / ans = 問診票のはい・いいえ(null=未回答)
+  // 新規の仮登録・既存への紐づけのどちらでも、修正後の内容で登録される
+  const [vals, setVals] = useState({})
+  const [ans, setAns] = useState({})
 
   useEffect(() => {
     if (!dbEnabled()) return
@@ -78,6 +87,13 @@ export default function WalkIn() {
     setOpenId(e.id)
     setLinkQ('')
     setF({ name: e.ocrName || '', kana: e.ocrKana || '', sex: 'F', birth: '', ward: wards[0] || '' })
+    // 読み取り結果を編集用にコピー(二重塗り・読取不可は未回答で初期化し、職員が確定する)
+    const v0 = {}
+    D.SHEET_COLS.forEach(cid => { const v = e.fields && e.fields[cid] ? e.fields[cid].value : null; v0[cid] = v == null ? '' : String(v) })
+    setVals(v0)
+    const a0 = {}
+    Object.entries((e.kcl && e.kcl.answers) || {}).forEach(([k, v]) => { a0[k] = (v === 'yes' || v === 'no') ? v : null })
+    setAns(a0)
     // 原本画像を読み込む(手書きの氏名を見ながら登録・紐づけできるように)
     if (e.storagePath && !imgs[e.id]) {
       sheetImageUrl(e.storagePath)
@@ -116,19 +132,25 @@ export default function WalkIn() {
     return out.sort((a, b) => nameScore(e, b) - nameScore(e, a))
   }
 
+  // フォームで修正した後の値(登録に使う確定値)。フォームを開かず呼ばれることはない
+  const finalValuesOf = () => {
+    const fv = {}
+    D.SHEET_COLS.forEach(cid => { const x = String(vals[cid] ?? '').trim(); fv[cid] = x === '' ? null : x })
+    return fv
+  }
+
   // 既存の利用者にこの用紙を紐づけて取り込む(新規の利用者は作らない)
   const commitToUser = async (e, u) => {
     if (!u || busy) return
     setBusy(e.id)
     try {
       if (e.kcl) {
-        if (dbEnabled()) await commitKclRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, answers: e.kcl.answers, year: D.CUR })
+        if (dbEnabled()) await commitKclRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, answers: ans, year: D.CUR })
         const clean = {}
-        Object.entries(e.kcl.answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
+        Object.entries(ans).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
         u.kcl[D.CUR] = { raw: { ...((u.kcl[D.CUR] || {}).raw || {}), ...clean }, date: (u.kcl[D.CUR] || {}).date || null }
       } else {
-        const finalValues = {}
-        D.SHEET_COLS.forEach(cid => { finalValues[cid] = e.fields && e.fields[cid] ? e.fields[cid].value : null })
+        const finalValues = finalValuesOf()
         if (dbEnabled()) await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: D.CUR } })
         const nums = {}
         D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
@@ -170,9 +192,9 @@ export default function WalkIn() {
       await createUserDoc(u)
       // 問診票(R7-03W)の読み取りは回答を保存して終了(測定値は記録用紙側で登録)
       if (e.kcl) {
-        if (dbEnabled()) await commitKclRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, answers: e.kcl.answers, year: D.CUR })
+        if (dbEnabled()) await commitKclRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, answers: ans, year: D.CUR })
         const clean = {}
-        Object.entries(e.kcl.answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
+        Object.entries(ans).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
         u.kcl[D.CUR] = { raw: clean, date: null }
         await updateWalkin(e.id, { walkinStatus: 'committed', userId: u.id, userName: u.name })
         deleteSheetImage(e.storagePath).catch(() => {})
@@ -183,8 +205,7 @@ export default function WalkIn() {
         setBusy('')
         return
       }
-      const finalValues = {}
-      D.SHEET_COLS.forEach(cid => { finalValues[cid] = e.fields && e.fields[cid] ? e.fields[cid].value : null })
+      const finalValues = finalValuesOf()
       if (dbEnabled()) {
         await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: D.CUR } })
       }
@@ -315,6 +336,53 @@ export default function WalkIn() {
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 300 }}>
+                {/* ① 読み取り内容の確認・修正。修正後の内容は下の紐づけ・新規仮登録のどちらでも使われる
+                    (読み取りミスのまま登録して後から直す手間をなくす) */}
+                <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700 }}>読み取り内容の確認・修正</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--fg-3)', marginTop: 2 }}>
+                    原本画像と見比べて、読み取りが違うところをここで直してください。修正後の内容で登録されます（紐づけ・新規のどちらでも）
+                  </div>
+                  {e.kcl ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
+                      {kclSideList(e.kcl.side).map(({ no, paper, text }) => {
+                        const k = ansKind(e.kcl.answers, no)
+                        const [rl, rf, rb] = ANS_STYLE[k]
+                        const v = ans[no] ?? null
+                        const seg = (val, lb) => (
+                          <button key={lb} onClick={() => setAns(prev => ({ ...prev, [no]: val }))}
+                            style={{ height: 25, padding: '0 9px', fontSize: 11.5, fontWeight: 600, borderRadius: 6, cursor: 'pointer',
+                              border: `1px solid ${v === val ? 'var(--brand-500)' : 'var(--border-default)'}`,
+                              background: v === val ? 'var(--brand-50)' : 'var(--bg-surface)',
+                              color: v === val ? 'var(--brand-700)' : 'var(--fg-2)' }}>{lb}</button>
+                        )
+                        return (
+                          <div key={no} style={{ display: 'grid', gridTemplateColumns: '30px 1fr 76px auto', gap: 8, alignItems: 'center', padding: '4px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                            <span className="t-num" title={no.startsWith('ex') ? '' : `公式 No.${no}`} style={{ fontSize: 12, fontWeight: 700 }}>{paper}</span>
+                            <span style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={text}>{text}</span>
+                            {/* 読み取り結果。修正は右のボタンで */}
+                            <span style={{ fontSize: 11, fontWeight: 700, textAlign: 'center', borderRadius: 6, padding: '2px 0', color: rf, background: rb, border: k === 'empty' ? '1px solid var(--border-subtle)' : 'none' }}>{rl}</span>
+                            <span style={{ display: 'flex', gap: 4 }}>{seg('yes', 'はい')}{seg('no', 'いいえ')}{seg(null, '未回答')}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(108px, 1fr))', gap: 8, marginTop: 8 }}>
+                      {D.SHEET_COLS.map(cid => {
+                        const col = D.COLS.find(c => c.id === cid)
+                        return (
+                          <div key={cid}>
+                            <div className="form-label" style={{ fontSize: 11 }}>{col.short || col.label}{col.unit ? `（${col.unit}）` : ''}</div>
+                            <input className="field t-num" inputMode="decimal" style={{ height: 32, fontSize: 12.5 }}
+                              value={vals[cid] ?? ''} placeholder="—"
+                              onChange={(ev) => setVals(prev => ({ ...prev, [cid]: ev.target.value }))} />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
                 {/* 紐づけ候補: 1 人の用紙は最大 3 枚届くため、2 枚目以降は打ち直さずワンクリックで同じ人に */}
                 {(() => {
                   const cands = sameDayUsers(e)

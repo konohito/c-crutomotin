@@ -18,7 +18,7 @@ const initialState = {
   // 個人詳細
   detId: null, detMetric: 'total',
   // 編集（実データ）
-  editUser: null, editMeas: null, editBusy: false,
+  editUser: null, editMeas: null, editKcl: null, editBusy: false,
   // 分析
   // 本番(単一圏域)は圏域別を出さず、行政区別を既定にする
   anaYear: 2025, anaRegion: 'all', anaWard: 'all', anaUnit: dbEnabled() ? 'ward' : 'region', anaItem: 'gripR',
