@@ -31,6 +31,8 @@ function scoreOf(sex, v) {
 export function toEngineUser(u, measList) {
   const meas = {}, inbody = {}, kcl = {}
   for (const m of measList) {
+    // 評価年の修正で別年度に移した元ドキュメント。監査のため残すが表示・集計には使わない
+    if (m.voided) continue
     // InBody(体組成): ETL(etl-inbody.py)が突合して測定に付与した inbody を読む。旧 inbodySmi も後方互換。
     if (m.inbody) {
       const ib = m.inbody
@@ -110,38 +112,78 @@ export async function createUserDoc(u) {
 }
 
 // 年度の測定値を更新（5領域・総合スコアを再計算 + Firestore 保存）
-export async function saveMeasurement(id, year, values) {
+// date(評価日)を渡すと合わせて保存する(undefined なら触らない。'' は未記入=null 扱い)
+export async function saveMeasurement(id, year, values, date) {
   const u = D.users.find(x => x.id === id)
   const s = scoreOf(u ? u.sex : 'F', values)
+  const d = date === undefined ? undefined : (String(date).trim() || null)
   if (u) {
     const prev = u.meas[year] || {}
     u.meas[year] = { ...prev, values: s.values, axes: s.axes, total: s.total }
+    if (d !== undefined) u.meas[year].date = d
     if (!u.meas[year].date) u.meas[year].date = null
+    // 評価日は測定ドキュメント共通のため、同年の問診カードの表示日も揃える
+    if (d !== undefined && u.kcl && u.kcl[year]) u.kcl[year].date = d
   }
   if (dbEnabled()) {
     const { fs, db } = await getFs()
-    await fs.setDoc(fs.doc(db, 'measurements', `${id}_${year}`),
-      { userId: id, year: Number(year), values: s.values }, { merge: true })
+    const doc = { userId: id, year: Number(year), values: s.values }
+    if (d !== undefined) doc.date = d
+    await fs.setDoc(fs.doc(db, 'measurements', `${id}_${year}`), doc, { merge: true })
   }
   return s
+}
+
+// 評価年の修正: 記録(測定値・問診回答・InBody・評価日)を別の年度へ移す。
+// Firestore は削除不可(監査性)のため、元の年度のドキュメントには voided フラグを立てて
+// 読み込み時に飛ばす。移動先に既にデータがある場合はエラー(上書き事故防止)。
+export async function moveMeasurementYear(id, fromY, toY) {
+  const u = D.users.find(x => x.id === id)
+  if (u && (u.meas[toY] || (u.kcl && u.kcl[toY]) || (u.inbody && u.inbody[toY]))) {
+    throw new Error(`移動先の年度に既にデータがあります。先に移動先(${toY}年度)のデータを確認してください`)
+  }
+  if (dbEnabled()) {
+    const { fs, db } = await getFs()
+    const oldRef = fs.doc(db, 'measurements', `${id}_${fromY}`)
+    const snap = await fs.getDoc(oldRef)
+    const data = snap.exists() ? snap.data() : {}
+    delete data.voided
+    // 移動先は丸ごと置き換え(過去に voided にした残骸があっても消える)
+    await fs.setDoc(fs.doc(db, 'measurements', `${id}_${toY}`), { ...data, userId: id, year: Number(toY) })
+    await fs.setDoc(oldRef, { userId: id, year: Number(fromY), voided: true }, { merge: true })
+  }
+  if (u) {
+    if (u.meas[fromY]) { u.meas[toY] = u.meas[fromY]; delete u.meas[fromY] }
+    if (u.kcl && u.kcl[fromY]) { u.kcl[toY] = u.kcl[fromY]; delete u.kcl[fromY] }
+    if (u.inbody && u.inbody[fromY]) { u.inbody[toY] = u.inbody[fromY]; delete u.inbody[fromY] }
+    const ys = Object.keys(u.meas).map(Number)
+    if (ys.length) u.joined = Math.min(...ys)
+  }
 }
 
 // 年度の基本チェックリスト回答を保存（はい/いいえのみ残し、丸ごと置き換える）
 // 誤読の訂正で「未回答」に戻した設問がきちんと消えるように、
 // setDoc(merge) のキー単位マージではなく updateDoc でマップごと置き換える。
-export async function saveKclAnswers(id, year, answers) {
+// date(評価日)を渡すと合わせて保存する(undefined なら触らない。'' は未記入=null 扱い)
+export async function saveKclAnswers(id, year, answers, date) {
   const clean = {}
   Object.entries(answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
+  const d = date === undefined ? undefined : (String(date).trim() || null)
   const u = D.users.find(x => x.id === id)
   if (u) {
     u.kcl = u.kcl || {}
-    u.kcl[year] = { raw: clean, date: (u.kcl[year] || {}).date || null }
+    const prevDate = (u.kcl[year] || {}).date || null
+    u.kcl[year] = { raw: clean, date: d !== undefined ? d : prevDate }
+    // 評価日は測定ドキュメント共通のため、同年の測定側の表示日も揃える
+    if (d !== undefined && u.meas[year]) u.meas[year].date = d
   }
   if (dbEnabled()) {
     const { fs, db } = await getFs()
     const ref = fs.doc(db, 'measurements', `${id}_${year}`)
     // セキュリティルールが userId/year を要求するため、先に merge で確保しておく
-    await fs.setDoc(ref, { userId: id, year: Number(year) }, { merge: true })
+    const base = { userId: id, year: Number(year) }
+    if (d !== undefined) base.date = d
+    await fs.setDoc(ref, base, { merge: true })
     await fs.updateDoc(ref, { kclAnswers: clean })
   }
   return clean

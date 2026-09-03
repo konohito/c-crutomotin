@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { saveUserFields, saveMeasurement, saveKclAnswers } from '../lib/realdata.js'
+import { saveUserFields, saveMeasurement, saveKclAnswers, moveMeasurementYear } from '../lib/realdata.js'
 import { eraOf } from '../lib/helpers.js'
 import { Modal, ModalHead, Select } from '../ui/kit.jsx'
 import { kclSideList } from '../ui/kclanswers.jsx'
@@ -87,8 +87,10 @@ export function EditMeasModal() {
   const em = state.editMeas
   const u = em && D.users.find(x => x.id === em.id)
   const [f, setF] = useState(() => {
-    const v = (u && u.meas[em.year] && u.meas[em.year].values) || {}
-    const o = {}; MEAS_FIELDS.forEach(([k]) => { o[k] = (v[k] == null ? '' : String(v[k])) }); return o
+    const m = (u && u.meas[em.year]) || {}
+    const v = m.values || {}
+    const o = { year: String(em.year), date: m.date || '' }
+    MEAS_FIELDS.forEach(([k]) => { o[k] = (v[k] == null ? '' : String(v[k])) }); return o
   })
   const [busy, setBusy] = useState(false)
   if (!u) return null
@@ -100,8 +102,11 @@ export function EditMeasModal() {
       const values = {}
       MEAS_FIELDS.forEach(([k]) => { const x = f[k].trim(); values[k] = x === '' ? null : Math.round(parseFloat(x) * 100) / 100 })
       if (values.height && values.weight) values.bmi = Math.round((values.weight / Math.pow(values.height / 100, 2)) * 10) / 10
-      await saveMeasurement(u.id, em.year, values)
-      showToast(`${eraOf(em.year)}年度の測定値を保存しました`)
+      // 評価年を変えた場合は記録一式(測定値・問診回答・InBody・評価日)を移してから保存する
+      const newY = parseInt(f.year, 10) || em.year
+      if (newY !== em.year) await moveMeasurementYear(u.id, em.year, newY)
+      await saveMeasurement(u.id, newY, values, f.date)
+      showToast(`${eraOf(newY)}年度の測定値を保存しました`)
       set({ editMeas: null, rev: state.rev + 1 })
     } catch (e) { showToast('保存に失敗しました: ' + (e.message || '')); setBusy(false) }
   }
@@ -109,13 +114,17 @@ export function EditMeasModal() {
     <Modal onClose={close} width={440}>
       <ModalHead icon="sheet" iconBg="var(--brand-50)" iconFg="var(--brand-600)" title={`測定値を編集（${eraOf(em.year)}年度）`} sub={`${u.name} · ID ${u.id}`} onClose={close} />
       <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: 20 }}>
+        <Field label="評価年（年度）" hint="変えると記録一式が移ります">
+          <Select value={f.year} onChange={upd('year')} options={D.YEARS.map(y => ({ v: String(y), l: eraOf(y) + '年度' }))} style={{ width: '100%' }} />
+        </Field>
+        <Field label="評価日" hint="例: 2025/09/02"><input className="field t-num" value={f.date} onChange={upd('date')} placeholder="YYYY/MM/DD" /></Field>
         {MEAS_FIELDS.map(([k, label, unit]) => (
           <Field key={k} label={`${label}（${unit}）`}>
             <input className="field t-num" inputMode="decimal" value={f[k]} onChange={upd(k)} placeholder="—" />
           </Field>
         ))}
       </div>
-      <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '0 20px', lineHeight: 1.6 }}>BMI は身長・体重から自動計算されます。空欄は「未測定」として保存します。</div>
+      <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '0 20px', lineHeight: 1.6 }}>BMI は身長・体重から自動計算されます。空欄は「未測定」として保存します。評価年を変えた場合、この年度の問診回答・InBody・評価日もまとめて移動します（移動先に既にデータがある年度へは移せません）。</div>
       <div className="modal-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '16px 20px 20px' }}>
         <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
         <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '保存中…' : '保存'}</button>
@@ -137,16 +146,18 @@ export function EditKclModal() {
     kclSideList().forEach(q => { const v = raw[q.no]; o[q.no] = (v === 'yes' || v === 'no') ? v : null })
     return o
   }
+  const dateFor = (uu, yy) => ((((uu || {}).kcl || {})[yy] || {}).date) || ''
   const [y, setY] = useState(() => (ek && ek.year) || years[0] || D.CUR)
   const [ans, setAns] = useState(() => initFor(u, (ek && ek.year) || years[0] || D.CUR))
+  const [dt, setDt] = useState(() => dateFor(u, (ek && ek.year) || years[0] || D.CUR))
   const [busy, setBusy] = useState(false)
   if (!u) return null
-  const changeYear = (e) => { const ny = +e.target.value; setY(ny); setAns(initFor(u, ny)) }
+  const changeYear = (e) => { const ny = +e.target.value; setY(ny); setAns(initFor(u, ny)); setDt(dateFor(u, ny)) }
   const close = () => set({ editKcl: null })
   const save = async () => {
     setBusy(true)
     try {
-      await saveKclAnswers(u.id, y, ans)
+      await saveKclAnswers(u.id, y, ans, dt)
       showToast(`${eraOf(y)}年度の問診回答を保存しました`)
       set({ editKcl: null, rev: state.rev + 1 })
     } catch (e2) { showToast('保存に失敗しました: ' + (e2.message || '')); setBusy(false) }
@@ -154,10 +165,13 @@ export function EditKclModal() {
   return (
     <Modal onClose={close} width={560}>
       <ModalHead icon="sheet" iconBg="var(--brand-50)" iconFg="var(--brand-600)" title="基本チェックリスト回答を編集" sub={`${u.name} · ID ${u.id}`} onClose={close} />
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px 0', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, color: 'var(--fg-2)', fontWeight: 600 }}>年度</span>
         <Select value={String(y)} onChange={changeYear}
-          options={(years.includes(y) ? years : [y, ...years]).map(yy => ({ v: String(yy), l: eraOf(yy) + '年度' }))} />
+          options={[...new Set(D.YEARS.concat(years).concat([y]))].sort((a, b) => b - a).map(yy => ({ v: String(yy), l: eraOf(yy) + '年度' }))} />
+        <span style={{ fontSize: 12, color: 'var(--fg-2)', fontWeight: 600, marginLeft: 4 }}>評価日</span>
+        <input className="field t-num" style={{ width: 120, height: 32, fontSize: 12.5 }} value={dt}
+          onChange={(e) => setDt(e.target.value)} placeholder="YYYY/MM/DD" />
         <span style={{ fontSize: 11, color: 'var(--fg-4)' }}>番号は用紙の印刷どおり（おもて①〜⑬・うら⑭〜㉔・運動習慣）</span>
       </div>
       <div className="modal-body" style={{ padding: '12px 20px 4px', maxHeight: '58vh', overflowY: 'auto' }}>
