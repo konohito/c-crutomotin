@@ -27,7 +27,7 @@ const initialState = {
   pdfMode: 'single', pdfUser: null, pdfMuni: 'sakuragawa', pdfWard: 'all', pdfYear: 2025, pdfQ: '',
   incRadar: true, incTrend: true, incPrev: true, incAvg: true, incComment: true, incFrail: true, incInbody: true, incKcl: true,
   // 用紙作成（本番は測定会イベントが無いので市町村＋行政区で選ぶ）
-  shMode: dbEnabled() ? 'muni' : 'event', shEvent: '', shMuni: 'sakuragawa', shWard: 'all', shBlank: 0, shKind: 'meas',
+  shMode: dbEnabled() ? 'muni' : 'event', shEvent: '', shMuni: 'sakuragawa', shWard: 'all', shBlank: 0, shKind: 'meas', shEra: 0,
   // モバイル
   mob: 'home', mShots: 0, mSent: 0,
   // カレンダー

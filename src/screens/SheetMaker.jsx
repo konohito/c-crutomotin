@@ -7,6 +7,8 @@ import { RadioCard, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 const BASE = import.meta.env.BASE_URL
+// 用紙の題に印字する年度。既定は今日の日付から(4月切替)。翌年度分の先刷りなどは側面パネルで変更できる
+const sheetEra = (state) => `令和${state.shEra || D.fiscalEraNum()}年度`
 // 会場＝行政区。利用者の基本情報 venueName に行政区を持たせているので、そこから選択肢を作る。
 const distinct = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
 const SHEET_BOXES = { walk5: [1, 1], walk5max: [1, 1], balR: [2, 1], balL: [2, 1], gripR: [2, 1], gripL: [2, 1], tug: [2, 1], height: [3, 1], weight: [3, 1] }
@@ -46,6 +48,7 @@ function Markers() {
 }
 
 function SheetPage({ p, walkIn }) {
+  const { state } = useStore()
   return (
     <div className="pdf-page" style={{ padding: '44px 52px 40px' }}>
       <Markers />
@@ -62,7 +65,7 @@ function SheetPage({ p, walkIn }) {
             <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 {walkIn ? 'R7-02W' : 'R7-02'}</div>
             <div style={{ fontSize: 9.5, color: 'var(--slate-500)', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.04em', marginTop: 7 }}>{D.fiscalEra()} 体力測定 記録用紙</div>
+          <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.04em', marginTop: 7 }}>{sheetEra(state)} 体力測定 記録用紙</div>
           <div style={{ fontSize: 13.5, color: 'var(--slate-600)', marginTop: 2 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
         </div>
         <div style={{ color: 'var(--danger-500)', paddingTop: 2, flexShrink: 0 }}>
@@ -369,6 +372,7 @@ function KclIdTable({ p }) {
 // おもて面: タイトル・ID 欄・記入例・設問 1〜13。
 // p を渡すと ID・氏名を印字する県提出スタイル、無しなら全員共通のシール運用スタイル。
 function KclPageFront({ p, walkIn }) {
+  const { state } = useStore()
   return (
     <div className="pdf-page" style={{ padding: '40px 48px 34px' }}>
       <Markers />
@@ -381,7 +385,7 @@ function KclPageFront({ p, walkIn }) {
             <div style={{ fontSize: 9.5, color: '#444', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
           </div>
           {/* 印字スタイルは右の ID 表が広いぶんタイトルを少し縮めて 1 行に収める */}
-          <div style={{ fontSize: (p || walkIn) ? 23 : 26, fontWeight: 700, letterSpacing: '0.02em', marginTop: 8, whiteSpace: 'nowrap' }}>{D.fiscalEra()} からだデータ測定会 問診票</div>
+          <div style={{ fontSize: (p || walkIn) ? 23 : 26, fontWeight: 700, letterSpacing: '0.02em', marginTop: 8, whiteSpace: 'nowrap' }}>{sheetEra(state)} からだデータ測定会 問診票</div>
         </div>
         {(p || walkIn) ? <KclIdTable p={p || BLANK_P} /> : (
           /* ID・氏名シール貼付欄(シール 38.1×21.2mm + 貼りズレ余白 約2mm。
@@ -521,6 +525,21 @@ export default function SheetMaker() {
             <RadioCard on={kind === 'kcl'} label="基本チェックリスト 問診票" desc="マークシート式の問診票（様式 R7-03）" onClick={() => set({ shKind: 'kcl' })} />
             <RadioCard on={kind === 'walkin'} label="当日受付用 記録用紙" desc="台帳未登録の当日参加者用（様式 R7-02W）" onClick={() => set({ shKind: 'walkin' })} />
             <RadioCard on={kind === 'walkinKcl'} label="当日受付用 問診票" desc="氏名手書きのマークシート式（様式 R7-03W）" onClick={() => set({ shKind: 'walkinKcl' })} />
+          </div>
+        </div>
+        <div>
+          <Overline style={{ marginBottom: 8 }}>用紙の年度</Overline>
+          {(() => {
+            const now = D.fiscalEraNum()
+            const cur = state.shEra || now
+            return (
+              <Select value={String(cur)} onChange={(e) => set({ shEra: +e.target.value })}
+                options={[now - 1, now, now + 1].concat(cur < now - 1 || cur > now + 1 ? [cur] : []).sort((a, b) => a - b)
+                  .map(n => ({ v: String(n), l: `令和${n}年度${n === now ? '（今年度）' : ''}` }))} style={{ width: '100%' }} />
+            )
+          })()}
+          <div style={{ fontSize: 11.5, color: 'var(--fg-3)', marginTop: 6, lineHeight: 1.6 }}>
+            用紙の題に印字される年度です（4月に自動で切り替わります）。様式番号（R7-02 等）は読み取りの目印のため年度が変わっても固定です。
           </div>
         </div>
         {isWalk && (
