@@ -295,7 +295,13 @@ export default function Detail() {
             <Card pad>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                 <div className="t-h4">基本チェックリスト（問診）</div>
-                <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{eraOf(lastY)}年度 · {kcl.date}</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                  {canEdit && (
+                    <button className="btn btn-ghost btn-sm" style={{ height: 22, padding: '0 6px', fontSize: 11.5 }}
+                      onClick={() => set({ editKcl: { id: u.id, year: lastY } })} title="はい/いいえの回答を訂正">編集</button>
+                  )}
+                  <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{eraOf(lastY)}年度 · {kcl.date}</div>
+                </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
                 <div style={{ textAlign: 'center', minWidth: 74, padding: '8px 10px', borderRadius: 10, background: kclL.bg }}>

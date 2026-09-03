@@ -24,7 +24,7 @@ import Staff from './screens/Staff.jsx'
 import ReviewModal from './modals/ReviewModal.jsx'
 import RegisterModal from './modals/RegisterModal.jsx'
 import EventModal from './modals/EventModal.jsx'
-import { EditUserModal, EditMeasModal } from './modals/EditModals.jsx'
+import { EditUserModal, EditMeasModal, EditKclModal } from './modals/EditModals.jsx'
 import PasswordModal from './modals/PasswordModal.jsx'
 import { staffAdminEnabled } from './lib/staffAdmin.js'
 import ScreenErrorBoundary from './ui/errorboundary.jsx'
@@ -239,6 +239,7 @@ function AppInner() {
       {state.evOpen && <EventModal />}
       {state.editUser && <EditUserModal />}
       {state.editMeas && <EditMeasModal />}
+      {state.editKcl && <EditKclModal />}
       {state.pwOpen && <PasswordModal />}
       <Toast msg={state.toast} />
     </div>
