@@ -66,7 +66,9 @@ export const AXES = [
   { id: 'body',     label: '体格',    desc: 'BMI 適正度' },
 ];
 const TH = {
-  walk:  { M: [1.4, 1.0, 0.85, 0.7], F: [1.5, 1.1, 0.9, 0.75] },  // low better
+  // walk の閾値は 1m あたりの秒数(歩行速度の逆数。0.75 秒/m ≒ 1.33m/s)。
+  // 記録用紙・実データの walk5 は「5m 合計の秒数」なので、採点時に 5 で割って比較する
+  walk:  { M: [1.4, 1.0, 0.85, 0.7], F: [1.5, 1.1, 0.9, 0.75] },  // low better(秒/m)
   balance: { M: [3, 10, 25, 50], F: [3, 8, 20, 45] },              // high better
   grip:  { M: [26, 30, 34, 38], F: [16, 19, 22, 25] },             // high better
   mobility: { M: [12, 9, 7.5, 6], F: [13, 9.5, 8, 6.5] },          // low better
@@ -83,7 +85,7 @@ export function axesOf(sex, v) {
   const bal = Math.max(v.balR, v.balL);
   const grip = Math.max(v.gripR, v.gripL);
   return {
-    walk: score4(TH.walk[sex], v.walk5, true),
+    walk: score4(TH.walk[sex], v.walk5 / 5, true), // 5m 合計秒 → 秒/m に換算(例: 3.0秒 → 0.6 → 5点)
     balance: score4(TH.balance[sex], bal, false),
     grip: score4(TH.grip[sex], grip, false),
     mobility: score4(TH.mobility[sex], v.tug, true),
@@ -128,7 +130,7 @@ export const TODAY = '2025/09/24';
 
 // ---- 生成パラメータ -------------------------------------------------------------
 const GEN = {
-  walk5:  { M: [0.78, 0.022, 0.28], F: [0.84, 0.024, 0.3], lo: 0.5, hi: 2.6 },
+  walk5:  { M: [3.9, 0.11, 1.4], F: [4.2, 0.12, 1.5], lo: 2.5, hi: 13 }, // 5m 合計の秒数(実データと同じ単位)
   bal:    { M: [34, -2.0, 21], F: [30, -1.9, 20], lo: 0, hi: 60 },
   grip:   { M: [32, -0.42, 5], F: [23, -0.3, 3.8], lo: 8, hi: 50 },
   tug:    { M: [6.6, 0.17, 2.1], F: [7.0, 0.19, 2.2], lo: 2.8, hi: 26 },
@@ -185,7 +187,7 @@ MUNIS.forEach(m => {
       const gW = GEN.walk5[sex];
       const walk5 = r1(clamp(gW[0] + gW[1] * (age - 75) - drift(y, gW, 1), GEN.walk5.lo, GEN.walk5.hi));
       // 最大歩行は通常歩行より速い。体力(theta)が高いほど速度の余力が大きい
-      const walk5max = r1(clamp(walk5 * clamp(0.85 - theta * 0.02, 0.72, 0.92), 0.4, GEN.walk5.hi));
+      const walk5max = r1(clamp(walk5 * clamp(0.85 - theta * 0.02, 0.72, 0.92), 2.0, GEN.walk5.hi));
       const gB = GEN.bal[sex];
       const balR = r1(clamp(gB[0] + gB[1] * (age - 75) + drift(y, gB, 1), 0, 60));
       const balL = r1(clamp(balR + gauss() * 5, 0, 60));
@@ -218,7 +220,7 @@ function genValues(u, y) {
   const gW = GEN.walk5[u.sex], gB = GEN.bal[u.sex], gG = GEN.grip[u.sex], gT = GEN.tug[u.sex];
   const d = (p, sign) => sign * u.theta * p[2] * 0.82 + gauss() * p[2] * 0.17;
   const walk5 = r1(clamp(gW[0] + gW[1] * (age - 75) - d(gW, 1), GEN.walk5.lo, GEN.walk5.hi));
-  const walk5max = r1(clamp(walk5 * clamp(0.85 - u.theta * 0.02, 0.72, 0.92), 0.4, GEN.walk5.hi));
+  const walk5max = r1(clamp(walk5 * clamp(0.85 - u.theta * 0.02, 0.72, 0.92), 2.0, GEN.walk5.hi));
   const balR = r1(clamp(gB[0] + gB[1] * (age - 75) + d(gB, 1), 0, 60));
   const balL = r1(clamp(balR + gauss() * 5, 0, 60));
   const gripR = r05(clamp(gG[0] + gG[1] * (age - 75) + d(gG, 1), GEN.grip.lo, GEN.grip.hi));

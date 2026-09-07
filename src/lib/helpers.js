@@ -156,7 +156,7 @@ export function frailtyOf(u, y) {
   const grip = Math.max(v.gripR ?? -1, v.gripL ?? -1)
   const bal = Math.max(v.balR ?? -1, v.balL ?? -1)
   const hits = {
-    walk: v.walk5 !== null && v.walk5 !== undefined && v.walk5 >= 1.0,
+    walk: v.walk5 !== null && v.walk5 !== undefined && v.walk5 >= 5.0, // 歩行速度 1.0m/s 未満(5m に 5 秒以上)
     grip: grip >= 0 && grip < (u.sex === 'M' ? 28 : 18),
     bal: bal >= 0 && bal < 5,
     tug: v.tug !== null && v.tug !== undefined && v.tug >= 13.5,
