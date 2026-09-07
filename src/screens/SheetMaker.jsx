@@ -63,7 +63,7 @@ function SheetPage({ p, walkIn }) {
             <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 26, display: 'block' }} />
             <span className="t-display" style={{ fontSize: 13, letterSpacing: '0.05em', color: 'var(--slate-800)' }}>motion</span>
             <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 {walkIn ? 'R7-02W' : 'R7-02'}</div>
-            <div style={{ fontSize: 9.5, color: 'var(--slate-500)', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
+            <div style={{ fontSize: 9.5, color: 'var(--slate-500)', lineHeight: 1.5 }}>スキャン読み取り対応様式</div>
           </div>
           <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: '0.04em', marginTop: 7 }}>{sheetEra(state)} 体力測定 記録用紙</div>
           <div style={{ fontSize: 13.5, color: 'var(--slate-600)', marginTop: 2 }}>{p.muniVenue} · 測定日 <span className="t-num">{p.dateLabel}</span></div>
@@ -382,7 +382,7 @@ function KclPageFront({ p, walkIn }) {
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ fontSize: 10.5, border: '1px solid #000', padding: '2px 8px', fontWeight: 600 }}>様式 {walkIn ? 'R7-03W' : 'R7-03'}</div>
-            <div style={{ fontSize: 9.5, color: '#444', lineHeight: 1.5 }}>スキャン読み取り対応様式<br />用紙は折らずにお持ちください</div>
+            <div style={{ fontSize: 9.5, color: '#444', lineHeight: 1.5 }}>スキャン読み取り対応様式</div>
           </div>
           {/* 印字スタイルは右の ID 表が広いぶんタイトルを少し縮めて 1 行に収める */}
           <div style={{ fontSize: (p || walkIn) ? 23 : 26, fontWeight: 700, letterSpacing: '0.02em', marginTop: 8, whiteSpace: 'nowrap' }}>{sheetEra(state)} からだデータ測定会 問診票</div>
