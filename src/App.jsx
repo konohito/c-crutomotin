@@ -19,6 +19,7 @@ import SheetMaker from './screens/SheetMaker.jsx'
 import Techo from './screens/Techo.jsx'
 import TechoList from './screens/TechoList.jsx'
 import WalkIn from './screens/WalkIn.jsx'
+import MergeScreen from './screens/Merge.jsx'
 import Mobile from './screens/Mobile.jsx'
 import Staff from './screens/Staff.jsx'
 import ReviewModal from './modals/ReviewModal.jsx'
@@ -37,6 +38,7 @@ const TITLES = {
   walkin: ['当日受付 取り込み', '台帳未登録の当日参加者の受付・登録（様式 R7-02W）'],
   csv: ['利用者情報取り込み', '名簿・記録 CSV からの一括登録'],
   ros: ['利用者台帳', () => `登録 ${D.users.length} 名 · ${D.MUNIS.length} 市町村`],
+  merge: ['重複の確認・統合', '同じ方が複数登録されていないかを地区をまたいで点検'],
   det: ['個人詳細', '時系列の測定結果と評価'],
   cal: ['カレンダー', '測定会・教室・会議の予定管理'],
   sheet: ['用紙作成', '読み取り対応の記録用紙を印刷'],
@@ -59,6 +61,7 @@ const NAV_MAIN = [
   ['techolist', '手帳一覧'],
   ['techo', '手帳作成'],
   ['ros', '利用者台帳'],
+  ['merge', '重複の確認・統合'],
   ['mob', '用紙アップロード'],
 ]
 const NAV_ANA = [
@@ -216,6 +219,7 @@ function Header() {
 const SCREENS = {
   dash: Dashboard, imp: ImportScreen, csv: CsvImport, ros: Roster, det: Detail,
   ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, techo: Techo, techolist: TechoList, mob: Mobile, exp: CsvExport, staff: Staff, walkin: WalkIn,
+  merge: MergeScreen,
 }
 
 function AppInner() {

@@ -3,6 +3,7 @@ import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_LEVELS, commentFor } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAIN_BY_ID, KCL_SHORT } from '../data/kihon.js'
 import { wardLabel } from '../lib/db.js'
+import { districtOf } from '../lib/merge.js'
 import { RadioCard, CheckRow, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -50,7 +51,8 @@ function buildPage(state, u, y, i) {
   return {
     era: eraOf(y), uid: u.id, date: m.date, issued: D.TODAY,
     name: u.name, kana: u.kana, birth: u.birthDate, age: y - u.birth, sex: u.sexLabel, sexKey: u.sex, care: u.careLevel || '—',
-    muniVenue: u.muniName + ' · ' + u.venueName, avgHead, rows,
+    // 結果票の市町村・行政区は「その測定を行った当時の地区」（統合前と同じ地区で出る）
+    muniVenue: (() => { const a = districtOf(u, m); return a.muniName + ' · ' + a.ward })(), avgHead, rows,
     total: m.total, prevDelta: pd.txt, prevDeltaFg: pd.fg,
     polyCur: PG.poly(m.axes), polyPrev: prev ? PG.poly(prev.axes) : '', polyAvg: muniAgg.count ? PG.poly(muniAgg.axes) : '',
     trendPath: pathOf(pts), muniPath: pathOf(mpts),
@@ -339,11 +341,13 @@ export default function PdfExport() {
   const pdfUser = (chosen || D.users.find(u => u.meas[y]) || {}).id
   // 実データでは市町村マスタが置き換わるので、初期値が見つからなければ先頭にフォールバック
   const pdfMuniId = (D.MUNIS.find(m => m.id === state.pdfMuni) || D.MUNIS[0] || { id: state.pdfMuni }).id
-  const pdfWardOpts = distinctSort(D.users.filter(u => u.muni === pdfMuniId).map(u => u.venueName))
+  // 選択肢・絞り込みは「その年度の測定当時の地区」で見る（統合していない方は現在の地区と同じ）
+  const areaAt = (u) => districtOf(u, u.meas[y] || null)
+  const pdfWardOpts = distinctSort(D.users.filter(u => areaAt(u).muni === pdfMuniId).map(u => areaAt(u).ward))
   const pdfWard = state.pdfWard || 'all'
   let scope
   if (state.pdfMode === 'single') { const u = D.users.find(x => x.id === pdfUser && x.meas[y]); scope = u ? [u] : [] }
-  else if (state.pdfMode === 'muni') scope = D.users.filter(u => u.muni === pdfMuniId && (pdfWard === 'all' || u.venueName === pdfWard) && u.meas[y])
+  else if (state.pdfMode === 'muni') scope = D.users.filter(u => areaAt(u).muni === pdfMuniId && (pdfWard === 'all' || areaAt(u).ward === pdfWard) && u.meas[y])
   else scope = D.users.filter(u => u.meas[y])
   const pages = scope.slice(0, 30).map((u, i) => buildPage(state, u, y, i))
   const q = state.pdfQ.trim().toLowerCase()

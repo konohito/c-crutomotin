@@ -93,14 +93,37 @@ export function toEngineUser(u, measList) {
     joined: years.length ? Math.min(...years) : D.CUR, theta: 0,
     note: u.note || '', flags: u.flags || [], walkIn: !!u.walkIn,
     portal: u.portal || null, // 電子手帳アカウント { loginId, issuedAt }
+    // 統合（同一人物の名寄せ）関連。archived な方は台帳・集計・出力に出さない
+    archived: !!u.archived, mergedInto: u.mergedInto || null, extId: u.extId || '',
+    // 地区（行政区）の履歴。[{ ward, muni, muniName, region, venueCode, dates:[測定日] }]
+    // 行政提出 CSV / 結果票は「その測定当時の地区」をここから引く
+    districtHistory: u.districtHistory || [],
     meas, inbody, kcl, series,
   }
 }
 
 // ---- 編集（Phase③）: メモリ即時反映 + Firestore 保存 --------------------------
-// 利用者の基本情報を更新（氏名・かな・性別・生年月日・市町村/行政区・介護度・電話）
-export async function saveUserFields(id, patch) {
+/* 利用者の基本情報を更新（氏名・かな・性別・生年月日・市町村/行政区・介護度・電話）。
+   districtChange は地区（市町村・行政区）を変えたときの扱い:
+     'fix'   … 入力の誤りを直す。過去の測定もまとめて新しい地区で扱う（既定。提出 CSV は今までどおり）
+     'moved' … 引っ越し・所属変更。これまでの測定は前の地区のまま出す（履歴に残す）
+   誤りの訂正で勝手に履歴が増えると、提出 CSV が過去の誤った地区のまま出てしまうため既定は 'fix'。 */
+export async function saveUserFields(id, patch, districtChange = 'fix') {
   const u = D.users.find(x => x.id === id)
+  // 地区が変わるか（変わる場合、'moved' なら変更前の地区をこれまでの測定日つきで履歴に残す）
+  let history = null
+  if (u && districtChange === 'moved') {
+    const wardChanged = patch.venueName !== undefined && patch.venueName !== u.venueName
+    const muniChanged = patch.muniName !== undefined && patch.muniName !== u.muniName
+    if (wardChanged || muniChanged) {
+      const dates = (u.series || []).map(r => r.date).filter(Boolean)
+      history = [...(u.districtHistory || []), {
+        ward: u.venueName || '', muni: u.muni || '', muniName: u.muniName || '',
+        region: u.region || '', venueCode: u.venueCode ?? null,
+        dates, fromUserId: u.id, source: 'edit', at: new Date().toISOString(),
+      }]
+    }
+  }
   if (u) {
     Object.assign(u, patch)
     if (patch.sex) u.sexLabel = patch.sex === 'M' ? '男' : '女'
@@ -110,6 +133,7 @@ export async function saveUserFields(id, patch) {
     }
     // 市町村は名前で登録・編集する（新しい市町村名を打てば自動で選択肢に増える）。
     if (patch.muniName !== undefined) u.muni = patch.muniName
+    if (history) u.districtHistory = history
   }
   if (dbEnabled()) {
     const { fs, db } = await getFs()
@@ -120,6 +144,7 @@ export async function saveUserFields(id, patch) {
     if (patch.muniName !== undefined) { doc.muniName = patch.muniName; doc.muni = patch.muniName }
     if (patch.venueName !== undefined) doc.ward = patch.venueName
     if (u && u.birth != null) doc.birth = u.birth
+    if (history) doc.districtHistory = history
     await fs.setDoc(fs.doc(db, 'users', id), doc, { merge: true })
   }
 }
@@ -269,8 +294,9 @@ export async function loadRealData() {
     const byUser = {}
     // ドキュメント ID（＝測定日キー）も渡す。同じ年度に複数回ある測定を区別するのに使う
     msnap.forEach(d => { const m = d.data(); (byUser[m.userId] ||= []).push({ ...m, _id: d.id }) })
+    // 統合でアーカイブした方は台帳から外す（削除はしていないので、統合画面から元に戻せる）
     const list = usnap.docs.map(d => toEngineUser({ id: d.id, ...d.data() }, byUser[d.id] || []))
-      .filter(u => u.name)
+      .filter(u => u.name && !u.archived)
     // 市町村と行政区を選択肢に登録(複数市町村に対応: 嘉島町 + 熊本市各区 など)。
     // 利用者数の多い市町村を先頭にする(当日受付などの既定値が従来どおり嘉島町になるように)
     const muniIds = [...new Set(list.map(u => u.muni).filter(Boolean))]

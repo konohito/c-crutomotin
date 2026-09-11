@@ -243,3 +243,36 @@ export function loginGreeting(now = new Date()) {
   }
   return { hello, aside: asides[season][time], time, season }
 }
+
+/* ---- 行政区（地区）まわりの共通処理 -------------------------------------------
+   参加者 ID は「行政区コード(先頭2桁) + 連番」で採番する（engine.newUserId）。
+   新規登録と当日受付の両方で同じ規則を使うため、ここに 1 本化しておく。 */
+
+// その行政区の既存参加者 ID の先頭 2 桁（一番多いもの）＝採番コード。
+// 例: 三郎無田 の既存 ID が 17010, 17045… なら 17 → 新規は 17901 から採番。
+export function wardIdCode(ward) {
+  if (!ward) return null
+  const cnt = {}
+  D.users.filter(u => u.venueName === ward && /^\d{5}$/.test(String(u.id))).forEach(u => {
+    const c = String(u.id).slice(0, 2)
+    cnt[c] = (cnt[c] || 0) + 1
+  })
+  const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]
+  return top ? +top[0] : null
+}
+
+/* 行政区から市町村を引く（台帳でその行政区に登録されている人が一番多い市町村）。
+   当日受付の仮登録が市町村マスタの先頭に固定されていたため、
+   熊本市の行政区を選んでも市町村が嘉島町になる、という食い違いが起きていた。その再発防止。 */
+export function muniOfWard(ward) {
+  if (!ward) return null
+  const cnt = {}
+  D.users.filter(u => u.venueName === ward && u.muniName).forEach(u => {
+    const k = u.muniName
+    cnt[k] = cnt[k] || { n: 0, u }
+    cnt[k].n++
+  })
+  const top = Object.values(cnt).sort((a, b) => b.n - a.n)[0]
+  if (!top) return null
+  return { id: top.u.muni, name: top.u.muniName, region: top.u.region }
+}

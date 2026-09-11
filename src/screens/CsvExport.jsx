@@ -3,15 +3,21 @@ import { useStore } from '../store.jsx'
 import { eraOf, frailtyOf, FRAIL_LEVELS, commentFor } from '../lib/helpers.js'
 import { kclScore, KCL_QUESTIONS, KCL_DOMAINS } from '../data/kihon.js'
 import { wardLabel, dbEnabled } from '../lib/db.js'
+import { districtOf } from '../lib/merge.js'
 import { Card, Select, CheckRow, Overline, Segmented } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 const distinctSort = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
+/* 提出は地区（圏域・市町村・行政区）単位で出す。統合（同一人物の名寄せ）をした方は
+   地区が変わりうるため、「その測定を行った当時の地区」を使う（districtOf）。
+   統合していない方は履歴が空なので、従来どおり現在の地区がそのまま返る＝出力は変わらない。 */
+const areaOf = (u, m) => districtOf(u, m)
 // 対象地域スコープ（圏域/市町村）に属する利用者だけを返す。行政区の選択肢作成にも使う。
-const inScopeArea = (u, scope) => {
+const inScopeArea = (u, scope, m) => {
   if (scope === 'all') return true
-  if (scope.startsWith('region:')) return u.region === scope.slice(7)
-  if (scope.startsWith('muni:')) return u.muni === scope.slice(5)
+  const a = areaOf(u, m)
+  if (scope.startsWith('region:')) return a.region === scope.slice(7)
+  if (scope.startsWith('muni:')) return a.muni === scope.slice(5)
   return true
 }
 
@@ -19,9 +25,9 @@ const inScopeArea = (u, scope) => {
 // 列構成は県の指定様式に合わせてここで調整する
 const BASE_COLS = [
   ['年度', (u, y) => eraOf(y) + '年度'],
-  ['圏域', (u) => u.region],
-  ['市町村', (u) => u.muniName],
-  [wardLabel(), (u) => u.venueName],
+  ['圏域', (u, y, m) => areaOf(u, m).region],
+  ['市町村', (u, y, m) => areaOf(u, m).muniName],
+  [wardLabel(), (u, y, m) => areaOf(u, m).ward],
   ['参加者ID', (u) => u.id],
   ['氏名', (u) => u.name],
   ['ふりがな', (u) => u.kana],
@@ -87,8 +93,9 @@ function esc(v) {
 // 提出様式の列名・列順に完全一致させる。分類1〜7 = 領域別該当数、分類8 = No.1〜20 の合計。
 // 「通常5m」は所要秒（測定値 秒/m × 5m）、片脚立位・握力は左右の良い方の値で出力する。
 const hira = (kana) => String(kana || '').replace(/[ァ-ヶ]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60)).replace(/[\s　]/g, '')
-const regionCode = (u) => String((D.REGIONS.indexOf(u.region) + 1) * 10)
-const muniCode = (u) => String(D.MUNIS.findIndex(mu => mu.id === u.muni) + 1).padStart(2, '0')
+// 圏域・市町村コードは「その測定当時の地区」から引く（統合しても提出先から見た地区は変わらない）
+const regionCode = (u, m) => String((D.REGIONS.indexOf(areaOf(u, m).region) + 1) * 10)
+const muniCode = (u, m) => String(D.MUNIS.findIndex(mu => mu.id === areaOf(u, m).muni) + 1).padStart(2, '0')
 // 実データの介護度（careLevel）を優先。無ければ従来の推定にフォールバック。
 const careLevel = (u) => (u.careLevel && u.careLevel !== '自立')
   ? u.careLevel
@@ -115,11 +122,11 @@ const GOV_COLS = [
   ['性別', (u) => u.sexLabel],
   ['個人管理台帳::生年月日', (u) => u.birthDate],
   ['評価開始時年齢', (u, y, m) => ageAt(u, y, m)],
-  ['個人管理台帳::圏域コード', (u) => regionCode(u)],
-  ['個人管理台帳::市町村コード', (u) => muniCode(u)],
-  ['個人管理台帳::地区コード', (u) => regionCode(u) + muniCode(u)],
-  ['個人管理台帳::市町村名', (u) => u.muniName],
-  ['個人管理台帳::地区所属団体', (u) => u.venueName],
+  ['個人管理台帳::圏域コード', (u, y, m) => regionCode(u, m)],
+  ['個人管理台帳::市町村コード', (u, y, m) => muniCode(u, m)],
+  ['個人管理台帳::地区コード', (u, y, m) => regionCode(u, m) + muniCode(u, m)],
+  ['個人管理台帳::市町村名', (u, y, m) => areaOf(u, m).muniName],
+  ['個人管理台帳::地区所属団体', (u, y, m) => areaOf(u, m).ward],
   ['身長', (u, y, m) => m ? fmtCsv(m.values.height, 1) : ''],
   ['体重', (u, y, m) => m ? fmtCsv(m.values.weight, 1) : ''],
   ['BMI', (u, y, m) => m ? fmtCsv(m.values.bmi, 1) : ''],
@@ -174,7 +181,12 @@ export function buildExport(state) {
   const y = state.expYear
   const scope = state.expScope
   const ward = state.expWard || 'all'
-  const inScope = (u) => inScopeArea(u, scope) && (ward === 'all' || u.venueName === ward)
+  // 絞り込みも「その年度の測定を行った当時の地区」で判定する
+  // （統合していない方は現在の地区がそのまま返るため、従来と同じ結果になる）
+  const inScope = (u) => {
+    const m = u.meas[y] || null
+    return inScopeArea(u, scope, m) && (ward === 'all' || areaOf(u, m).ward === ward)
+  }
   let users = D.users.filter(inScope)
   if (state.expMeasuredOnly) users = users.filter(u => u.meas[y])
   users = users.slice().sort((a, b) => a.id.localeCompare(b.id))
@@ -230,7 +242,9 @@ export default function CsvExport() {
     .concat(D.REGIONS.map(r => opt('region:' + r, '圏域: ' + r)))
     .concat(D.MUNIS.map(m => opt('muni:' + m.id, '市町村: ' + m.name)))
   // 選択中の地域スコープに属する行政区の選択肢
-  const scopeWards = distinctSort(D.users.filter(u => inScopeArea(u, state.expScope)).map(u => u.venueName))
+  // 現在の地区に加えて、統合で履歴に残った過去の地区も選べるようにする（提出の絞り込み用）
+  const scopeWards = distinctSort(D.users.filter(u => inScopeArea(u, state.expScope))
+    .flatMap(u => [u.venueName, ...((u.districtHistory || []).map(h => h.ward))]))
   const expWard = state.expWard || 'all'
 
   const previewCols = Math.min(header.length, 12)

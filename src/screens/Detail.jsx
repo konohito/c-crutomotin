@@ -116,10 +116,15 @@ export default function Detail() {
     showToast('気づきを登録しました')
   }
 
+  // 統合（同一人物の名寄せ）で引き継いだ過去の地区。測定当時の地区はここから辿れる
+  const dHist = u.districtHistory || []
   const profile = [
     { k: '参加者 ID', v: u.id }, { k: '生年月日', v: u.birthDate }, { k: '電話番号', v: u.phone || '—' },
     { k: wardLabel(), v: u.venueName }, { k: '参加開始', v: eraOf(u.joined) + '年度' }, { k: '備考', v: u.note || '—' },
-  ]
+  ].concat(dHist.length ? [{
+    k: wardLabel() + 'の履歴',
+    v: dHist.map(h => `${h.muniName} ${h.ward || '—'}（${(h.dates || []).join('、') || '評価日なし'}）`).join(' / '),
+  }] : [])
 
   return (
     <div className="screen">
@@ -142,7 +147,8 @@ export default function Detail() {
             <span className="chip t-num" style={{ height: 22, fontSize: 11.5 }}>ID {u.id}</span>
             <span className="chip" style={{ height: 22, fontSize: 11.5 }}><span className="t-num">{u.age}</span> 歳 · {u.sexLabel}</span>
             <span className="chip" style={{ height: 22, fontSize: 11.5 }}>{u.muniName} · {u.venueName}</span>
-            <span className="chip" style={{ height: 22, fontSize: 11.5, background: 'var(--brand-50)', color: 'var(--brand-700)' }}>測定 <span className="t-num" style={{ margin: '0 3px' }}>{ys.length}</span> 回</span>
+            {/* 測定「回」数は測定日ごとの件数（同じ年度に 2 回測れば 2 回と数える） */}
+            <span className="chip" style={{ height: 22, fontSize: 11.5, background: 'var(--brand-50)', color: 'var(--brand-700)' }}>測定 <span className="t-num" style={{ margin: '0 3px' }}>{sr.length}</span> 回</span>
             {frail && (
               <span className="chip" title={'該当: ' + (frail.hitShorts.join('・') || 'なし')} style={{ height: 22, fontSize: 11.5, background: fl.bg, color: fl.fg, fontWeight: 600 }}>
                 {fl.label} <span className="t-num" style={{ marginLeft: 3 }}>{frail.n}/5</span>
@@ -452,8 +458,9 @@ export default function Detail() {
                   ))}
                   {tAuto.lines[1] && <path d={tAuto.lines[1].path} fill="none" stroke="var(--slate-300)" strokeWidth="1.5" strokeDasharray="5 4" />}
                   <path d={tAuto.lines[0].path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  {/* key は測定キー。測定キーが無いデータでも重複しないよう添字を足す */}
                   {axisLabels.map((lb, i) => (
-                    <text key={axis[i]} x={Math.round(44 + (axisLabels.length > 1 ? (i * (trW - 18 - 44)) / (axisLabels.length - 1) : 0))} y="189" textAnchor="middle" fontSize={axisLabels.length > 6 ? 9 : 10.5} fill="var(--slate-500)" fontFamily="Inter">{lb}</text>
+                    <text key={`${axis[i] ?? 'x'}-${i}`} x={Math.round(44 + (axisLabels.length > 1 ? (i * (trW - 18 - 44)) / (axisLabels.length - 1) : 0))} y="189" textAnchor="middle" fontSize={axisLabels.length > 6 ? 9 : 10.5} fill="var(--slate-500)" fontFamily="Inter">{lb}</text>
                   ))}
                   <ChartDots pts={tAuto.lines[0].pts} dec={mcol.dec} unit={mcol.unit || ''} yearFmt={state.yearFmt} chartW={trW} topFlip={40} />
                 </svg>

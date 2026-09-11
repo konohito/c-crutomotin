@@ -31,15 +31,18 @@ export function EditUserModal() {
     venueName: u?.venueName || '', careLevel: u?.careLevel || '', phone: u?.phone || '',
   }))
   const [busy, setBusy] = useState(false)
+  // 地区（市町村・行政区）を変えたときの扱い。fix=入力の誤りを直す / moved=引っ越し・所属変更
+  const [dChange, setDChange] = useState('fix')
   if (!u) return null
   const upd = (k) => (e) => setF(s => ({ ...s, [k]: e.target.value }))
   const munis = [...new Set(D.users.map(x => x.muniName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
   const wards = [...new Set(D.users.map(x => x.venueName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
+  const districtChanged = f.muniName !== (u.muniName || '') || f.venueName !== (u.venueName || '')
   const close = () => set({ editUser: null })
   const save = async () => {
     setBusy(true)
     try {
-      await saveUserFields(u.id, f)
+      await saveUserFields(u.id, f, districtChanged ? dChange : 'fix')
       showToast('基本情報を保存しました')
       set({ editUser: null, rev: state.rev + 1 })
     } catch (e) { showToast('保存に失敗しました: ' + (e.message || '')) ; setBusy(false) }
@@ -66,6 +69,20 @@ export function EditUserModal() {
           <Select value={f.careLevel} onChange={upd('careLevel')} options={CARE_OPTS} style={{ width: '100%' }} />
         </Field>
         <Field label="電話番号"><input className="field t-num" value={f.phone} onChange={upd('phone')} /></Field>
+        {/* 地区を変えたときだけ確認する。誤りの訂正と引っ越しでは、過去の測定の扱いが変わるため
+            （引っ越しなら過去の測定は前の地区のまま提出する必要がある） */}
+        {districtChanged && (
+          <div style={{ gridColumn: '1 / -1', border: '1px solid var(--border-default)', borderRadius: 8, padding: '10px 12px', background: 'var(--bg-subtle)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>市町村・行政区を変更します。どちらですか？</div>
+            {[['fix', '入力の誤りを直す', 'これまでの測定も、新しい市町村・行政区で提出します'],
+              ['moved', '引っ越し・所属の変更', 'これまでの測定は、前の市町村・行政区のまま提出します（履歴として残します）']].map(([v, l, d]) => (
+              <label key={v} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0', cursor: 'pointer' }}>
+                <input type="radio" name="dchange" checked={dChange === v} onChange={() => setDChange(v)} style={{ marginTop: 3 }} />
+                <span style={{ fontSize: 12.5 }}><b>{l}</b><br /><span style={{ color: 'var(--fg-3)', fontSize: 11.5 }}>{d}</span></span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
       <div className="modal-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '0 20px 20px' }}>
         <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
