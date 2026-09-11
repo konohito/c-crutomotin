@@ -31,7 +31,8 @@ export function YearFmtSwitch() {
 }
 
 function Tip({ p, dec, unit, yearFmt, chartW }) {
-  const year = yearLabel(p.year, yearFmt) + '年度'
+  // 測定日ごとの推移では label（例「令7.10/2」）が入る。年度単位のグラフは従来どおり年度表示
+  const year = p.label != null ? p.label : yearLabel(p.year, yearFmt) + '年度'
   const val = `${fmtD(p.v, dec)}${unit ? ' ' + unit : ''}`
   const w = Math.max(year.length * 10.5, val.length * 8.5) + 22
   const above = p.y > 66

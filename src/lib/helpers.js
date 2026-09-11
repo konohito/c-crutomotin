@@ -44,6 +44,37 @@ export const dotsOf = (pts) => pts.map(p => ({ x: p.x, y: p.y, ly: p.y < 34 ? p.
 
 // 値域を自動決定してポリラインを作る。
 // 縦軸の目盛りは「きりのいい値」（10/5/2/1、狭い範囲のみ 0.5/0.1）に揃えて整数表示にする。
+/* 測定を「測定日順の配列」で取り出す。
+   実データ(Firestore)は 1 測定 = 1 ドキュメントなので u.series をそのまま使う。
+   公開デモ(シード)には series が無いため、年度キーの meas から組み立てる。
+   同じ年度に複数回測っていても、ここでは全部が別の要素として並ぶ。 */
+export function seriesOf(u) {
+  if (!u || !u.meas) return []
+  const arr = Array.isArray(u.series) ? u.series.slice() : []
+  const have = new Set(arr.map(r => r.key))
+  // series に載っていない年度キーの測定（公開デモのシード、メモリ上の CSV 取り込みなど）も拾う
+  Object.keys(u.meas).map(Number).forEach(y => {
+    const m = u.meas[y]
+    if (!m) return
+    const k = m.key || `${u.id}_${y}`
+    if (!have.has(k)) { arr.push({ ...m, year: m.year != null ? m.year : y, key: k }); have.add(k) }
+  })
+  const sk = (r) => {
+    const m = String(r.date || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
+    return m ? m[1] + m[2].padStart(2, '0') + m[3].padStart(2, '0') : `${r.year}0000`
+  }
+  return arr.sort((a, b) => (sk(a) < sk(b) ? -1 : sk(a) > sk(b) ? 1 : 0))
+}
+// 推移グラフの横軸ラベル。同じ年度に複数回あるので「年度」ではなく測定日で示す
+export const measAxisLabel = (r, fmt) => {
+  if (!r) return ''
+  if (r.date) {
+    const [y, m, d] = String(r.date).split('/')
+    return `${fmt === 'west' ? y : eraOf(+y)}.${+m}/${+d}`
+  }
+  return eraOf(r.year) + '年度'
+}
+
 export function autoLines(seriesList, years, x0, x1, yTop, yBot) {
   const vals = []
   seriesList.forEach(sr => sr.pts.forEach(p => { if (p.v !== null && p.v !== undefined) vals.push(p.v) }))
@@ -61,7 +92,8 @@ export function autoLines(seriesList, years, x0, x1, yTop, yBot) {
   const xs = (i) => x0 + (years.length > 1 ? (i * (x1 - x0)) / (years.length - 1) : 0)
   const ys = (v) => yTop + ((hi - v) * (yBot - yTop)) / (hi - lo)
   const lines = seriesList.map(sr => {
-    const pts = sr.pts.filter(p => p.v !== null && p.v !== undefined).map(p => ({ x: Math.round(xs(years.indexOf(p.year))), y: Math.round(ys(p.v)), v: p.v, year: p.year }))
+    // years は「横軸の並び」。年度の配列でも、測定キーの配列でもよい（p.year がその要素に対応する）
+    const pts = sr.pts.filter(p => p.v !== null && p.v !== undefined).map(p => ({ x: Math.round(xs(years.indexOf(p.year))), y: Math.round(ys(p.v)), v: p.v, year: p.year, label: p.label }))
     return { ...sr, path: pathOf(pts), pts }
   })
   const ticks = []

@@ -56,17 +56,23 @@ def ensure(_id, **kw):
     return u
 
 def merge_meas(u, y, rec):
-    """同じアプリ年度に 2 つの測定が重なったら(C型の開始と終了など)、
-       新しい日付を正として、欠けている値だけ古い方から補う。"""
-    y = str(y)
-    cur = u['meas'].get(y)
+    """測定は「評価日ごとに 1 件」。同じアプリ年度に 2 つ重なっても統合しない。
+
+    以前はここで年度をキーに統合していたため、C 型(短期集中)のように
+    開始時と終了時を約 3 か月間隔で測る方は、開始時の測定が終了時に
+    上書きされて丸ごと消えていた。測定ドキュメントを評価日キーにしたので
+    同じ年度に何回でも並べられる。
+    同じ日に 2 行ある場合(台帳の重複行)だけ、欠けている値を補い合う。"""
+    if not rec.get('date'):
+        return
+    rec['year'] = int(y)
+    cur = u['meas'].get(rec['date'])
     if not cur:
-        u['meas'][y] = rec; return
-    older, newer = (cur, rec) if (rec.get('date') or '') >= (cur.get('date') or '') else (rec, cur)
-    merged = dict(older)
-    for k, v in newer.items():
+        u['meas'][rec['date']] = rec; return
+    merged = dict(cur)
+    for k, v in rec.items():
         if v is not None: merged[k] = v
-    u['meas'][y] = merged
+    u['meas'][rec['date']] = merged
 
 skipped = 0
 for r in ws.iter_rows(min_row=2, values_only=True):
@@ -105,8 +111,9 @@ for r in ws.iter_rows(min_row=2, values_only=True):
             v = r[19 + no - 1]
             if v in (0, 1):
                 raw[str(no)] = po if v == 1 else ('no' if po == 'yes' else 'yes')
-        if raw:
-            u['kcl'][str(ys)] = raw
+        # 問診票は測定と同じドキュメントに入れるので、年度ではなく開始時の評価日をキーにする
+        if raw and dstr(r[52]):
+            u['kcl'][dstr(r[52])] = raw
     # 終了時の測定(身長は変わらないので引き継ぐ。体重は測っていないため入れない)
     ye = app_year(r[53])
     if ye is not None:
@@ -125,8 +132,9 @@ json.dump(out, open('normalized-kumamoto.json', 'w'), ensure_ascii=False, indent
 
 years = {}
 for u in out:
-    for y in u['meas']: years[y] = years.get(y, 0) + 1
+    for m in u['meas'].values(): years[str(m['year'])] = years.get(str(m['year']), 0) + 1
 kclN = sum(1 for u in out for _ in u['kcl'])
+print(f"測定(評価日ごと): {sum(len(u['meas']) for u in out)} 件")
 names = {}
 for u in out: names[u['name']] = names.get(u['name'], 0) + 1
 dups = {n: c for n, c in names.items() if c > 1}

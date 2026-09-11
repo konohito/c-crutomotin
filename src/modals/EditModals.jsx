@@ -87,7 +87,8 @@ export function EditMeasModal() {
   const em = state.editMeas
   const u = em && D.users.find(x => x.id === em.id)
   const [f, setF] = useState(() => {
-    const m = (u && u.meas[em.year]) || {}
+    // 同じ年度に複数回ある場合は key でその 1 回を指す（無ければ年度の代表＝最新）
+    const m = (u && ((em.key && (u.series || []).find(r => r.key === em.key)) || u.meas[em.year])) || {}
     const v = m.values || {}
     const o = { year: String(em.year), date: m.date || '' }
     MEAS_FIELDS.forEach(([k]) => { o[k] = (v[k] == null ? '' : String(v[k])) }); return o
@@ -104,8 +105,8 @@ export function EditMeasModal() {
       if (values.height && values.weight) values.bmi = Math.round((values.weight / Math.pow(values.height / 100, 2)) * 10) / 10
       // 評価年を変えた場合は記録一式(測定値・問診回答・InBody・評価日)を移してから保存する
       const newY = parseInt(f.year, 10) || em.year
-      if (newY !== em.year) await moveMeasurementYear(u.id, em.year, newY)
-      await saveMeasurement(u.id, newY, values, f.date)
+      if (newY !== em.year) await moveMeasurementYear(u.id, em.year, newY, em.key)
+      await saveMeasurement(u.id, newY, values, f.date, em.key)
       showToast(`${eraOf(newY)}年度の測定値を保存しました`)
       set({ editMeas: null, rev: state.rev + 1 })
     } catch (e) { showToast('保存に失敗しました: ' + (e.message || '')); setBusy(false) }

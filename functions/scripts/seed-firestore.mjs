@@ -39,16 +39,27 @@ async function main() {
     }, { merge: true })
     users++; if (++n >= 400) await flush()
 
-    // 測定と基本チェックリストのある年度をまとめて 1 通の measurements ドキュメントに
-    const yearsAll = new Set([...Object.keys(u.meas || {}), ...Object.keys(u.kcl || {})])
-    for (const year of yearsAll) {
-      const m = (u.meas || {})[year] || {}
+    /* 測定と基本チェックリストを 1 通の measurements ドキュメントにまとめる。
+       キーは 2 通り受け付ける:
+         - 評価日 'YYYY/MM/DD' … 新しい形。同じ年度に何回でも測定を持てる(熊本市 C 型など)
+         - 年度 '2025'        … 従来の形(嘉島町 ETL・InBody 突合)。評価日が無いものもここ
+       文書 ID は評価日があれば {id}_{YYYYMMDD}、無ければ従来どおり {id}_{年度}。 */
+    const keysAll = new Set([...Object.keys(u.meas || {}), ...Object.keys(u.kcl || {})])
+    const measKeys = []
+    for (const key of keysAll) {
+      const m = (u.meas || {})[key] || {}
+      const dm = String(m.date || key).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
+      const compact = dm ? dm[1] + dm[2].padStart(2, '0') + dm[3].padStart(2, '0') : ''
+      const year = Number(m.year != null ? m.year : key)
+      if (!Number.isFinite(year)) { console.warn('[seed] 年度が取れないキーを飛ばしました:', u.id, key); continue }
+      const docId = compact ? `${u.id}_${compact}` : `${u.id}_${year}`
+      const ib = (u.inbody || {})[String(year)]
       const doc = {
-        userId: String(u.id), year: Number(year), date: m.date || null,
-        inbodySmi: (u.inbody && u.inbody[year] && u.inbody[year].smi != null) ? u.inbody[year].smi : null,
+        userId: String(u.id), year, date: m.date || (dm ? key : null),
+        inbodySmi: (ib && ib.smi != null) ? ib.smi : null,
         review: !!m.review, source: m.source || '',
       }
-      if ((u.meas || {})[year]) {
+      if ((u.meas || {})[key]) {
         const values = {}
         for (const k of MEAS_FIELDS) values[k] = (m[k] === undefined ? null : m[k])
         doc.values = values
@@ -56,9 +67,15 @@ async function main() {
         doc.inbodyOnly = true   // 体力測定なし(KCL のみ)の年はスコア・参加年に数えない
       }
       // 基本チェックリストの実回答(raw: {'設問No': 'yes'|'no'})。アプリは kclAnswers を読む
-      if (u.kcl && u.kcl[year]) doc.kclAnswers = u.kcl[year]
-      batch.set(db.collection('measurements').doc(`${u.id}_${year}`), doc, { merge: true })
+      if (u.kcl && u.kcl[key]) doc.kclAnswers = u.kcl[key]
+      batch.set(db.collection('measurements').doc(docId), doc, { merge: true })
+      measKeys.push(docId)
       meas++; if (++n >= 400) await flush()
+    }
+    // 電子手帳(本人ログイン)は list が使えず文書 ID 指定でしか読めないため索引を持たせる
+    if (measKeys.length) {
+      batch.set(uref, { measKeys: admin.firestore.FieldValue.arrayUnion(...measKeys) }, { merge: true })
+      if (++n >= 400) await flush()
     }
   }
   if (n > 0) await batch.commit()

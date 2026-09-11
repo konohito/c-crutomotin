@@ -1,6 +1,6 @@
 import D from '../data/engine.js'
 import { useStore, memosFor } from '../store.jsx'
-import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAvg, frailtyOf, FRAIL_LEVELS } from '../lib/helpers.js'
+import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAvg, frailtyOf, FRAIL_LEVELS, seriesOf, measAxisLabel } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAINS } from '../data/kihon.js'
 import { realDataEnabled } from '../lib/realdata.js'
 import { wardLabel } from '../lib/db.js'
@@ -24,10 +24,12 @@ export default function Detail() {
   const { state, set, setState, showToast } = useStore()
   const { profile: staffProfile, enabled: authOn } = useAuth()
   const u = D.users.find(x => x.id === state.detId) || D.users[0]
-  const ys = Object.keys(u.meas).map(Number)
-  const last = ys.length ? u.meas[ys[ys.length - 1]] : null
-  const lastY = ys.length ? ys[ys.length - 1] : D.CUR
-  const prev = ys.length > 1 ? u.meas[ys[ys.length - 2]] : null
+  /* 測定日順の一覧。同じ年度に 2 回測っていても両方ここに並ぶ（熊本市 C 型の開始時・終了時など）。
+     「前回」は年度ではなく 1 つ前の測定を指す。 */
+  const sr = seriesOf(u)
+  const last = sr.length ? sr[sr.length - 1] : null
+  const lastY = last ? last.year : D.CUR
+  const prev = sr.length > 1 ? sr[sr.length - 2] : null
   const muniAgg = D.agg(x => x.muni === u.muni, lastY)
   const g = radarGeo()
   const td = deltaOf(last ? last.total : null, prev ? prev.total : null, 0, 'high')
@@ -40,14 +42,20 @@ export default function Detail() {
   }) : []
 
   const mcol = state.detMetric === 'total' ? { id: 'total', label: '総合スコア', unit: '', dec: 0 } : (colsBmi.find(c => c.id === state.detMetric) || colsBmi[0])
-  const pSeries = D.YEARS.map(y => ({ year: y, v: u.meas[y] ? (mcol.id === 'total' ? u.meas[y].total : u.meas[y].values[mcol.id]) : null }))
+  /* 推移グラフの横軸は「測定した回」。1 年度に 2 回測れば点も 2 つ並ぶ。
+     測定が 1 回以下のときは、従来どおり年度の目盛りを並べて位置関係が分かるようにする。 */
+  const axisRecs = sr.length > 1 ? sr : D.YEARS.map(y => (u.meas[y] ? sr.find(r => r.key === u.meas[y].key) || u.meas[y] : { year: y, key: `_y${y}`, values: {}, total: null }))
+  const axis = axisRecs.map(r => r.key)
+  const axisLabels = axisRecs.map(r => (sr.length > 1 ? measAxisLabel(r, state.yearFmt) : yearLabel(r.year, state.yearFmt)))
+  const valOf = (r) => (!r || !r.values ? null : mcol.id === 'total' ? (r.total ?? null) : (r.values[mcol.id] ?? null))
+  const pSeries = axisRecs.map(r => ({ year: r.key, label: measAxisLabel(r, state.yearFmt), v: valOf(r) }))
   const muniPool = D.users.filter(x => x.muni === u.muni)
-  const mSeries = D.YEARS.map(y => ({ year: y, v: itemAvg(muniPool, y, mcol.id) }))
+  const mSeries = axisRecs.map(r => ({ year: r.key, label: measAxisLabel(r, state.yearFmt), v: itemAvg(muniPool, r.year, mcol.id) }))
   const [trRef, trW] = useChartWidth(520)
-  const tAuto = autoLines([{ pts: pSeries }, { pts: mSeries }], D.YEARS, 44, trW - 18, 18, 170)
+  const tAuto = autoLines([{ pts: pSeries }, { pts: mSeries }], axis, 44, trW - 18, 18, 170)
 
   const detMult = D.COLS.map(c => {
-    const vals = ys.filter(y => u.meas[y].values[c.id] !== null).map(y => u.meas[y].values[c.id])
+    const vals = sr.filter(r => r.values[c.id] !== null && r.values[c.id] !== undefined).map(r => r.values[c.id])
     const d = deltaOf(last ? last.values[c.id] : null, prev ? prev.values[c.id] : null, c.dec, c.better)
     let spark = ''
     if (vals.length > 1) {
@@ -58,11 +66,26 @@ export default function Detail() {
   })
 
   const canEdit = realDataEnabled()
-  const hist = D.YEARS.map(y => {
-    const m = u.meas[y]
-    const pre = y < u.joined
-    const st = m ? ['測定', 'var(--success-50)', 'var(--success-700)'] : (pre ? ['登録前', 'transparent', 'var(--fg-4)'] : (y === D.CUR ? ['未測定', 'var(--warning-50)', 'var(--warning-700)'] : ['欠席', 'var(--slate-100)', 'var(--slate-600)']))
-    return { era: eraOf(y), year: y, measured: !!m, review: !!(m && m.review), date: m ? m.date : '—', total: m ? m.total : '—', suffix: m ? '/100' : '', st }
+  /* 参加履歴。1 年度に複数回測っている場合は、その回数ぶん行を出す
+     （従来は年度ごとに 1 行しか出せず、開始時の測定が見えなかった）。 */
+  const histYears = [...new Set([...D.YEARS, ...sr.map(r => r.year)])].sort((a, b) => a - b)
+  const hist = []
+  histYears.forEach(y => {
+    const rs = sr.filter(r => r.year === y)
+    if (rs.length) {
+      rs.forEach((m, i) => hist.push({
+        rowKey: m.key, era: eraOf(y) + (rs.length > 1 ? `（${i + 1}回目）` : ''), year: y, measKey: m.key,
+        measured: true, review: !!m.review, date: m.date || '—', total: m.total, suffix: '/100',
+        st: ['測定', 'var(--success-50)', 'var(--success-700)'],
+      }))
+    } else {
+      const pre = y < u.joined
+      hist.push({
+        rowKey: '_y' + y, era: eraOf(y), year: y, measKey: null, measured: false, review: false,
+        date: '—', total: '—', suffix: '',
+        st: pre ? ['登録前', 'transparent', 'var(--fg-4)'] : (y === D.CUR ? ['未測定', 'var(--warning-50)', 'var(--warning-700)'] : ['欠席', 'var(--slate-100)', 'var(--slate-600)']),
+      })
+    }
   })
 
   const frail = last ? frailtyOf(u, lastY) : null
@@ -210,7 +233,7 @@ export default function Detail() {
               {hist.map(h => {
                 const editable = canEdit && h.measured
                 return (
-                  <div key={h.era} onClick={editable ? () => set({ editMeas: { id: u.id, year: h.year } }) : undefined}
+                  <div key={h.rowKey} onClick={editable ? () => set({ editMeas: { id: u.id, year: h.year, key: h.measKey } }) : undefined}
                     title={editable ? `${h.era}年度の測定値を編集` : undefined}
                     style={{ display: 'grid', gridTemplateColumns: '58px 1fr 56px 74px 18px', gap: 8, padding: '7px 4px', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center', cursor: editable ? 'pointer' : 'default', borderRadius: 6 }}
                     onMouseEnter={editable ? (e) => e.currentTarget.style.background = 'var(--bg-hover)' : undefined}
@@ -429,8 +452,8 @@ export default function Detail() {
                   ))}
                   {tAuto.lines[1] && <path d={tAuto.lines[1].path} fill="none" stroke="var(--slate-300)" strokeWidth="1.5" strokeDasharray="5 4" />}
                   <path d={tAuto.lines[0].path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                  {D.YEARS.map((y, i) => (
-                    <text key={y} x={Math.round(44 + (i * (trW - 18 - 44)) / 5)} y="189" textAnchor="middle" fontSize="10.5" fill="var(--slate-500)" fontFamily="Inter">{yearLabel(y, state.yearFmt)}</text>
+                  {axisLabels.map((lb, i) => (
+                    <text key={axis[i]} x={Math.round(44 + (axisLabels.length > 1 ? (i * (trW - 18 - 44)) / (axisLabels.length - 1) : 0))} y="189" textAnchor="middle" fontSize={axisLabels.length > 6 ? 9 : 10.5} fill="var(--slate-500)" fontFamily="Inter">{lb}</text>
                   ))}
                   <ChartDots pts={tAuto.lines[0].pts} dec={mcol.dec} unit={mcol.unit || ''} yearFmt={state.yearFmt} chartW={trW} topFlip={40} />
                 </svg>

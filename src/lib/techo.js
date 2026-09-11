@@ -178,13 +178,17 @@ export async function loadPortalData(authUid) {
     const userId = map.data().userId
     const usnap = await fs.getDoc(fs.doc(db, 'users', userId))
     if (!usnap.exists()) return null
-    /* 測定は年度ごとに ID が決まっている(measurements/{参加者ID}_{年度})ので、
-       コレクションを検索せず 1 件ずつ取りに行く。
+    /* 測定は文書 ID を指定して 1 件ずつ取りに行く。
        検索(クエリ)にすると、セキュリティルールが本人確認のために
-       文書ごとに参照を行うことになり、件数が増えると評価上限に当たるため。 */
-    const ids = D.YEARS.map(y => `${userId}_${y}`)
+       文書ごとに参照を行うことになり、件数が増えると評価上限に当たるため
+       （ルール上も本人には list を許可していない）。
+       文書 ID は測定日キー(measurements/{参加者ID}_{YYYYMMDD})なので日付が分からないと
+       組み立てられない。そこで利用者文書の measKeys(職員側が更新する索引)を使う。
+       索引が無い古いデータのために、従来の年度キーも候補に足しておく。 */
+    const idx = Array.isArray(usnap.data().measKeys) ? usnap.data().measKeys : []
+    const ids = [...new Set([...idx, ...D.YEARS.map(y => `${userId}_${y}`)])]
     const snaps = await Promise.all(ids.map(id => fs.getDoc(fs.doc(db, 'measurements', id)).catch(() => null)))
-    const meas = snaps.filter(s => s && s.exists()).map(s => s.data())
+    const meas = snaps.filter(s => s && s.exists()).map(s => ({ ...s.data(), _id: s.id }))
     return toEngineUser({ id: userId, ...usnap.data() }, meas)
   } catch (e) {
     console.error('loadPortalData failed:', e)

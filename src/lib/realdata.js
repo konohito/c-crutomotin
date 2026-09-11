@@ -26,10 +26,28 @@ function scoreOf(sex, v) {
   return { values: vv, axes, total }
 }
 
+/* 測定ドキュメント ID。
+   旧: `{利用者ID}_{年度}` … 1 年度 1 件しか持てず、同じ年度に 2 回測ると
+       後の測定が前の測定を上書きして消していた（熊本市の C 型・短期集中は
+       開始時と終了時を約 3 か月間隔で測るため、開始時が毎回消えていた）。
+   新: `{利用者ID}_{測定日}` … 測定日ごとに 1 件。同じ年度に何回でも入る。
+   評価日が未記入のものだけ、従来どおり年度キーにフォールバックする。 */
+// 評価日 → YYYYMMDD。「2026/09/7」のように 0 詰めされていない表記も揃える
+export const compactDate = (date) => {
+  const m = String(date || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
+  return m ? m[1] + m[2].padStart(2, '0') + m[3].padStart(2, '0') : ''
+}
+export const measKey = (id, date, year) => {
+  const d = compactDate(date)
+  return d ? `${id}_${d}` : `${id}_${year}`
+}
+// 並べ替え用のキー。評価日が無いものは年度の頭に置く
+const sortKeyOf = (m) => compactDate(m.date) || `${m.year}0000`
+
 // Firestore の user ドキュメント + 測定群 → エンジン形式の利用者オブジェクト
 // (電子手帳のポータル読み込み(techo.js)からも使う)
 export function toEngineUser(u, measList) {
-  const meas = {}, inbody = {}, kcl = {}
+  const meas = {}, inbody = {}, kcl = {}, series = []
   for (const m of measList) {
     // 評価年の修正で別年度に移した元ドキュメント。監査のため残すが表示・集計には使わない
     if (m.voided) continue
@@ -50,7 +68,18 @@ export function toEngineUser(u, measList) {
     if (m.kclAnswers) kcl[m.year] = { raw: { ...((kcl[m.year] || {}).raw || {}), ...m.kclAnswers }, date: m.date || null }
     if (m.inbodyOnly) continue
     const s = scoreOf(u.sex, m.values || {})
-    meas[m.year] = { ...s, date: m.date || null, review: !!m.review }
+    series.push({
+      ...s, date: m.date || null, review: !!m.review,
+      year: Number(m.year), key: m._id || measKey(u.id, m.date, m.year),
+      source: m.source || '',
+    })
+  }
+  // 測定日の昇順。同じ年度に複数回あってもすべて残す（推移はこの配列を見る）
+  series.sort((a, b) => (sortKeyOf(a) < sortKeyOf(b) ? -1 : sortKeyOf(a) > sortKeyOf(b) ? 1 : 0))
+  // 年度キーの参照（既存画面との互換）。同じ年度に複数あるときは「その年度の最新」を代表にする
+  for (const r of series) {
+    const cur = meas[r.year]
+    if (!cur || sortKeyOf(r) >= sortKeyOf(cur)) meas[r.year] = r
   }
   const years = Object.keys(meas).map(Number)
   return {
@@ -64,7 +93,7 @@ export function toEngineUser(u, measList) {
     joined: years.length ? Math.min(...years) : D.CUR, theta: 0,
     note: u.note || '', flags: u.flags || [], walkIn: !!u.walkIn,
     portal: u.portal || null, // 電子手帳アカウント { loginId, issuedAt }
-    meas, inbody, kcl,
+    meas, inbody, kcl, series,
   }
 }
 
@@ -113,15 +142,35 @@ export async function createUserDoc(u) {
 
 // 年度の測定値を更新（5領域・総合スコアを再計算 + Firestore 保存）
 // date(評価日)を渡すと合わせて保存する(undefined なら触らない。'' は未記入=null 扱い)
-export async function saveMeasurement(id, year, values, date) {
+// key を渡すと その測定ドキュメントを更新する（同じ年度に複数回ある場合の指定用）。
+// 省略時は「その年度の最新の測定」、それも無ければ評価日から新しいドキュメントを作る。
+export async function saveMeasurement(id, year, values, date, key) {
   const u = D.users.find(x => x.id === id)
   const s = scoreOf(u ? u.sex : 'F', values)
-  const d = date === undefined ? undefined : (String(date).trim() || null)
+  let d = date === undefined ? undefined : (String(date).trim() || null)
+  const target = (u && u.series || []).find(r => key ? r.key === key : false)
+    || (key ? null : (u && u.meas[year]) || null)
+  const oldKey = target ? target.key : null
+  /* 新規の測定で評価日が渡されなかった場合は「今日」を入れる。
+     日付が無いと年度キーのままになり、同じ年度に 2 回測ったときに
+     また上書きで消えてしまうため（この不具合の再発防止）。 */
+  if (!target && (d === undefined || d === null)) {
+    const t = new Date()
+    d = `${t.getFullYear()}/${String(t.getMonth() + 1).padStart(2, '0')}/${String(t.getDate()).padStart(2, '0')}`
+  }
+  // 評価日を変えたら、ドキュメント ID も新しい日付のものに移す（ID と評価日を食い違わせない）
+  const newKey = measKey(id, d !== undefined ? d : (target && target.date), year)
   if (u) {
-    const prev = u.meas[year] || {}
-    u.meas[year] = { ...prev, values: s.values, axes: s.axes, total: s.total }
-    if (d !== undefined) u.meas[year].date = d
-    if (!u.meas[year].date) u.meas[year].date = null
+    const rec = target || { values: {}, axes: null, total: 0, date: null, review: false, year: Number(year), key: newKey, source: '' }
+    rec.values = s.values; rec.axes = s.axes; rec.total = s.total
+    if (d !== undefined) rec.date = d
+    if (!rec.date) rec.date = null
+    rec.year = Number(year); rec.key = newKey
+    u.series = u.series || []
+    if (!target) u.series.push(rec)
+    u.series.sort((a, b) => (sortKeyOf(a) < sortKeyOf(b) ? -1 : sortKeyOf(a) > sortKeyOf(b) ? 1 : 0))
+    // 年度の代表（その年度の最新）を取り直す
+    u.meas[year] = u.series.filter(r => r.year === Number(year)).slice(-1)[0] || rec
     // 評価日は測定ドキュメント共通のため、同年の問診カードの表示日も揃える
     if (d !== undefined && u.kcl && u.kcl[year]) u.kcl[year].date = d
   }
@@ -129,7 +178,21 @@ export async function saveMeasurement(id, year, values, date) {
     const { fs, db } = await getFs()
     const doc = { userId: id, year: Number(year), values: s.values }
     if (d !== undefined) doc.date = d
-    await fs.setDoc(fs.doc(db, 'measurements', `${id}_${year}`), doc, { merge: true })
+    if (oldKey && oldKey !== newKey) {
+      // 日付が変わってドキュメントが引っ越すとき。中身を引き継いでから元を無効化する
+      const snap = await fs.getDoc(fs.doc(db, 'measurements', oldKey))
+      const base = snap.exists() ? snap.data() : {}
+      delete base.voided
+      await fs.setDoc(fs.doc(db, 'measurements', newKey), { ...base, ...doc })
+      await fs.setDoc(fs.doc(db, 'measurements', oldKey), { userId: id, year: Number(year), voided: true }, { merge: true })
+    } else {
+      await fs.setDoc(fs.doc(db, 'measurements', newKey), doc, { merge: true })
+    }
+    // 電子手帳（本人ログイン）は list が使えず文書 ID 指定でしか読めないため、
+    // 利用者文書に測定キーの索引を持たせておく（techo.js の loadPortalData が読む）
+    try {
+      await fs.setDoc(fs.doc(db, 'users', id), { measKeys: fs.arrayUnion(newKey) }, { merge: true })
+    } catch (e) { console.warn('measKeys index update failed:', e && e.message) }
   }
   return s
 }
@@ -137,25 +200,27 @@ export async function saveMeasurement(id, year, values, date) {
 // 評価年の修正: 記録(測定値・問診回答・InBody・評価日)を別の年度へ移す。
 // Firestore は削除不可(監査性)のため、元の年度のドキュメントには voided フラグを立てて
 // 読み込み時に飛ばす。移動先に既にデータがある場合はエラー(上書き事故防止)。
-export async function moveMeasurementYear(id, fromY, toY) {
+// 測定ドキュメントは評価日をキーにしているため、評価年の変更は year 項目の付け替えで足りる
+// (ドキュメントを引っ越す必要がない＝移動先に既にデータがあっても衝突しない)。
+// key を渡すとその測定だけを移す。省略時はその年度の代表(最新)を移す。
+export async function moveMeasurementYear(id, fromY, toY, key) {
   const u = D.users.find(x => x.id === id)
-  if (u && (u.meas[toY] || (u.kcl && u.kcl[toY]) || (u.inbody && u.inbody[toY]))) {
-    throw new Error(`移動先の年度に既にデータがあります。先に移動先(${toY}年度)のデータを確認してください`)
-  }
+  const rec = u ? ((u.series || []).find(r => key ? r.key === key : false) || u.meas[fromY] || null) : null
+  const docKey = (rec && rec.key) || key || `${id}_${fromY}`
   if (dbEnabled()) {
     const { fs, db } = await getFs()
-    const oldRef = fs.doc(db, 'measurements', `${id}_${fromY}`)
-    const snap = await fs.getDoc(oldRef)
-    const data = snap.exists() ? snap.data() : {}
-    delete data.voided
-    // 移動先は丸ごと置き換え(過去に voided にした残骸があっても消える)
-    await fs.setDoc(fs.doc(db, 'measurements', `${id}_${toY}`), { ...data, userId: id, year: Number(toY) })
-    await fs.setDoc(oldRef, { userId: id, year: Number(fromY), voided: true }, { merge: true })
+    await fs.setDoc(fs.doc(db, 'measurements', docKey), { userId: id, year: Number(toY) }, { merge: true })
   }
   if (u) {
-    if (u.meas[fromY]) { u.meas[toY] = u.meas[fromY]; delete u.meas[fromY] }
-    if (u.kcl && u.kcl[fromY]) { u.kcl[toY] = u.kcl[fromY]; delete u.kcl[fromY] }
-    if (u.inbody && u.inbody[fromY]) { u.inbody[toY] = u.inbody[fromY]; delete u.inbody[fromY] }
+    if (rec) rec.year = Number(toY)
+    if (u.kcl && u.kcl[fromY] && !u.kcl[toY]) { u.kcl[toY] = u.kcl[fromY]; delete u.kcl[fromY] }
+    if (u.inbody && u.inbody[fromY] && !u.inbody[toY]) { u.inbody[toY] = u.inbody[fromY]; delete u.inbody[fromY] }
+    // 年度の代表を取り直す
+    u.meas = {}
+    for (const r of (u.series || [])) {
+      const cur = u.meas[r.year]
+      if (!cur || sortKeyOf(r) >= sortKeyOf(cur)) u.meas[r.year] = r
+    }
     const ys = Object.keys(u.meas).map(Number)
     if (ys.length) u.joined = Math.min(...ys)
   }
@@ -179,7 +244,9 @@ export async function saveKclAnswers(id, year, answers, date) {
   }
   if (dbEnabled()) {
     const { fs, db } = await getFs()
-    const ref = fs.doc(db, 'measurements', `${id}_${year}`)
+    // 問診票はその年度の測定と同じドキュメントに入れる（同年度に複数あるときは最新＝代表）
+    const rep = u && u.meas[year]
+    const ref = fs.doc(db, 'measurements', (rep && rep.key) || measKey(id, d !== undefined ? d : (rep && rep.date), year))
     // セキュリティルールが userId/year を要求するため、先に merge で確保しておく
     const base = { userId: id, year: Number(year) }
     if (d !== undefined) base.date = d
@@ -200,7 +267,8 @@ export async function loadRealData() {
     if (usnap.empty) { setUsers([]); return { loaded: true, empty: true } }
     const msnap = await fs.getDocs(fs.collection(db, 'measurements'))
     const byUser = {}
-    msnap.forEach(d => { const m = d.data(); (byUser[m.userId] ||= []).push(m) })
+    // ドキュメント ID（＝測定日キー）も渡す。同じ年度に複数回ある測定を区別するのに使う
+    msnap.forEach(d => { const m = d.data(); (byUser[m.userId] ||= []).push({ ...m, _id: d.id }) })
     const list = usnap.docs.map(d => toEngineUser({ id: d.id, ...d.data() }, byUser[d.id] || []))
       .filter(u => u.name)
     // 市町村と行政区を選択肢に登録(複数市町村に対応: 嘉島町 + 熊本市各区 など)。
