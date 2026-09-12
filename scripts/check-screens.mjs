@@ -31,13 +31,14 @@ import WalkIn from '../src/screens/WalkIn.jsx'
 import Mobile from '../src/screens/Mobile.jsx'
 import Staff from '../src/screens/Staff.jsx'
 import MergeScreen from '../src/screens/Merge.jsx'
+import Billing from '../src/screens/Billing.jsx'
 
 const SCREENS = {
   'ダッシュボード': Dashboard, '取り込み': ImportScreen, '当日受付 取り込み': WalkIn,
   '利用者情報取り込み': CsvImport, 'カレンダー': Calendar, '用紙作成': SheetMaker,
   '手帳一覧': TechoList, '手帳作成': Techo, '利用者台帳': Roster, '重複の確認・統合': MergeScreen,
   '用紙アップロード': Mobile, '集計分析': Analytics, 'PDF 出力': PdfExport,
-  'CSV 出力': CsvExport, '個人詳細': Detail, '職員管理': Staff,
+  'CSV 出力': CsvExport, '請求突き合わせ': Billing, '個人詳細': Detail, '職員管理': Staff,
 }
 
 // DATA が無ければ同梱のデモデータ（engine の初期値）で描画する

@@ -39,6 +39,8 @@ const initialState = {
     { date: '2025/09/26', kind: 'class', title: 'いきいき百歳体操 教室', venue: '第一地区公民館', time: '10:00〜11:30' },
     { date: '2025/09/30', kind: 'meet', title: '圏域連絡会議', venue: '県庁 3F 会議室', time: '14:00〜' },
   ],
+  // 請求突き合わせ（期間は既定で直近2か月。画面側で今日から算出）
+  bilFrom: '', bilTo: '', bilRegion: 'all', bilMuni: 'all',
   // CSV 出力
   expYear: 2025, expScope: 'all', expWard: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true, expKcl: true, expFormat: 'std',
   // メモ / CSV / 新規登録

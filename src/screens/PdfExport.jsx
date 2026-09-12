@@ -1,6 +1,6 @@
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_LEVELS, commentFor } from '../lib/helpers.js'
+import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_LEVELS, commentFor, seriesOf } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAIN_BY_ID, KCL_SHORT } from '../data/kihon.js'
 import { wardLabel } from '../lib/db.js'
 import { districtOf } from '../lib/merge.js'
@@ -29,9 +29,12 @@ const PG = pdfRadarGeo()
 
 function buildPage(state, u, y, i) {
   const m = u.meas[y]
-  const ys = Object.keys(u.meas).map(Number).filter(v => v <= y)
-  const prevY = ys.length > 1 ? ys[ys.length - 2] : null
-  const prev = prevY ? u.meas[prevY] : null
+  /* 「前回」は 1 つ前の"測定"（前年度ではない）。短期集中予防（C型）は同じ年度に
+     開始時・終了時の 2 回測るため、前年度と比べると介入前後の比較にならない。
+     個人詳細（Detail）は測定日ごと方式に直したが、この結果票だけ年度のままだった。 */
+  const sr = seriesOf(u)
+  const idx = sr.findIndex(r => (m.key && r.key === m.key) || (!m.key && r.year === y))
+  const prev = idx > 0 ? sr[idx - 1] : null
   const muniAgg = D.agg(x => x.muni === u.muni, y)
   const avgHead = u.muniName + '平均'
   const all = colsPlus()
@@ -384,7 +387,9 @@ function CtypeReport() {
               <td style={TD} className="t-num">{r.totalStart}</td>
               <td style={TD} className="t-num">{r.totalEnd ?? '—'}</td>
               <td style={{ ...TD, fontWeight: 700, color: vColor(r.verdict) }} className="t-num">{sign(r.totalDiff, 0)}</td>
-              <td style={{ ...TD, fontWeight: 700, color: vColor(r.verdict) }}>{r.verdict}</td>
+              <td style={{ ...TD, fontWeight: 700, color: vColor(r.verdict) }}>
+                {r.verdict}{r.bmiMissing ? <span style={{ display: 'block', fontWeight: 400, fontSize: 8, color: 'var(--warn-600, #b45309)' }}>※体格の比較不可</span> : null}
+              </td>
               {r.items.map(it => (
                 <td key={it.id} style={TD} className="t-num">
                   {fmt1(it.start)}→{fmt1(it.end)}（{sign(it.diff)}）
@@ -397,7 +402,9 @@ function CtypeReport() {
       <div style={{ fontSize: 9, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>
         ・「開始時」はその年度の最初の測定、「終了時」は最後の測定です。1 回しか測っていない方は終了時が空欄になります。<br />
         ・開眼片脚立位・握力は左右のうち良い方の値です。判定は総合スコアの増減で付けています。<br />
-        ・通常5m歩行・最大5m歩行・TUG は秒数が小さいほど良好、開眼片脚立位・握力は大きいほど良好です。
+        ・通常5m歩行・最大5m歩行・TUG は秒数が小さいほど良好、開眼片脚立位・握力は大きいほど良好です。<br />
+        ・「※体格の比較不可」は、終了時に体重・BMI が記録されていない方です。総合スコアは体格を含むため、
+        　この方の総合スコアの増減は実際の変化を表していません。項目ごとの変化でご判断ください。
       </div>
     </div>
   )

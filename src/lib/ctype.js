@@ -20,8 +20,10 @@ export const PROGRAMS = {
   city: '自治体依頼（一般介護予防）',
   cType: '短期集中予防サービス（通所型サービスC）',
 }
-// 行政提出 CSV の「新総合事業」欄に入れる文言
-export const PROGRAM_GOV = { city: '一般介護予防', cType: '短期集中予防サービス' }
+/* 行政提出 CSV の「新総合事業」欄に入れる文言。
+   熊本市の個人管理台帳（提出先の様式そのもの）で使われている語彙に合わせる。
+   元データでは C型 の 13 名が「サービスC」、ほかは「一般介護予防」だった。 */
+export const PROGRAM_GOV = { city: '一般介護予防', cType: 'サービスC' }
 
 const sortKey = (r) => compactDate(r && r.date) || `${r && r.year}0000`
 
@@ -86,6 +88,12 @@ export function ctypeRows(users = D.users) {
         return { ...it, start: a, end: b, diff: (a == null || b == null) ? null : Math.round((b - a) * 100) / 100 }
       })
       const totalDiff = end ? end.total - start.total : null
+      /* 総合スコアは 5 領域（歩行・バランス・筋力・複合動作・体格）の平均で、
+         体格は BMI から出す。片方だけ BMI が欠けていると、欠けた側の体格が
+         最低点になり、実際には良くなっていても総合スコアが下がって見える。
+         熊本市の台帳は身長体重が 1 組しか無く、終了時に BMI が入らないため
+         この状態が起きる。数字はいじらず、比べられないことを明示する。 */
+      const bmiMissing = end && ((sv.bmi == null) !== (ev.bmi == null))
       rows.push({
         user: u, year: y, count,
         startRec: start, endRec: end,
@@ -93,6 +101,8 @@ export function ctypeRows(users = D.users) {
         days: end ? daysBetween(start, end) : null,
         totalStart: start.total, totalEnd: end ? end.total : null, totalDiff,
         verdict: end ? verdictOf(totalDiff) : '終了時 未測定',
+        bmiMissing,
+        note: bmiMissing ? '体重・BMI が片方にしか無いため、総合スコアの比較はできません（項目ごとの変化をご覧ください）' : '',
         items, kclTotal: kc ? kc.total : null,
         improved: items.filter(it => it.diff !== null && it.better !== 'none'
           && ((it.better === 'high' && it.diff > 0) || (it.better === 'low' && it.diff < 0))).length,
@@ -107,7 +117,7 @@ export function ctypeRows(users = D.users) {
 export function ctypeCsv(rows) {
   const header = ['年度', '市町村', '行政区（団体）', '参加者ID', '氏名', 'ふりがな', '性別', '生年月日', '年齢',
     '開始日', '終了日', '期間(日)', '測定回数', '総合スコア_開始', '総合スコア_終了', '総合スコア_変化', '判定',
-    '改善した項目数', '評価した項目数', '基本CL合計点']
+    '改善した項目数', '評価した項目数', '基本CL合計点', '注意']
   CTYPE_ITEMS.forEach(it => header.push(`${it.label}_開始${it.unit ? '(' + it.unit + ')' : ''}`,
     `${it.label}_終了${it.unit ? '(' + it.unit + ')' : ''}`, `${it.label}_変化`))
   const body = rows.map(r => {
@@ -115,7 +125,7 @@ export function ctypeCsv(rows) {
     const line = [r.year, u.muniName, u.venueName, u.id, u.name, u.kana, u.sexLabel, u.birthDate,
       (u.birth ? r.year - u.birth : ''), r.startDate, r.endDate, r.days ?? '', r.count,
       r.totalStart ?? '', r.totalEnd ?? '', r.totalDiff === null ? '' : (r.totalDiff >= 0 ? '+' : '') + r.totalDiff,
-      r.verdict, r.improved, r.measured, r.kclTotal ?? '']
+      r.verdict, r.improved, r.measured, r.kclTotal ?? '', r.note]
     r.items.forEach(it => line.push(num(it.start, it.dec), num(it.end, it.dec), delta(it.start, it.end, it.dec)))
     return line
   })
