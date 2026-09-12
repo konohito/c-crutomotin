@@ -4,6 +4,7 @@ import { eraOf, frailtyOf, FRAIL_LEVELS, commentFor } from '../lib/helpers.js'
 import { kclScore, KCL_QUESTIONS, KCL_DOMAINS } from '../data/kihon.js'
 import { wardLabel, dbEnabled } from '../lib/db.js'
 import { districtOf } from '../lib/merge.js'
+import { startEnd, measOfYear, ctypeRows, ctypeCsv, PROGRAM_GOV } from '../lib/ctype.js'
 import { Card, Select, CheckRow, Overline, Segmented } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -65,6 +66,54 @@ const KCL_COLS = [
   'CL_' + d.label, (u, y, m, fr, ib, kc) => kc ? kc.domainCounts[d.id] : '',
 ]))
 
+/* ---- 自治体依頼向け：エリアごとの最新の状態 -------------------------------------
+   自治体（熊本市・嘉島町）からの依頼測定は「事業対象者がどのエリアに居て、いま
+   どういう状態か」を共有するのが主目的。連続性より最新の状態が重視されるため、
+   1 人 1 行で「直近の測定」と「その前との比較」を並べる。地域包括支援センターへ渡す形。 */
+const latestUpTo = (u, y) => measOfYear2(u, y).slice(-1)[0] || null
+const prevUpTo = (u, y) => measOfYear2(u, y).slice(-2)[0] || null
+// 選択年度までの測定を測定日順に並べる（「いまの状態」は年度またぎで見る）
+function measOfYear2(u, y) {
+  return ((u && u.series) || []).filter(r => Number(r.year) <= Number(y))
+    .slice().sort((a, b) => String(a.date || a.year).localeCompare(String(b.date || b.year)))
+}
+const AREA_COLS = [
+  ['圏域', (u, y, m) => areaOf(u, m).region],
+  ['市町村', (u, y, m) => areaOf(u, m).muniName],
+  [wardLabel() + '（団体）', (u, y, m) => areaOf(u, m).ward],
+  ['参加者ID', (u) => u.id],
+  ['氏名', (u) => u.name],
+  ['ふりがな', (u) => u.kana],
+  ['性別', (u) => u.sexLabel],
+  ['生年月日', (u) => u.birthDate],
+  ['年齢', (u, y) => (u.birth ? y - u.birth : '')],
+  ['要介護度', (u) => u.careLevel || ''],
+  ['電話番号', (u) => u.phone || ''],
+  ['事業区分', (u) => (u.cType ? '短期集中予防サービス' : '一般介護予防')],
+  ['直近の測定日', (u, y) => { const r = latestUpTo(u, y); return r ? (r.date || '') : '' }],
+  ['直近の年度', (u, y) => { const r = latestUpTo(u, y); return r ? r.year : '' }],
+  ['直近の総合スコア', (u, y) => { const r = latestUpTo(u, y); return r ? r.total : '' }],
+  ['前回の測定日', (u, y) => { const r = prevUpTo(u, y); return r ? (r.date || '') : '' }],
+  ['前回の総合スコア', (u, y) => { const r = prevUpTo(u, y); return r ? r.total : '' }],
+  ['前回からの変化', (u, y) => {
+    const a = prevUpTo(u, y), b = latestUpTo(u, y)
+    if (!a || !b || a.total === null || b.total === null) return ''
+    const d = b.total - a.total
+    return (d >= 0 ? '+' : '') + d
+  }],
+  ['測定回数（累計）', (u, y) => measOfYear2(u, y).length],
+  ['５ｍ通常歩行(秒)', (u, y) => { const r = latestUpTo(u, y); return r ? fmtCsv(r.values.walk5, 1) : '' }],
+  ['開眼片足立ち(秒)', (u, y) => { const r = latestUpTo(u, y); return r ? fmtCsv(bestOf(r.values.balR, r.values.balL), 1) : '' }],
+  ['握力(kg)', (u, y) => { const r = latestUpTo(u, y); return r ? fmtCsv(bestOf(r.values.gripR, r.values.gripL), 1) : '' }],
+  ['TUG(秒)', (u, y) => { const r = latestUpTo(u, y); return r ? fmtCsv(r.values.tug, 1) : '' }],
+  ['BMI', (u, y) => { const r = latestUpTo(u, y); return r ? fmtCsv(r.values.bmi, 1) : '' }],
+  ['フレイル判定', (u, y, m, fr) => (fr ? FRAIL_LEVELS[fr.level].label : '')],
+  ['フレイル該当項目数', (u, y, m, fr) => (fr ? fr.n : '')],
+  ['基本CL合計点', (u, y, m, fr, ib, kc) => (kc ? kc.total : '')],
+  ['事業対象者判定', (u, y, m, fr, ib, kc) => (kc ? (kc.target ? '該当' : '非該当') : '')],
+  ['該当理由', (u, y, m, fr, ib, kc) => (kc ? kc.reasons.map(r => r.label).join('・') : '')],
+]
+
 // ---- ID・氏名シール差し込み用 -------------------------------------------------
 // 問診票の右上に貼るシール(38.1×21.2mm)を Excel/Word の差し込み印刷で作るためのデータ。
 // シール台紙のテンプレートに 1 桁ずつ配置できるよう、ID は 1 桁 = 1 列(ID 01〜ID 05)に分割する
@@ -101,6 +150,13 @@ const careLevel = (u) => (u.careLevel && u.careLevel !== '自立')
   ? u.careLevel
   : (u.theta < -1.7 ? '要支援2' : u.theta < -1.3 ? '要支援1' : 'なし')
 const bestOf = (a, b) => (a === null || a === undefined ? b : (b === null || b === undefined ? a : Math.max(a, b)))
+// 開始時(start)/終了時(end)の測定から 1 項目を取り出して書式化する。その回が無ければ空欄
+function phv(se, phase, pick) {
+  const rec = se && se[phase]
+  if (!rec || !rec.values) return ''
+  const v = pick(rec.values)
+  return (v === null || v === undefined) ? '' : fmtCsv(v, 1)
+}
 function ageAt(u, y, m) {
   // 評価日時点の満年齢（誕生日前後を考慮。日付が読めない場合は年度差で代用）
   const b = String(u.birthDate || '').match(/(\d{4})[/-](\d{1,2})[/-](\d{1,2})/)
@@ -121,7 +177,8 @@ const GOV_COLS = [
   ['個人管理台帳::ふりがな', (u) => hira(u.kana)],
   ['性別', (u) => u.sexLabel],
   ['個人管理台帳::生年月日', (u) => u.birthDate],
-  ['評価開始時年齢', (u, y, m) => ageAt(u, y, m)],
+  // 「開始時」の年齢なので、その年度の最初の測定日で数える（2 回測る C型 で最終日になっていた）
+  ['評価開始時年齢', (u, y, m, fr, ib, kc, se) => ageAt(u, y, (se && se.start) || m)],
   ['個人管理台帳::圏域コード', (u, y, m) => regionCode(u, m)],
   ['個人管理台帳::市町村コード', (u, y, m) => muniCode(u, m)],
   ['個人管理台帳::地区コード', (u, y, m) => regionCode(u, m) + muniCode(u, m)],
@@ -131,7 +188,8 @@ const GOV_COLS = [
   ['体重', (u, y, m) => m ? fmtCsv(m.values.weight, 1) : ''],
   ['BMI', (u, y, m) => m ? fmtCsv(m.values.bmi, 1) : ''],
   ['要介護度', (u) => careLevel(u)],
-  ['新総合事業', () => '一般介護予防'],
+  // その年度の測定がどの事業のものか（短期集中予防サービス＝C型 か、一般介護予防か）
+  ['新総合事業', (u, y, m, fr, ib, kc, se) => PROGRAM_GOV[(se && se.program) || 'city']],
   ['新総合事業_その他', () => ''],
   ['担当者', () => 'Cruto'],
 ]
@@ -148,31 +206,35 @@ GOV_COLS.push(
     for (let n = 1; n <= 20; n++) s += kc.points[n] || 0
     return s
   }],
-  ['評価日_開始時', (u, y, m) => m ? m.date : ''],
-  ['評価日_終了時', () => ''],
+  /* 開始時・終了時の対になった列。短期集中予防（C型）の介入前後を書くための欄で、
+     同じ年度に 2 回測ったときの「最初」が開始時、「最後」が終了時になる。
+     年度キーで 1 件しか持てなかった頃の名残で、開始時にその年度の最新の測定が入り、
+     終了時は常に空だった（＝前後比較が提出データに出ていなかった）。 */
+  ['評価日_開始時', (u, y, m, fr, ib, kc, se) => (se && se.start ? se.start.date : '')],
+  ['評価日_終了時', (u, y, m, fr, ib, kc, se) => (se && se.end ? se.end.date : '')],
   ['測定者', (u, y, m) => (m && !dbEnabled()) ? D.STAFF[u.venueCode % D.STAFF.length].name : ''],
   ['訓練方法', (u, y, m) => m ? '集団' : ''],
   ['自己訓練有無', () => ''],
-  ['補装具_開始時', (u, y, m) => m ? (u.note && u.note.includes('杖') ? '杖' : 'なし') : ''],
+  ['補装具_開始時', (u, y, m, fr, ib, kc, se) => (se && se.start) ? (u.note && u.note.includes('杖') ? '杖' : 'なし') : ''],
   ['補装具その他_開始時', () => ''],
-  ['補装具_終了時', () => ''],
+  ['補装具_終了時', (u, y, m, fr, ib, kc, se) => (se && se.end) ? (u.note && u.note.includes('杖') ? '杖' : 'なし') : ''],
   ['補装具その他_終了時', () => ''],
-  ['開眼片脚立位時間_開始時', (u, y, m) => m ? fmtCsv(bestOf(m.values.balR, m.values.balL), 1) : ''],
-  ['開眼片脚立位時間_終了時', () => ''],
-  ['TUG_開始時', (u, y, m) => m ? fmtCsv(m.values.tug, 1) : ''],
-  ['TUG_終了時', () => ''],
-  ['通常5m_開始時', (u, y, m) => (m && m.values.walk5 !== null && m.values.walk5 !== undefined) ? fmtCsv(m.values.walk5, 1) : ''],
-  ['通常5m_終了時', () => ''],
-  ['最大5m_開始時', (u, y, m) => (m && m.values.walk5max !== null && m.values.walk5max !== undefined) ? fmtCsv(m.values.walk5max, 1) : ''],
-  ['最大5m_終了時', () => ''],
-  ['握力_開始時', (u, y, m) => m ? fmtCsv(bestOf(m.values.gripR, m.values.gripL), 1) : ''],
-  ['握力_終了時', () => ''],
+  ['開眼片脚立位時間_開始時', (u, y, m, fr, ib, kc, se) => phv(se, 'start', v => bestOf(v.balR, v.balL))],
+  ['開眼片脚立位時間_終了時', (u, y, m, fr, ib, kc, se) => phv(se, 'end', v => bestOf(v.balR, v.balL))],
+  ['TUG_開始時', (u, y, m, fr, ib, kc, se) => phv(se, 'start', v => v.tug)],
+  ['TUG_終了時', (u, y, m, fr, ib, kc, se) => phv(se, 'end', v => v.tug)],
+  ['通常5m_開始時', (u, y, m, fr, ib, kc, se) => phv(se, 'start', v => v.walk5)],
+  ['通常5m_終了時', (u, y, m, fr, ib, kc, se) => phv(se, 'end', v => v.walk5)],
+  ['最大5m_開始時', (u, y, m, fr, ib, kc, se) => phv(se, 'start', v => v.walk5max)],
+  ['最大5m_終了時', (u, y, m, fr, ib, kc, se) => phv(se, 'end', v => v.walk5max)],
+  ['握力_開始時', (u, y, m, fr, ib, kc, se) => phv(se, 'start', v => bestOf(v.gripR, v.gripL))],
+  ['握力_終了時', (u, y, m, fr, ib, kc, se) => phv(se, 'end', v => bestOf(v.gripR, v.gripL))],
   ['MNA_開始時', () => ''],
   ['MNA_終了時', () => ''],
   ['SWEET_開始時', () => ''],
   ['SWEET_終了時', () => ''],
-  ['開始時コメント', (u, y, m) => m ? commentFor(u, m, prevMeas(u, y)) : ''],
-  ['終了時コメント', () => ''],
+  ['開始時コメント', (u, y, m, fr, ib, kc, se) => (se && se.start) ? commentFor(u, se.start, prevMeas(u, y)) : ''],
+  ['終了時コメント', (u, y, m, fr, ib, kc, se) => (se && se.end) ? commentFor(u, se.end, se.start) : ''],
   ['目標', () => ''],
   ['自由記載', (u) => u.note || ''],
 )
@@ -188,20 +250,34 @@ export function buildExport(state) {
     return inScopeArea(u, scope, m) && (ward === 'all' || areaOf(u, m).ward === ward)
   }
   let users = D.users.filter(inScope)
-  if (state.expMeasuredOnly) users = users.filter(u => u.meas[y])
+  /* C型 経過一覧は「短期集中予防サービスの対象者だけ・年度をまたいで」出す（市への報告用）。
+     年度の絞り込みをかけないのは、介入の期が年度をまたぐ場合にも 1 行で出すため。 */
+  if (state.expFormat === 'ctype') {
+    const rows = ctypeRows(users.filter(u => u.cType))
+    const csv = ctypeCsv(rows)
+    return { header: csv.header, rows: csv.rows, count: csv.rows.length }
+  }
+  // エリア一覧は「その年度までの最新の状態」を出すので、その年度に測っていない方も対象
+  if (state.expFormat === 'area') users = users.filter(u => latestUpTo(u, y))
+  else if (state.expMeasuredOnly) users = users.filter(u => u.meas[y])
   users = users.slice().sort((a, b) => a.id.localeCompare(b.id))
   const cols = state.expFormat === 'gov'
     ? GOV_COLS
     : state.expFormat === 'seal'
       ? SEAL_COLS
-      : BASE_COLS.concat(state.expFrail ? FRAIL_COLS : [], state.expKcl ? KCL_COLS : [], state.expInbody ? INBODY_COLS : [])
+      : state.expFormat === 'area'
+        ? AREA_COLS
+        : BASE_COLS.concat(state.expFrail ? FRAIL_COLS : [], state.expKcl ? KCL_COLS : [], state.expInbody ? INBODY_COLS : [])
   const header = cols.map(c => c[0])
   const rows = users.map(u => {
     const m = u.meas[y] || null
     const fr = m ? frailtyOf(u, y) : null
     const ib = u.inbody && u.inbody[y] ? u.inbody[y] : null
     const kc = kclScore(u, y)
-    return cols.map(c => c[1](u, y, m, fr, ib, kc))
+    // その年度の開始時・終了時（提出様式の開始時/終了時の対と、事業区分の判定に使う）
+    const list = measOfYear(u, y)
+    const se = { ...startEnd(u, y), program: list.some(r => r.program === 'cType') ? 'cType' : 'city' }
+    return cols.map(c => c[1](u, y, m, fr, ib, kc, se))
   })
   return { header, rows, count: users.length }
 }
@@ -214,8 +290,14 @@ export function scopeLabel(state) {
   return (mu ? mu.name : '全地域') + ward
 }
 
+const FORMAT_NAME = {
+  gov: '行政提出用データ', seal: 'シール差し込み用データ', std: '体力測定データ',
+  area: 'エリア別 対象者の最新状態', ctype: '短期集中予防C型 経過一覧',
+}
 export function fileNameOf(state) {
-  const base = state.expFormat === 'gov' ? '行政提出用データ' : state.expFormat === 'seal' ? 'シール差し込み用データ' : '体力測定データ'
+  const base = FORMAT_NAME[state.expFormat] || '体力測定データ'
+  // C型 経過一覧は年度をまたいで出すので、ファイル名に年度を付けない
+  if (state.expFormat === 'ctype') return `${base}_${scopeLabel(state)}.csv`
   return `${base}_${eraOf(state.expYear)}年度_${scopeLabel(state)}.csv`
 }
 
@@ -265,12 +347,20 @@ export default function CsvExport() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, flexWrap: 'wrap' }}>
           <Overline>書式</Overline>
           <Segmented value={state.expFormat} onChange={(v) => set({ expFormat: v })}
-            options={[{ v: 'std', l: '標準形式（集計・確認用）' }, { v: 'gov', l: '行政提出書式（79 列）' }, { v: 'seal', l: 'シール差し込み用（ID・氏名）' }]} />
+            options={[{ v: 'std', l: '標準形式（集計・確認用）' }, { v: 'gov', l: '行政提出書式（79 列）' },
+              { v: 'area', l: 'エリア別 最新状態（自治体・包括向け）' }, { v: 'ctype', l: 'C型 経過一覧（前後比較）' },
+              { v: 'seal', l: 'シール差し込み用（ID・氏名）' }]} />
           {state.expFormat === 'gov' && (
             <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>ファイルメーカー取込形式 — 列名・列順は提出様式と同一です</span>
           )}
           {state.expFormat === 'seal' && (
             <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>問診票に貼る ID・氏名シール用 — ID は 1 桁 = 1 列（ID 01〜ID 05）で差し込み印刷に使えます</span>
+          )}
+          {state.expFormat === 'area' && (
+            <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>自治体依頼の共有用 — エリアごとに、対象者 1 人 1 行で「直近の測定と前回からの変化」を出します</span>
+          )}
+          {state.expFormat === 'ctype' && (
+            <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>短期集中予防サービス（C型）の対象者だけを、開始時 → 終了時の変化つきで出します（年度は問いません）</span>
           )}
         </div>
         <div className="form-duo" style={{ display: 'grid', gridTemplateColumns: scopeWards.length ? '0.9fr 1.3fr 1fr 1fr' : '1fr 1.4fr 1fr', gap: 14, marginTop: 14 }}>

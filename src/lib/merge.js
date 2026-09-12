@@ -68,12 +68,16 @@ export function similarity(a, b) {
   else if (sn >= 0.6) { score += 2; reasons.push('氏名が似ている') }
   if (ak && ak === bk) { score += 4; reasons.push('ふりがなが一致') }
   else if (sk >= 0.75) { score += 2; reasons.push('ふりがなが似ている') }
-  // 生年月日は「年月日まで一致」と「年だけ一致」を区別する（実データには生年しか無い方がいる）
+  /* 生年月日。両方とも年月日まで分かっていて食い違うなら、氏名が似ていても別人と見る
+     （実データに「岩永裕子(1947/07/30)」と「岩永秀子(1947/06/24)」のような別人がいる）。
+     生年しか分からない方もいるため、その場合は弱い手がかりとして扱う。 */
+  const full = ab.length >= 8 && bb.length >= 8
   if (ab && bb && ab === bb) {
-    score += ab.length >= 8 ? 3 : 1
-    reasons.push(ab.length >= 8 ? '生年月日が一致' : '生年が一致')
-  } else if (ab && bb && ab.slice(0, 4) === bb.slice(0, 4)) { score += 1; reasons.push('生年が一致') }
-  else if (ab && bb) { score -= 2; reasons.push('生年月日が違う') }
+    score += full ? 3 : 1
+    reasons.push(full ? '生年月日が一致' : '生年が一致')
+  } else if (full) { score -= 4; reasons.push('生年月日が違う（別人の可能性が高い）') }
+  else if (ab && bb && ab.slice(0, 4) === bb.slice(0, 4)) { score += 1; reasons.push('生年が一致') }
+  else if (ab && bb) { score -= 2; reasons.push('生年が違う') }
   if (a.sex && b.sex && a.sex !== b.sex) { score -= 4; reasons.push('性別が違う') }
   const level = score >= 8 ? 'same' : score >= 5 ? 'likely' : null
   if (a.venueName !== b.venueName) reasons.push('地区が違う')
@@ -446,6 +450,46 @@ export async function undoWardChange(log) {
     }, { merge: true })
     const u = D.users.find(x => x.id === c.userId)
     if (u) { u.venueName = c.prev.ward; u.muni = c.prev.muni; u.muniName = c.prev.muniName; u.region = c.prev.region; u.districtHistory = hist }
+  }
+  await fs.setDoc(fs.doc(db, 'merges', log.mergeId), { status: 'undone', undoneAt: nowIso() }, { merge: true })
+}
+
+// ---- 測定の事業区分（自治体依頼 / 短期集中予防C型） -------------------------------
+/* 「C型かどうか」は地区名の「（C型）」で見分けていたが、地区名は団体の改称でまとめるため、
+   その前に測定側へ印を移しておく必要がある（印を移さずに地区名を変えると情報が消える）。
+   利用者ではなく測定に持たせるのは、同じ方が自治体依頼と C型 の両方を受けうるため。 */
+export async function setMeasurementProgram({ userIds, program = 'cType', by = '', note = '' }) {
+  if (!dbEnabled()) throw new Error('Firebase 未設定です')
+  const { fs, db } = await getFs()
+  const id = `program_${Date.now()}`
+  const changes = []
+  for (const uid of (userIds || [])) {
+    const snap = await fs.getDocs(fs.query(fs.collection(db, 'measurements'), fs.where('userId', '==', uid)))
+    for (const docSnap of snap.docs) {
+      const prev = docSnap.data().program || ''
+      if (prev === program) continue
+      await fs.updateDoc(fs.doc(db, 'measurements', docSnap.id), { program })
+      changes.push({ docId: docSnap.id, userId: uid, prev })
+    }
+    const u = D.users.find(x => x.id === uid)
+    if (u) { (u.series || []).forEach(r => { r.program = program }); u.cType = program === 'cType' }
+  }
+  const log = {
+    mergeId: id, kind: 'program', program, userIds, note,
+    changedCount: changes.length, changes, by, at: nowIso(), status: 'merged',
+    keepName: program === 'cType' ? '短期集中予防サービス（C型）' : '自治体依頼',
+    loseName: `${(userIds || []).length} 名`, keepId: '-', loseId: '-', movedCount: changes.length,
+  }
+  await fs.setDoc(fs.doc(db, 'merges', id), log)
+  return log
+}
+
+export async function undoMeasurementProgram(log) {
+  if (!dbEnabled()) throw new Error('Firebase 未設定です')
+  if (!log || log.status !== 'merged') throw new Error('この操作はすでに取り消されています')
+  const { fs, db } = await getFs()
+  for (const c of (log.changes || [])) {
+    await fs.updateDoc(fs.doc(db, 'measurements', c.docId), { program: c.prev || null })
   }
   await fs.setDoc(fs.doc(db, 'merges', log.mergeId), { status: 'undone', undoneAt: nowIso() }, { merge: true })
 }

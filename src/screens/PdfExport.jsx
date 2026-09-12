@@ -4,6 +4,7 @@ import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, fr
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAIN_BY_ID, KCL_SHORT } from '../data/kihon.js'
 import { wardLabel } from '../lib/db.js'
 import { districtOf } from '../lib/merge.js'
+import { ctypeRows, CTYPE_ITEMS } from '../lib/ctype.js'
 import { RadioCard, CheckRow, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -333,6 +334,75 @@ function PdfPage({ p, state, count }) {
   )
 }
 
+/* 短期集中予防サービス（C型）の経過報告。市への提出・共有用。
+   1 人 1 行で「開始時 → 終了時」と、その差を並べる。C型 は介入前後の比較が目的なので、
+   個人結果票（1 人 1 ページ）ではなく、対象者を横断して見られる表にする。 */
+function CtypeReport() {
+  const rows = ctypeRows(D.users)
+  const done = rows.filter(r => r.endRec)
+  const avg = done.length ? done.reduce((s, r) => s + r.totalDiff, 0) / done.length : null
+  const fmt1 = (v) => (v === null || v === undefined ? '—' : Number(v).toFixed(1))
+  const sign = (v, dec = 1) => (v === null || v === undefined ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(dec))
+  const TH = { padding: '4px 5px', fontSize: 9.5, fontWeight: 700, background: 'var(--slate-100)', border: '0.5px solid var(--slate-300)', whiteSpace: 'nowrap' }
+  const TD = { padding: '4px 5px', fontSize: 9.5, border: '0.5px solid var(--slate-300)', whiteSpace: 'nowrap' }
+  const vColor = (v) => (v === '改善' ? 'var(--success-600, #047857)' : v === '低下' ? 'var(--danger-700, #b91c1c)' : 'var(--fg-2)')
+  return (
+    <div className="pdf-page" style={{ padding: '20px 26px', lineHeight: 1.3 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, borderBottom: '2px solid var(--brand-500)', paddingBottom: 6 }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>短期集中予防サービス（通所型サービスC）経過報告</div>
+        <div style={{ fontSize: 10, color: 'var(--fg-3)' }}>開始時 → 終了時の変化</div>
+        <span style={{ flex: 1 }} />
+        <div className="t-num" style={{ fontSize: 10, color: 'var(--fg-3)' }}>作成日 {D.TODAY}</div>
+      </div>
+      <div style={{ display: 'flex', gap: 18, margin: '8px 0 10px', fontSize: 10.5 }}>
+        <span>対象者 <b className="t-num">{rows.length}</b> 名</span>
+        <span>終了時まで測定済み <b className="t-num">{done.length}</b> 名</span>
+        <span>改善 <b className="t-num">{done.filter(r => r.totalDiff > 0).length}</b> 名</span>
+        <span>維持 <b className="t-num">{done.filter(r => r.totalDiff === 0).length}</b> 名</span>
+        <span>低下 <b className="t-num">{done.filter(r => r.totalDiff < 0).length}</b> 名</span>
+        <span>総合スコアの平均変化 <b className="t-num">{avg === null ? '—' : sign(avg)}</b> 点</span>
+      </div>
+      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <thead>
+          <tr>
+            <th style={TH}>年度</th><th style={TH}>ID</th><th style={TH}>氏名</th><th style={TH}>団体</th>
+            <th style={TH}>開始日</th><th style={TH}>終了日</th><th style={TH}>期間</th>
+            <th style={TH}>総合<br />開始</th><th style={TH}>総合<br />終了</th><th style={TH}>差</th><th style={TH}>判定</th>
+            {CTYPE_ITEMS.map(it => <th key={it.id} style={TH}>{it.label}<br />開始→終了（差）</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.user.id + '-' + r.year} style={{ background: i % 2 ? 'var(--slate-50, #fafafa)' : '#fff' }}>
+              <td style={TD} className="t-num">{eraOf(r.year)}</td>
+              <td style={TD} className="t-num">{r.user.id}</td>
+              <td style={{ ...TD, fontWeight: 600 }}>{r.user.name}</td>
+              <td style={TD}>{r.user.venueName}</td>
+              <td style={TD} className="t-num">{r.startDate || '—'}</td>
+              <td style={TD} className="t-num">{r.endDate || '—'}</td>
+              <td style={TD} className="t-num">{r.days === null ? '—' : r.days + '日'}</td>
+              <td style={TD} className="t-num">{r.totalStart}</td>
+              <td style={TD} className="t-num">{r.totalEnd ?? '—'}</td>
+              <td style={{ ...TD, fontWeight: 700, color: vColor(r.verdict) }} className="t-num">{sign(r.totalDiff, 0)}</td>
+              <td style={{ ...TD, fontWeight: 700, color: vColor(r.verdict) }}>{r.verdict}</td>
+              {r.items.map(it => (
+                <td key={it.id} style={TD} className="t-num">
+                  {fmt1(it.start)}→{fmt1(it.end)}（{sign(it.diff)}）
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ fontSize: 9, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>
+        ・「開始時」はその年度の最初の測定、「終了時」は最後の測定です。1 回しか測っていない方は終了時が空欄になります。<br />
+        ・開眼片脚立位・握力は左右のうち良い方の値です。判定は総合スコアの増減で付けています。<br />
+        ・通常5m歩行・最大5m歩行・TUG は秒数が小さいほど良好、開眼片脚立位・握力は大きいほど良好です。
+      </div>
+    </div>
+  )
+}
+
 export default function PdfExport() {
   const { state, set } = useStore()
   const y = state.pdfYear
@@ -353,10 +423,12 @@ export default function PdfExport() {
   const q = state.pdfQ.trim().toLowerCase()
   const cands = D.users.filter(u => u.meas[y] && (!q || u.name.toLowerCase().includes(q) || u.kana.toLowerCase().includes(q) || u.id.includes(q))).slice(0, 7)
   const opt = (v, l) => ({ v, l })
+  const ctypeCount = ctypeRows(D.users).length
   const modes = [
     { id: 'single', label: '1 名を選んで出力', desc: '個人結果票 1 ページ' },
     { id: 'muni', label: '市町村ごとに一括出力', desc: '対象者全員分をまとめて' },
     { id: 'all', label: '全員を一括出力', desc: '年度の測定済 全員分' },
+    { id: 'ctype', label: 'C型 経過報告（前後比較）', desc: '短期集中予防の対象者を一覧で' },
   ]
   const incs = [
     ['incRadar', 'レーダーチャート'], ['incTrend', '時系列の推移グラフ'], ['incPrev', '前回との比較'], ['incAvg', '市町村平均の列'],
@@ -430,7 +502,9 @@ export default function PdfExport() {
         </div>
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
-            <span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{pages.length}</span> 名 · <span className="t-num">{pages.length}</span> ページ · A4 縦
+            {state.pdfMode === 'ctype'
+              ? <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{ctypeCount}</span> 件（C型 対象者）· A4 縦</>
+              : <><span className="t-num" style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg-1)' }}>{pages.length}</span> 名 · <span className="t-num">{pages.length}</span> ページ · A4 縦</>}
           </div>
           <button className="btn btn-primary btn-lg" onClick={() => window.print()}>
             <Icon name="download" size={17} strokeWidth={1.8} />
@@ -443,7 +517,9 @@ export default function PdfExport() {
       {/* プレビュー */}
       <div className="pdf-stage">
         <div className="pdf-pages">
-          {pages.map(p => <PdfPage key={p.uid} p={p} state={state} count={pages.length} />)}
+          {state.pdfMode === 'ctype'
+            ? <CtypeReport />
+            : pages.map(p => <PdfPage key={p.uid} p={p} state={state} count={pages.length} />)}
         </div>
       </div>
     </div>

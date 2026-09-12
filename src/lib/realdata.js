@@ -72,6 +72,10 @@ export function toEngineUser(u, measList) {
       ...s, date: m.date || null, review: !!m.review,
       year: Number(m.year), key: m._id || measKey(u.id, m.date, m.year),
       source: m.source || '',
+      /* 測定の目的。'cType' = 短期集中予防サービス（通所型サービスC）の介入前後の測定、
+         'city' = 自治体依頼のエリア報告向けの測定（既定）。
+         同じ方が両方を受けうるため、利用者ではなく測定の属性として持つ。 */
+      program: m.program === 'cType' ? 'cType' : 'city',
     })
   }
   // 測定日の昇順。同じ年度に複数回あってもすべて残す（推移はこの配列を見る）
@@ -95,6 +99,10 @@ export function toEngineUser(u, measList) {
     portal: u.portal || null, // 電子手帳アカウント { loginId, issuedAt }
     // 統合（同一人物の名寄せ）関連。archived な方は台帳・集計・出力に出さない
     archived: !!u.archived, mergedInto: u.mergedInto || null, extId: u.extId || '',
+    /* 短期集中予防サービス（C型）の対象者か。
+       正は測定側の program（測定の属性）。利用者側はそこから導くだけで二重に持たない
+       （別々に持つと必ず食い違うため）。C型の測定を 1 件でも持てば対象者。 */
+    cType: series.some(r => r.program === 'cType'),
     // 地区（行政区）の履歴。[{ ward, muni, muniName, region, venueCode, dates:[測定日] }]
     // 行政提出 CSV / 結果票は「その測定当時の地区」をここから引く
     districtHistory: u.districtHistory || [],

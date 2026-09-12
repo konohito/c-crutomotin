@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { dbEnabled, wardLabel } from '../lib/db.js'
-import { duplicatePairs, mergePlan, mergeUsers, undoMerge, loadMergeLog, measCount, wardSummary, wardIssues, applyWardChange, undoWardChange } from '../lib/merge.js'
+import { duplicatePairs, mergePlan, mergeUsers, undoMerge, loadMergeLog, measCount, wardSummary, wardIssues, applyWardChange, undoWardChange, setMeasurementProgram, undoMeasurementProgram } from '../lib/merge.js'
 import { useAuth } from '../ui/AuthGate.jsx'
 import { Card, Overline, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -183,6 +183,10 @@ function WardTools({ by, onDone }) {
   const sum = useMemo(() => wardSummary(D.users), [D.users.length, by])
   const [sel, setSel] = useState(null)      // { fromWards, toWard, muniName }
   const [busy, setBusy] = useState(false)
+  // 「（C型）」付きの地区をまとめるときは、地区名から C型 が消えてしまうため、
+  // 先にその団体の測定へ「短期集中予防サービス」の印を移す（既定 ON）
+  const [keepC, setKeepC] = useState(true)
+  const isCWard = (w) => /[（(]\s*C型\s*[)）]/.test(w || '')
   const munis = [...new Set(D.users.map(u => u.muniName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
   const regionOf = (mn) => (D.users.find(u => u.muniName === mn) || {}).region || ''
   const byWard = Object.fromEntries(sum.map(s => [s.ward, s]))
@@ -191,12 +195,21 @@ function WardTools({ by, onDone }) {
     if (!sel || !sel.toWard) return
     const from = sel.fromWards.filter(Boolean)
     const affected = D.users.filter(u => from.includes(u.venueName))
+    const cUsers = affected.filter(u => isCWard(u.venueName))
     const msg = `${from.join('・')} の ${affected.length} 名を「${sel.toWard}」にまとめます。\n`
       + (sel.muniName ? `市町村は「${sel.muniName}」に揃えます。\n` : '')
+      + (cUsers.length && keepC ? `「（C型）」の ${cUsers.length} 名の測定に、短期集中予防サービスの印を付けてから地区名を変えます。\n` : '')
       + `\n・利用者も測定も削除しません（地区名だけ変えます）\n・旧い地区名は履歴として残ります\n・「統合の記録」から元に戻せます\n\n実行しますか？`
     if (!window.confirm(msg)) return
     setBusy(true)
     try {
+      // 先に C型 の印を測定へ移す（地区名を変えると「（C型）」が消えるため、順番が大事）
+      if (cUsers.length && keepC) {
+        await setMeasurementProgram({
+          userIds: cUsers.map(u => u.id), program: 'cType', by,
+          note: `地区「${from.filter(isCWard).join('・')}」の統合にともなう引き継ぎ`,
+        })
+      }
       const log = await applyWardChange({
         fromWards: from, toWard: sel.toWard, mode: 'rename', by,
         muniName: sel.muniName || undefined, muni: sel.muniName || undefined,
@@ -273,6 +286,18 @@ function WardTools({ by, onDone }) {
                   </span>
                 )}
               </div>
+              {sel.fromWards.some(isCWard) && (
+                <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 8, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={keepC} onChange={(e) => setKeepC(e.target.checked)} style={{ marginTop: 3 }} />
+                  <span style={{ fontSize: 12.5 }}>
+                    <b>「（C型）」の情報を測定に引き継ぐ</b>（推奨）<br />
+                    <span style={{ color: 'var(--fg-3)', fontSize: 11.5 }}>
+                      地区名をまとめると「（C型）」の文字が消えます。外す前に、その団体の測定へ
+                      「短期集中予防サービス」の印を付けておきます。市への報告で C型 として出すために必要です
+                    </span>
+                  </span>
+                </label>
+              )}
               <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
                 <button className="btn btn-primary btn-sm" disabled={busy || !dbEnabled()} onClick={run}>この内容でまとめる</button>
                 <button className="btn btn-sm" onClick={() => setSel(null)}>やめる</button>
@@ -304,11 +329,14 @@ export default function Merge() {
   const doUndo = async (l) => {
     const msg = l.kind === 'ward'
       ? `${l.changedCount} 名の${wardLabel()}を「${(l.fromWards || []).join('・')}」に戻しますか？`
-      : `ID ${l.loseId}（${l.loseName}）を元に戻しますか？\n測定 ${l.movedCount} 件を ID ${l.loseId} に戻し、台帳に復帰させます`
+      : l.kind === 'program'
+        ? `測定 ${l.changedCount} 件の事業区分の印を外しますか？`
+        : `ID ${l.loseId}（${l.loseName}）を元に戻しますか？\n測定 ${l.movedCount} 件を ID ${l.loseId} に戻し、台帳に復帰させます`
     if (!window.confirm(msg)) return
     setUndoing(l.mergeId)
     try {
       if (l.kind === 'ward') await undoWardChange(l)
+      else if (l.kind === 'program') await undoMeasurementProgram(l)
       else await undoMerge(l)
       showToast('元に戻しました。画面を再読み込みすると台帳に反映されます')
       set(s => ({ rev: s.rev + 1 }))
@@ -365,7 +393,12 @@ export default function Merge() {
             ) : log.map(l => (
               <div key={l.mergeId} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
                 <div style={{ flex: 1, minWidth: 240, fontSize: 12.5, lineHeight: 1.7 }}>
-                  {l.kind === 'ward' ? (
+                  {l.kind === 'program' ? (
+                    <>
+                      <b>事業区分の記録</b>：{l.keepName} の印を測定 {l.changedCount} 件に付与（{(l.userIds || []).length} 名）<br />
+                      <span style={{ color: 'var(--fg-3)' }}>{l.note || ''} · {String(l.at).slice(0, 16).replace('T', ' ')} · {l.by || '—'}</span>
+                    </>
+                  ) : l.kind === 'ward' ? (
                     <>
                       <b>{wardLabel()}の整理</b>：{(l.fromWards || []).join('・')} → <b>{l.toWard}</b>{l.muniName ? `（市町村を ${l.muniName} に）` : ''}<br />
                       <span style={{ color: 'var(--fg-3)' }}>{l.changedCount} 名の地区を変更 · {String(l.at).slice(0, 16).replace('T', ' ')} · {l.by || '—'}</span>
