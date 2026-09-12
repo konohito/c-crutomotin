@@ -150,6 +150,8 @@ const careLevel = (u) => (u.careLevel && u.careLevel !== '自立')
   ? u.careLevel
   : (u.theta < -1.7 ? '要支援2' : u.theta < -1.3 ? '要支援1' : 'なし')
 const bestOf = (a, b) => (a === null || a === undefined ? b : (b === null || b === undefined ? a : Math.max(a, b)))
+// 台帳に書かれていた文字をそのまま返す（無ければ空欄。推測で埋めない）
+const ph = (se, phase, key) => ((se && se[phase] && se[phase][key]) || '')
 // 開始時(start)/終了時(end)の測定から 1 項目を取り出して書式化する。その回が無ければ空欄
 function phv(se, phase, pick) {
   const rec = se && se[phase]
@@ -212,13 +214,13 @@ GOV_COLS.push(
      終了時は常に空だった（＝前後比較が提出データに出ていなかった）。 */
   ['評価日_開始時', (u, y, m, fr, ib, kc, se) => (se && se.start ? se.start.date : '')],
   ['評価日_終了時', (u, y, m, fr, ib, kc, se) => (se && se.end ? se.end.date : '')],
-  ['測定者', (u, y, m) => (m && !dbEnabled()) ? D.STAFF[u.venueCode % D.STAFF.length].name : ''],
-  ['訓練方法', (u, y, m) => m ? '集団' : ''],
-  ['自己訓練有無', () => ''],
-  ['補装具_開始時', (u, y, m, fr, ib, kc, se) => (se && se.start) ? (u.note && u.note.includes('杖') ? '杖' : 'なし') : ''],
-  ['補装具その他_開始時', () => ''],
-  ['補装具_終了時', (u, y, m, fr, ib, kc, se) => (se && se.end) ? (u.note && u.note.includes('杖') ? '杖' : 'なし') : ''],
-  ['補装具その他_終了時', () => ''],
+  ['測定者', (u, y, m, fr, ib, kc, se) => ph(se, 'start', 'examiner')],
+  ['訓練方法', (u, y, m, fr, ib, kc, se) => ph(se, 'start', 'trainingType')],
+  ['自己訓練有無', (u, y, m, fr, ib, kc, se) => ph(se, 'start', 'selfTraining')],
+  ['補装具_開始時', (u, y, m, fr, ib, kc, se) => ph(se, 'start', 'assistive')],
+  ['補装具その他_開始時', (u, y, m, fr, ib, kc, se) => ph(se, 'start', 'assistiveOther')],
+  ['補装具_終了時', (u, y, m, fr, ib, kc, se) => ph(se, 'end', 'assistive')],
+  ['補装具その他_終了時', (u, y, m, fr, ib, kc, se) => ph(se, 'end', 'assistiveOther')],
   ['開眼片脚立位時間_開始時', (u, y, m, fr, ib, kc, se) => phv(se, 'start', v => bestOf(v.balR, v.balL))],
   ['開眼片脚立位時間_終了時', (u, y, m, fr, ib, kc, se) => phv(se, 'end', v => bestOf(v.balR, v.balL))],
   ['TUG_開始時', (u, y, m, fr, ib, kc, se) => phv(se, 'start', v => v.tug)],
@@ -233,10 +235,16 @@ GOV_COLS.push(
   ['MNA_終了時', () => ''],
   ['SWEET_開始時', () => ''],
   ['SWEET_終了時', () => ''],
-  ['開始時コメント', (u, y, m, fr, ib, kc, se) => (se && se.start) ? commentFor(u, se.start, prevMeas(u, y)) : ''],
-  ['終了時コメント', (u, y, m, fr, ib, kc, se) => (se && se.end) ? commentFor(u, se.end, se.start) : ''],
-  ['目標', () => ''],
-  ['自由記載', (u) => u.note || ''],
+  /* コメントは現場が台帳に書いた文章をそのまま出す。
+     アプリの所見文(commentFor)は本人にお渡しする結果票のための自動生成文なので、
+     提出データに混ぜない。台帳に記録が無い行を所見文で埋めたい場合だけ、
+     出力画面のチェックを入れる(既定は入れない＝書かれたとおりに出す)。 */
+  ['開始時コメント', (u, y, m, fr, ib, kc, se, op) => ph(se, 'start', 'comment')
+    || ((op && op.autoComment && se && se.start) ? commentFor(u, se.start, prevMeas(u, y)) : '')],
+  ['終了時コメント', (u, y, m, fr, ib, kc, se, op) => ph(se, 'end', 'comment')
+    || ((op && op.autoComment && se && se.end) ? commentFor(u, se.end, se.start) : '')],
+  ['目標', (u, y, m, fr, ib, kc, se) => ph(se, 'start', 'goal')],
+  ['自由記載', (u, y, m, fr, ib, kc, se) => ph(se, 'start', 'freeNote') || u.note || ''],
 )
 
 export function buildExport(state) {
@@ -277,7 +285,7 @@ export function buildExport(state) {
     // その年度の開始時・終了時（提出様式の開始時/終了時の対と、事業区分の判定に使う）
     const list = measOfYear(u, y)
     const se = { ...startEnd(u, y), program: list.some(r => r.program === 'cType') ? 'cType' : 'city' }
-    return cols.map(c => c[1](u, y, m, fr, ib, kc, se))
+    return cols.map(c => c[1](u, y, m, fr, ib, kc, se, { autoComment: !!state.expAutoComment }))
   })
   return { header, rows, count: users.length }
 }
@@ -394,8 +402,18 @@ export default function CsvExport() {
             <CheckRow on={state.expInbody} label="InBody（骨格筋量・体脂肪率・SMI・点数）" onClick={() => set({ expInbody: !state.expInbody })} />
           </div>
         ) : state.expFormat === 'gov' ? (
-          <div style={{ marginTop: 12, fontSize: 12, color: 'var(--fg-3)' }}>
-            列構成は提出様式で固定です（基本チェックリスト 25 問の回答 0/1 と分類 1〜8 を含む 79 列）
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>
+              列構成は提出様式で固定です（基本チェックリスト 25 問の回答 0/1 と分類 1〜8 を含む 79 列）
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <CheckRow on={!!state.expAutoComment} onClick={() => set({ expAutoComment: !state.expAutoComment })}
+                label="コメント欄が空の行に、アプリの所見文を入れる" />
+              <div style={{ fontSize: 11.5, color: 'var(--fg-3)', marginTop: 2, lineHeight: 1.7 }}>
+                通常は入れません（台帳に書かれたコメントだけを出します）。
+                入れると、コメントの記録が無い行に測定結果から作った所見文が入ります
+              </div>
+            </div>
           </div>
         ) : (
           <div style={{ marginTop: 12, fontSize: 12, color: 'var(--fg-3)' }}>
@@ -456,7 +474,9 @@ export default function CsvExport() {
             ・列名・列順は行政提出様式（ファイルメーカー取込形式・79 列）と同一です<br />
             ・「通常5m」は測定値（秒/m）を 5 m 所要秒に換算して出力します。「開眼片脚立位時間」「握力」は左右の良い方の値です<br />
             ・基本チェックリストは 25 問の回答（該当 = 1）と、分類 1〜7（領域別該当数）・分類 8（No.1〜20 の合計）を出力します<br />
-            ・最大5m・MNA・SWEET は未測定のため空欄です（様式上、未入力でも取り込み可能な項目）。「終了時」列は年度内の再評価データ取り込み後に対応します<br />
+            ・MNA・SWEET は未測定のため空欄です（様式上、未入力でも取り込み可能な項目）<br />
+            ・測定者・訓練方法・自己訓練有無・補装具・コメント・目標・自由記載は、台帳に記録されたとおりに出します（記録が無ければ空欄）<br />
+            ・「開始時」はその年度の最初の測定、「終了時」は最後の測定です。同じ年度に 2 回測った方（短期集中予防 C型 など）は両方が埋まります<br />
             ・圏域・市町村・地区コードは台帳側の設定値です。提出先のファイルメーカー設定に合わせて調整できます<br />
             ・BOM 付き UTF-8 のため Excel でダブルクリックしてもそのまま開けます
           </div>

@@ -76,6 +76,13 @@ export function toEngineUser(u, measList) {
          'city' = 自治体依頼のエリア報告向けの測定（既定）。
          同じ方が両方を受けうるため、利用者ではなく測定の属性として持つ。 */
       program: m.program === 'cType' ? 'cType' : 'city',
+      /* 台帳(熊本市の個人管理台帳)にしか無い記入項目。提出 CSV はここから出す。
+         アプリ側で作文・推定しない(以前は測定者が空、コメントが自動生成文、
+         補装具が備考からの推測、訓練方法が全員「集団」になっていた)。 */
+      examiner: m.examiner || '', trainingType: m.trainingType || '',
+      selfTraining: m.selfTraining || '', goal: m.goal || '', freeNote: m.freeNote || '',
+      assistive: m.assistive || '', assistiveOther: m.assistiveOther || '',
+      comment: m.comment || '',
     })
   }
   // 測定日の昇順。同じ年度に複数回あってもすべて残す（推移はこの配列を見る）

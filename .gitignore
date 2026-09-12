@@ -5,6 +5,7 @@ dist
 
 # 個人情報を含む取り込み中間ファイル（コミット禁止）
 normalized.json
+normalized-*.json
 *.xlsx
 contradictions.txt
 inbody/

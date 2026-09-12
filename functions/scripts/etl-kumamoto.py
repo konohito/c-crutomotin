@@ -94,6 +94,19 @@ for r in ws.iter_rows(min_row=2, values_only=True):
 
     h, w, bmi = num(r[12]), num(r[13]), num(r[14])
 
+    # 台帳にしか無い記入項目。アプリ側で作文・推定せず、書かれたとおりに取り込む。
+    # (これまで取り込んでおらず、提出 CSV では空欄・固定値・自動生成文になっていた)
+    def txt(v):
+        s = str(v).strip() if v not in (None, '') else ''
+        return s if s and s.lower() != 'none' else ''
+    examiner = txt(r[54])          # 測定者(村崎・東 など)
+    training = txt(r[55])          # 訓練方法(集団)。記入のある行だけ出す
+    selfTr = txt(r[56])            # 自己訓練有無
+    goal = txt(r[77])              # 目標
+    freeNote = txt(r[78])          # 自由記載
+    shared = {'examiner': examiner, 'trainingType': training, 'selfTraining': selfTr,
+              'goal': goal, 'freeNote': freeNote}
+
     # 開始時の測定(+ 身長体重は開始時のもの・BMI も)
     ys = app_year(r[52])
     if ys is not None:
@@ -104,6 +117,9 @@ for r in ws.iter_rows(min_row=2, values_only=True):
             'gripR': num(r[69]), 'gripL': None,
             'height': h, 'weight': w, 'bmi': bmi,
             'source': '個人管理台帳(熊本市)・開始時',
+            'assistive': txt(r[57]), 'assistiveOther': txt(r[58]),   # 補装具(開始時)
+            'comment': txt(r[75]),                                    # 開始時コメント(現場が書いた文章)
+            **shared,
         })
         # 基本チェックリストは開始時に実施 → 開始時の年度に付ける
         raw = {}
@@ -124,6 +140,9 @@ for r in ws.iter_rows(min_row=2, values_only=True):
             'gripR': num(r[70]), 'gripL': None,
             'height': h, 'weight': None, 'bmi': None,
             'source': '個人管理台帳(熊本市)・終了時',
+            'assistive': txt(r[59]), 'assistiveOther': txt(r[60]),   # 補装具(終了時)
+            'comment': txt(r[76]),                                    # 終了時コメント(現場が書いた文章)
+            **shared,
         })
 
 out = [u for u in users.values() if u.get('name')]

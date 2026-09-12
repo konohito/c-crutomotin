@@ -42,7 +42,7 @@ const initialState = {
   // 請求突き合わせ（期間は既定で直近2か月。画面側で今日から算出）
   bilFrom: '', bilTo: '', bilRegion: 'all', bilMuni: 'all',
   // CSV 出力
-  expYear: 2025, expScope: 'all', expWard: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true, expKcl: true, expFormat: 'std',
+  expYear: 2025, expScope: 'all', expWard: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true, expKcl: true, expFormat: 'std', expAutoComment: false,
   // メモ / CSV / 新規登録
   memos: {}, memoDraft: '', csvMuni: 'sakuragawa', csvDrag: false,
   regOpen: false, regName: '', regKana: '', regBirth: '', regSex: 'F', regMuni: 'sakuragawa', regWard: '', regCare: '', regPhone: '', regError: '',
