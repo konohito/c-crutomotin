@@ -74,6 +74,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // アプリ全体の設定（卒業証書に刷る法人名・事業所名など）。職員が編集できる。
+    match /config/{docId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if false;
+    }
+
     // 統合（同一人物の名寄せ）の操作ログ。誰がいつどれを統合し、測定を何件付け替えたかを残す。
     // 「元に戻す」もこの記録を読んで行うため、削除は不可（取り消しは status を undone にする）。
     match /merges/{mergeId} {

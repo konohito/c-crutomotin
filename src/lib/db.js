@@ -219,6 +219,21 @@ export const measKeyOf = (id, date, year) => {
   return d ? `${id}_${d.replace(/\D/g, '')}` : `${id}_${year}`
 }
 
+/* 卒業証書などに刷る発行者（法人名・事業所名・肩書・氏名）。
+   画面に直接書かず config/certificate から読む（事業所が増えても直せるように）。 */
+export const CERT_DEFAULT = { corpName: '', officeName: '', issuerTitle: '', issuerName: '' }
+export async function loadCertConfig() {
+  if (!dbEnabled()) return { ...CERT_DEFAULT }
+  const { fs, db } = await getFs()
+  const snap = await fs.getDoc(fs.doc(db, 'config', 'certificate'))
+  return snap.exists() ? { ...CERT_DEFAULT, ...snap.data() } : { ...CERT_DEFAULT }
+}
+export async function saveCertConfig(patch) {
+  if (!dbEnabled()) return
+  const { fs, db } = await getFs()
+  await fs.setDoc(fs.doc(db, 'config', 'certificate'), patch, { merge: true })
+}
+
 // 記録用紙の値 → measurement ドキュメント（engine.commitSheet と同じ算出。純粋）
 export function buildMeasurementDoc(user, finalValues, meta = {}) {
   const v = {}
