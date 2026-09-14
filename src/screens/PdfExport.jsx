@@ -343,7 +343,6 @@ function PdfPage({ p, state, count }) {
 function CtypeReport() {
   const rows = ctypeRows(D.users)
   const done = rows.filter(r => r.endRec)
-  const avg = done.length ? done.reduce((s, r) => s + r.totalDiff, 0) / done.length : null
   const fmt1 = (v) => (v === null || v === undefined ? '—' : Number(v).toFixed(1))
   const sign = (v, dec = 1) => (v === null || v === undefined ? '—' : (v >= 0 ? '+' : '') + Number(v).toFixed(dec))
   const TH = { padding: '4px 5px', fontSize: 9.5, fontWeight: 700, background: 'var(--slate-100)', border: '0.5px solid var(--slate-300)', whiteSpace: 'nowrap' }
@@ -360,17 +359,16 @@ function CtypeReport() {
       <div style={{ display: 'flex', gap: 18, margin: '8px 0 10px', fontSize: 10.5 }}>
         <span>対象者 <b className="t-num">{rows.length}</b> 名</span>
         <span>終了時まで測定済み <b className="t-num">{done.length}</b> 名</span>
-        <span>改善 <b className="t-num">{done.filter(r => r.totalDiff > 0).length}</b> 名</span>
-        <span>維持 <b className="t-num">{done.filter(r => r.totalDiff === 0).length}</b> 名</span>
-        <span>低下 <b className="t-num">{done.filter(r => r.totalDiff < 0).length}</b> 名</span>
-        <span>総合スコアの平均変化 <b className="t-num">{avg === null ? '—' : sign(avg)}</b> 点</span>
+        <span>改善 <b className="t-num">{done.filter(r => r.verdict === '改善').length}</b> 名</span>
+        <span>維持 <b className="t-num">{done.filter(r => r.verdict === '維持').length}</b> 名</span>
+        <span>低下 <b className="t-num">{done.filter(r => r.verdict === '低下').length}</b> 名</span>
       </div>
       <table style={{ borderCollapse: 'collapse', width: '100%' }}>
         <thead>
           <tr>
             <th style={TH}>年度</th><th style={TH}>ID</th><th style={TH}>氏名</th><th style={TH}>団体</th>
             <th style={TH}>開始日</th><th style={TH}>終了日</th><th style={TH}>期間</th>
-            <th style={TH}>総合<br />開始</th><th style={TH}>総合<br />終了</th><th style={TH}>差</th><th style={TH}>判定</th>
+            <th style={TH}>良く<br />なった</th><th style={TH}>悪く<br />なった</th><th style={TH}>判定</th>
             {CTYPE_ITEMS.map(it => <th key={it.id} style={TH}>{it.label}<br />開始→終了（差）</th>)}
           </tr>
         </thead>
@@ -384,12 +382,9 @@ function CtypeReport() {
               <td style={TD} className="t-num">{r.startDate || '—'}</td>
               <td style={TD} className="t-num">{r.endDate || '—'}</td>
               <td style={TD} className="t-num">{r.days === null ? '—' : r.days + '日'}</td>
-              <td style={TD} className="t-num">{r.totalStart}</td>
-              <td style={TD} className="t-num">{r.totalEnd ?? '—'}</td>
-              <td style={{ ...TD, fontWeight: 700, color: vColor(r.verdict) }} className="t-num">{sign(r.totalDiff, 0)}</td>
-              <td style={{ ...TD, fontWeight: 700, color: vColor(r.verdict) }}>
-                {r.verdict}{r.bmiMissing ? <span style={{ display: 'block', fontWeight: 400, fontSize: 8, color: 'var(--warn-600, #b45309)' }}>※体格の比較不可</span> : null}
-              </td>
+              <td style={TD} className="t-num">{r.endRec ? `${r.improved} / ${r.measured}` : '—'}</td>
+              <td style={TD} className="t-num">{r.endRec ? `${r.worsened} / ${r.measured}` : '—'}</td>
+              <td style={{ ...TD, fontWeight: 700, color: vColor(r.verdict) }}>{r.verdict}</td>
               {r.items.map(it => (
                 <td key={it.id} style={TD} className="t-num">
                   {fmt1(it.start)}→{fmt1(it.end)}（{sign(it.diff)}）
@@ -400,11 +395,12 @@ function CtypeReport() {
         </tbody>
       </table>
       <div style={{ fontSize: 9, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>
-        ・「開始時」はその年度の最初の測定、「終了時」は最後の測定です。1 回しか測っていない方は終了時が空欄になります。<br />
-        ・開眼片脚立位・握力は左右のうち良い方の値です。判定は総合スコアの増減で付けています。<br />
-        ・通常5m歩行・最大5m歩行・TUG は秒数が小さいほど良好、開眼片脚立位・握力は大きいほど良好です。<br />
-        ・「※体格の比較不可」は、終了時に体重・BMI が記録されていない方です。総合スコアは体格を含むため、
-        　この方の総合スコアの増減は実際の変化を表していません。項目ごとの変化でご判断ください。
+        ・「開始時」は短期集中予防サービスの最初の測定、「終了時」は最後の測定です。1 回しか測っていない方は終了時が空欄になります。<br />
+        ・開眼片脚立位・握力は左右のうち良い方の値です。通常5m歩行・最大5m歩行・TUG は秒数が小さいほど良好、開眼片脚立位・握力は大きいほど良好です。<br />
+        ・判定は<b>項目ごとの比較</b>です（良くなった項目数と悪くなった項目数の多い方。同数なら維持）。
+        　身長・体重は短期集中予防では測らないため、総合スコアでの前後比較は行いません。<br />
+        ・基本チェックリストは開始時のみ実施します（終了時が無いのは正常です）。<br />
+        ・同じ方が自治体依頼（サロン）の測定も受けている場合、その測定はこの表には入りません。
       </div>
     </div>
   )

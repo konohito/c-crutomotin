@@ -21,17 +21,17 @@ const initialState = {
   editUser: null, editMeas: null, editKcl: null, editBusy: false,
   // 分析
   // 本番(単一圏域)は圏域別を出さず、行政区別を既定にする
-  anaYear: 2025, anaRegion: 'all', anaWard: 'all', anaUnit: dbEnabled() ? 'ward' : 'region', anaItem: 'gripR',
-  dashItem: 'gripR', exItem: 'gripR', exSex: 'all', exAge: 'all', exCohort: 'all', exFrom: 2020,
+  anaYear: D.CUR, anaRegion: 'all', anaWard: 'all', anaUnit: dbEnabled() ? 'ward' : 'region', anaItem: 'gripR',
+  dashItem: 'gripR', exItem: 'gripR', exSex: 'all', exAge: 'all', exCohort: 'all', exFrom: D.YEARS[0],
   // PDF
-  pdfMode: 'single', pdfUser: null, pdfMuni: 'sakuragawa', pdfWard: 'all', pdfYear: 2025, pdfQ: '',
+  pdfMode: 'single', pdfUser: null, pdfMuni: 'sakuragawa', pdfWard: 'all', pdfYear: D.CUR, pdfQ: '',
   incRadar: true, incTrend: true, incPrev: true, incAvg: true, incComment: true, incFrail: true, incInbody: true, incKcl: true,
   // 用紙作成（本番は測定会イベントが無いので市町村＋行政区で選ぶ）
   shMode: dbEnabled() ? 'muni' : 'event', shEvent: '', shMuni: 'sakuragawa', shWard: 'all', shBlank: 0, shKind: 'meas', shEra: 0,
   // モバイル
   mob: 'home', mShots: 0, mSent: 0,
   // カレンダー
-  calY: 2025, calM: 9,
+  calY: D.jstNow().getFullYear(), calM: D.jstNow().getMonth() + 1,
   evOpen: false, evDate: '', evKind: 'meas', evTitle: '', evVenue: '', evMuni: 'sakuragawa', evTime: '',
   customMunis: [], evNewMuni: '', evNewRegion: '', evStaff: [],
   // 本番(実データ)ではダミーのサンプル予定は出さない
@@ -42,7 +42,7 @@ const initialState = {
   // 請求突き合わせ（期間は既定で直近2か月。画面側で今日から算出）
   bilFrom: '', bilTo: '', bilRegion: 'all', bilMuni: 'all',
   // CSV 出力
-  expYear: 2025, expScope: 'all', expWard: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true, expKcl: true, expFormat: 'std', expAutoComment: false,
+  expYear: D.CUR, expScope: 'all', expWard: 'all', expMeasuredOnly: true, expFrail: true, expInbody: true, expKcl: true, expFormat: 'std', expAutoComment: false,
   // メモ / CSV / 新規登録
   memos: {}, memoDraft: '', csvMuni: 'sakuragawa', csvDrag: false,
   regOpen: false, regName: '', regKana: '', regBirth: '', regSex: 'F', regMuni: 'sakuragawa', regWard: '', regCare: '', regPhone: '', regError: '',

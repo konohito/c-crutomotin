@@ -2,7 +2,7 @@
    VITE_FIREBASE_CONFIG があり、認証済みで、Firestore に users がある場合のみ実データを使う。
    未設定・データ無しなら false を返し、従来のシードデモのまま。
    個人情報を含むため、実データはログイン内（認証後）でのみ読み込む。 */
-import D, { axesOf, setUsers, replaceMunis } from '../data/engine.js'
+import D, { axesOf, setUsers, replaceMunis, setYears } from '../data/engine.js'
 import { dbEnabled, getFs } from './db.js'
 
 export const realDataEnabled = () => dbEnabled()
@@ -323,6 +323,8 @@ export async function loadRealData() {
       return { id, name: us[0].muniName || String(id), region: us[0].region || '', tel: '', venues: wards.map(w => [vc++, w]) }
     })
     replaceMunis(munis.length ? munis : [{ id: 'kashima', name: '嘉島町', region: '嘉島町圏域', tel: '', venues: [] }])
+    // 年度の選択肢を実データに合わせる（今年度＋データにある年度。固定しない）
+    setYears(list.flatMap(u => (u.series || []).map(r => Number(r.year))))
     setUsers(list)
     return { loaded: true }
   } catch (e) {

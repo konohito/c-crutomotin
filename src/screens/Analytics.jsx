@@ -6,6 +6,15 @@ import { wardLabel, dbEnabled } from '../lib/db.js'
 import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel } from '../ui/chart.jsx'
 import { Card, Select, Segmented } from '../ui/kit.jsx'
 
+/* 「いつから」の選択肢。年度を決め打ちすると毎年ずれるので、年度一覧から作る。
+   全期間・直近4年度・直近3年度・直近2年度。 */
+function periodOpts() {
+  const ys = D.YEARS
+  const last = ys[ys.length - 1]
+  const mk = (from) => ({ v: String(from), l: from === ys[0] ? `全期間（${eraOf(from)}〜${eraOf(last)}）` : `${eraOf(from)}〜${eraOf(last)}年度` })
+  const cand = [ys[0], last - 3, last - 2, last - 1].filter((y, i, a) => y >= ys[0] && y < last && a.indexOf(y) === i)
+  return cand.map(mk)
+}
 const distinctSort = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
 
 export default function Analytics() {
@@ -96,8 +105,8 @@ export default function Analytics() {
   const unitLabel = state.anaUnit === 'region' ? '圏域' : state.anaUnit === 'ward' ? wardLabel() : '市町村'
 
   const cohortNote = state.exCohort === 'cohort'
-    ? '【同一集団で比較中】' + eraOf(state.exFrom) + '〜令和7年度のすべての年度に「' + exCol.label + '」の記録がある ' + cohortN + ' 名だけで平均した推移です。同じ方々の変化を純粋に追跡できます。ただし継続して参加できている比較的元気な方に偏りやすい点にご注意ください。' + (state.exAge !== 'all' ? '（年代は令和7年度時点の年齢で区分）' : '')
-    : '【全参加者で比較中】各年度に測定したすべての方の平均です。年度ごとに参加メンバーが入れ替わる（新規参加・欠席・転出など）ため、集団の構成変化の影響を含みます。同じ方々だけの純粋な変化を見たい場合は「同一集団」に切り替えてください。' + (state.exAge !== 'all' ? '（年代は令和7年度時点の年齢で区分）' : '')
+    ? '【同一集団で比較中】' + eraOf(state.exFrom) + '〜' + eraOf(D.CUR) + '年度のすべての年度に「' + exCol.label + '」の記録がある ' + cohortN + ' 名だけで平均した推移です。同じ方々の変化を純粋に追跡できます。ただし継続して参加できている比較的元気な方に偏りやすい点にご注意ください。' + (state.exAge !== 'all' ? '（年代は' + eraOf(D.CUR) + '年度時点の年齢で区分）' : '')
+    : '【全参加者で比較中】各年度に測定したすべての方の平均です。年度ごとに参加メンバーが入れ替わる（新規参加・欠席・転出など）ため、集団の構成変化の影響を含みます。同じ方々だけの純粋な変化を見たい場合は「同一集団」に切り替えてください。' + (state.exAge !== 'all' ? '（年代は' + eraOf(D.CUR) + '年度時点の年齢で区分）' : '')
 
   // 線末尾の値ラベルは系列が収束すると重なるため、最低 13px 間隔になるよう上下にずらす
   const endLabels = exAuto.lines
@@ -137,7 +146,7 @@ export default function Analytics() {
           <Select sm value={state.exSex} onChange={(e) => set({ exSex: e.target.value })} options={[opt('all', '男女計'), opt('F', '女性のみ'), opt('M', '男性のみ')]} />
           <Select sm value={state.exAge} onChange={(e) => set({ exAge: e.target.value })} options={[opt('all', '全年代'), opt('u75', '〜74歳'), opt('a75', '75〜84歳'), opt('a85', '85歳〜')]} />
           <Select sm value={String(state.exFrom)} onChange={(e) => set({ exFrom: +e.target.value })}
-            options={[opt('2020', '全期間（令和2〜7）'), opt('2022', '令和4〜7年度'), opt('2023', '令和5〜7年度'), opt('2024', '令和6〜7年度')]} />
+            options={periodOpts()} />
           <Segmented sm value={state.exCohort} onChange={(v) => set({ exCohort: v })} options={[{ v: 'all', l: '全参加者' }, { v: 'cohort', l: '同一集団' }]} />
         </div>
         <div style={{ display: 'flex', gap: 14, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>

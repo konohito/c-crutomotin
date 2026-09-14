@@ -87,26 +87,25 @@ export function ctypeRows(users = D.users) {
         const a = it.get(sv), b = end ? it.get(ev) : null
         return { ...it, start: a, end: b, diff: (a == null || b == null) ? null : Math.round((b - a) * 100) / 100 }
       })
-      const totalDiff = end ? end.total - start.total : null
-      /* 総合スコアは 5 領域（歩行・バランス・筋力・複合動作・体格）の平均で、
-         体格は BMI から出す。片方だけ BMI が欠けていると、欠けた側の体格が
-         最低点になり、実際には良くなっていても総合スコアが下がって見える。
-         熊本市の台帳は身長体重が 1 組しか無く、終了時に BMI が入らないため
-         この状態が起きる。数字はいじらず、比べられないことを明示する。 */
-      const bmiMissing = end && ((sv.bmi == null) !== (ev.bmi == null))
+      /* C型 の前後比較は「項目ごと」で見る（総合スコアでは比べない）。
+         C型 の報告では身長・体重を測らないため終了時に BMI が無く、総合スコアに
+         含まれる体格の領域が成り立たない。総合スコアで比べると、実際は良くなって
+         いても下がって見えてしまう（実データで 11 名中 9 名が「低下」と出ていた）。
+         採点のしかた自体は変えない（変えると C型 以外の全測定のスコアが動くため）。
+         ここでは「終了時に無い項目は比較から外す」＝両方そろった項目だけで判定する。 */
+      const cmp = items.filter(it => it.diff !== null && it.better !== 'none')
+      const better = cmp.filter(it => (it.better === 'high' && it.diff > 0) || (it.better === 'low' && it.diff < 0))
+      const worse = cmp.filter(it => (it.better === 'high' && it.diff < 0) || (it.better === 'low' && it.diff > 0))
       rows.push({
         user: u, year: y, count,
         startRec: start, endRec: end,
         startDate: start.date || '', endDate: (end && end.date) || '',
         days: end ? daysBetween(start, end) : null,
-        totalStart: start.total, totalEnd: end ? end.total : null, totalDiff,
-        verdict: end ? verdictOf(totalDiff) : '終了時 未測定',
-        bmiMissing,
-        note: bmiMissing ? '体重・BMI が片方にしか無いため、総合スコアの比較はできません（項目ごとの変化をご覧ください）' : '',
-        items, kclTotal: kc ? kc.total : null,
-        improved: items.filter(it => it.diff !== null && it.better !== 'none'
-          && ((it.better === 'high' && it.diff > 0) || (it.better === 'low' && it.diff < 0))).length,
-        measured: items.filter(it => it.diff !== null && it.better !== 'none').length,
+        // 判定は「良くなった項目数」と「悪くなった項目数」の多い方。同数なら維持
+        verdict: end ? verdictOf(better.length - worse.length) : '終了時 未測定',
+        items, improved: better.length, worsened: worse.length, measured: cmp.length,
+        // 基本チェックリストは開始時のみ実施。終了時が無いのは正常で、欠測ではない
+        kclTotal: kc ? kc.total : null,
       })
     }
   }
@@ -116,16 +115,15 @@ export function ctypeRows(users = D.users) {
 /* C型 経過一覧の CSV（市への報告・横断共有用）。 */
 export function ctypeCsv(rows) {
   const header = ['年度', '市町村', '行政区（団体）', '参加者ID', '氏名', 'ふりがな', '性別', '生年月日', '年齢',
-    '開始日', '終了日', '期間(日)', '測定回数', '総合スコア_開始', '総合スコア_終了', '総合スコア_変化', '判定',
-    '改善した項目数', '評価した項目数', '基本CL合計点', '注意']
+    '開始日', '終了日', '期間(日)', '測定回数', '判定', '改善した項目数', '悪化した項目数', '比較した項目数',
+    '基本CL合計点(開始時)']
   CTYPE_ITEMS.forEach(it => header.push(`${it.label}_開始${it.unit ? '(' + it.unit + ')' : ''}`,
     `${it.label}_終了${it.unit ? '(' + it.unit + ')' : ''}`, `${it.label}_変化`))
   const body = rows.map(r => {
     const u = r.user
     const line = [r.year, u.muniName, u.venueName, u.id, u.name, u.kana, u.sexLabel, u.birthDate,
       (u.birth ? r.year - u.birth : ''), r.startDate, r.endDate, r.days ?? '', r.count,
-      r.totalStart ?? '', r.totalEnd ?? '', r.totalDiff === null ? '' : (r.totalDiff >= 0 ? '+' : '') + r.totalDiff,
-      r.verdict, r.improved, r.measured, r.kclTotal ?? '', r.note]
+      r.verdict, r.improved, r.worsened, r.measured, r.kclTotal ?? '']
     r.items.forEach(it => line.push(num(it.start, it.dec), num(it.end, it.dec), delta(it.start, it.end, it.dec)))
     return line
   })

@@ -1,6 +1,7 @@
 import D from '../data/engine.js'
 
-export const eraOf = (y) => D.ERA[y] || String(y)
+// 年度 → 元号表記。一覧に無い年度（新しい年度など）も計算で出す
+export const eraOf = (y) => D.ERA[y] || D.eraLabel(y)
 
 export const fmtD = (v, dec) => D.fmt(v, dec)
 
