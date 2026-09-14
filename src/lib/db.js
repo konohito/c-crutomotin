@@ -205,6 +205,20 @@ export async function clearWalkInFlag(userId) {
   await firestore.setDoc(firestore.doc(db, 'users', userId), { walkIn: false }, { merge: true })
 }
 
+/* 評価日は必ず 0 詰めの YYYY/MM/DD に揃えて保存する。
+   「2026/09/7」のように 0 詰めされていない日付が混ざると、同じ日なのに別の日として
+   数えられる（請求の突き合わせ・団体ごとの人数が狂う）。読み取りは従来どおり
+   どちらの書き方も受け付けるが、保存はここを通して 1 つの書き方に統一する。 */
+export function normDate(v) {
+  const m = String(v ?? '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
+  return m ? `${m[1]}/${m[2].padStart(2, '0')}/${m[3].padStart(2, '0')}` : null
+}
+// 測定の文書 ID。評価日があれば評価日キー、無ければ年度キー
+export const measKeyOf = (id, date, year) => {
+  const d = normDate(date)
+  return d ? `${id}_${d.replace(/\D/g, '')}` : `${id}_${year}`
+}
+
 // 記録用紙の値 → measurement ドキュメント（engine.commitSheet と同じ算出。純粋）
 export function buildMeasurementDoc(user, finalValues, meta = {}) {
   const v = {}
@@ -221,21 +235,23 @@ export function buildMeasurementDoc(user, finalValues, meta = {}) {
   const total = Math.round(((ax.walk + ax.balance + ax.grip + ax.mobility + ax.body) / 25) * 100)
   return {
     userId: user.id, year: meta.year || D.CUR, venueCode: user.venueCode,
-    date: meta.date || D.TODAY, values: v, axes: ax, total,
+    date: normDate(meta.date) || D.TODAY, values: v, axes: ax, total,
     source: 'ocr', batchId: meta.batchId || '', recognitionId: meta.recognitionId || '',
   }
 }
 
 // 問診票の本登録: measurement ドキュメントに kclAnswers をマージ保存(おもて/うら 2 枚で合流)し、
 // recognition を committed に更新する。測定値は上書きしない。
-export async function commitKclRecognition({ batchId, recognitionId, user, answers, year }) {
+export async function commitKclRecognition({ batchId, recognitionId, user, answers, year, date }) {
   if (!dbEnabled()) throw new Error('Firebase 未設定です')
   const { firestore, db } = await sdk()
   const y = year || D.CUR
   const clean = {}
   Object.entries(answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
+  // 問診票も測定と同じ評価日キーの文書に入れる（年度キーだと測定と別の文書に分かれてしまう）
+  const kid = measKeyOf(user.id, date || D.TODAY, y)
   const batch = firestore.writeBatch(db)
-  batch.set(firestore.doc(db, 'measurements', `${user.id}_${y}`), { userId: user.id, year: y, kclAnswers: clean }, { merge: true })
+  batch.set(firestore.doc(db, 'measurements', kid), { userId: user.id, year: y, date: date || D.TODAY, kclAnswers: clean }, { merge: true })
   if (batchId && recognitionId) {
     batch.update(firestore.doc(db, 'batches', batchId, 'recognitions', recognitionId), {
       status: 'committed', matchedUserId: user.id, reviewedAt: firestore.serverTimestamp(),
@@ -249,7 +265,10 @@ export async function commitRecognition({ batchId, recognitionId, user, finalVal
   if (!dbEnabled()) throw new Error('Firebase 未設定です')
   const { firestore, db } = await sdk()
   const measurement = buildMeasurementDoc(user, finalValues, { ...meta, batchId, recognitionId })
-  const mid = `${user.id}_${measurement.year}`
+  /* 文書 ID は評価日キー。年度キーで書いていたため、直後に呼ばれる saveMeasurement が
+     評価日キーでもう 1 通作り、同じ測定が 2 件に増えていた（1 回の測定が 2 回分に数えられ、
+     提出・請求・前後比較がすべてずれる）。両方を同じキーに揃えて 1 通にする。 */
+  const mid = measKeyOf(user.id, measurement.date, measurement.year)
   const batch = firestore.writeBatch(db)
   batch.set(firestore.doc(db, 'measurements', mid), { ...measurement, committedAt: firestore.serverTimestamp() })
   batch.update(firestore.doc(db, 'batches', batchId, 'recognitions', recognitionId), {

@@ -37,6 +37,12 @@ export const compactDate = (date) => {
   const m = String(date || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
   return m ? m[1] + m[2].padStart(2, '0') + m[3].padStart(2, '0') : ''
 }
+/* 保存する評価日は必ず 0 詰めの YYYY/MM/DD に揃える。
+   「2026/09/7」のような書き方が混ざると、同じ日が別の日として数えられてしまう。 */
+export const normDate = (v) => {
+  const m = String(v ?? '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
+  return m ? `${m[1]}/${m[2].padStart(2, '0')}/${m[3].padStart(2, '0')}` : null
+}
 export const measKey = (id, date, year) => {
   const d = compactDate(date)
   return d ? `${id}_${d}` : `${id}_${year}`
@@ -187,7 +193,8 @@ export async function createUserDoc(u) {
 export async function saveMeasurement(id, year, values, date, key) {
   const u = D.users.find(x => x.id === id)
   const s = scoreOf(u ? u.sex : 'F', values)
-  let d = date === undefined ? undefined : (String(date).trim() || null)
+  // 評価日は 0 詰めに正規化して保存する（書式のゆれで同じ日が分かれるのを防ぐ）
+  let d = date === undefined ? undefined : (normDate(date) || null)
   const target = (u && u.series || []).find(r => key ? r.key === key : false)
     || (key ? null : (u && u.meas[year]) || null)
   const oldKey = target ? target.key : null
@@ -273,7 +280,7 @@ export async function moveMeasurementYear(id, fromY, toY, key) {
 export async function saveKclAnswers(id, year, answers, date) {
   const clean = {}
   Object.entries(answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
-  const d = date === undefined ? undefined : (String(date).trim() || null)
+  const d = date === undefined ? undefined : (normDate(date) || null)
   const u = D.users.find(x => x.id === id)
   if (u) {
     u.kcl = u.kcl || {}

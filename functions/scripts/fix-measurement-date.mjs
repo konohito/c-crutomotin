@@ -30,6 +30,11 @@ const compact = (d) => {
   const m = String(d || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
   return m ? m[1] + m[2].padStart(2, '0') + m[3].padStart(2, '0') : ''
 }
+// 保存する評価日は 0 詰めの YYYY/MM/DD に揃える
+const normDate = (v) => {
+  const m = String(v ?? '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
+  return m ? `${m[1]}/${m[2].padStart(2, '0')}/${m[3].padStart(2, '0')}` : null
+}
 const fiscalYearOfDate = (ds) => {
   const m = String(ds || '').match(/(\d{4})\D+(\d{1,2})/)
   return m ? +m[1] - (+m[2] < 4 ? 1 : 0) : null
@@ -46,12 +51,21 @@ async function main() {
     const newId = `${f.userId}_${compact(f.to)}`
     const oldSnap = await db.collection('measurements').doc(oldId).get()
     if (!oldSnap.exists) { console.log(`   × ${oldId} が見つかりません（飛ばします）`); continue }
-    const newSnap = await db.collection('measurements').doc(newId).get()
-    if (newSnap.exists) { console.log(`   × ${newId} はすでにあります。衝突するので飛ばします`); continue }
     const data = oldSnap.data()
     const year = fiscalYearOfDate(f.to)
-    plan.push({ f, oldId, newId, data, year })
-    console.log(`   ${oldId} → ${newId}  評価日 ${data.date} → ${f.to} / 年度 ${data.year} → ${year}  ${f.why || ''}`)
+    const to = normDate(f.to)
+    /* 文書 ID が変わらない場合（0 詰めの書き方を直すだけ）は、評価日の項目だけ書き換える。
+       文書を作り直す必要が無く、いちばん安全。 */
+    if (oldId === newId) {
+      if (data.date === to && Number(data.year) === year) { console.log(`   － ${oldId} はすでに正しい書き方です（変更なし）`); continue }
+      plan.push({ f, oldId, newId, data, year, to, sameKey: true })
+      console.log(`   ${oldId}  評価日 "${data.date}" → "${to}" / 年度 ${data.year} → ${year}（文書IDは変わりません）  ${f.why || ''}`)
+      continue
+    }
+    const newSnap = await db.collection('measurements').doc(newId).get()
+    if (newSnap.exists) { console.log(`   × ${newId} はすでにあります。衝突するので飛ばします`); continue }
+    plan.push({ f, oldId, newId, data, year, to })
+    console.log(`   ${oldId} → ${newId}  評価日 ${data.date} → ${to} / 年度 ${data.year} → ${year}  ${f.why || ''}`)
   }
   console.log(`[date] 移せるもの: ${plan.length} 件 / 指定 ${fixes.length} 件`)
   if (!WRITE) { console.log('[date] 下見のみ。実行するには --write を付けてください'); return }
@@ -64,7 +78,15 @@ async function main() {
 
   let ok = 0
   for (const p of plan) {
-    const next = { ...p.data, date: p.f.to, year: p.year, movedFrom: p.oldId, movedAt: new Date().toISOString() }
+    if (p.sameKey) {
+      await db.collection('measurements').doc(p.oldId).set({ date: p.to, year: p.year }, { merge: true })
+      const back = (await db.collection('measurements').doc(p.oldId).get()).data()
+      if (back.date !== p.to) { console.error(`[date] ★中断: ${p.oldId} の評価日が反映されていません`); process.exit(1) }
+      ok++
+      console.log(`   済 ${p.oldId} 評価日を "${p.to}" に揃えました`)
+      continue
+    }
+    const next = { ...p.data, date: p.to, year: p.year, movedFrom: p.oldId, movedAt: new Date().toISOString() }
     delete next.voided
     // ① 新しいキーで作成（すでにあれば create() が失敗する＝既存を壊さない）
     await db.collection('measurements').doc(p.newId).create(next)
