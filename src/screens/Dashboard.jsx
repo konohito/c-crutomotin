@@ -108,7 +108,7 @@ export default function Dashboard() {
   const tm = now.getMonth() + 1
   const td = now.getDate()
   const tw = '日月火水木金土'[now.getDay()]
-  const eraTop = demo ? '令和7年度' : `令和${now.getFullYear() - 2018}年`
+  const eraTop = `${D.eraLabel(D.fiscalYearOf(D.jstNow(now)))}年度`
   const greet = loginGreeting()
   // 本番はログイン職員の氏名（姓）を使い、未設定なら掛け声のみにする
   const staffFamily = demo

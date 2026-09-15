@@ -3,11 +3,13 @@
 #   1 行 = 1 名 × 1 年度。開始時・終了時の 2 回の測定と、基本チェックリスト(0/1)を持つ。
 #
 # 年度の対応(重要):
-#   アプリの「今年度」は D.CUR = 2025(画面・取り込みはすべて 2025 に記録される)。
-#   熊本市の台帳の年度は 4 月区切りで、2026年度 = いま進行中のシーズン。
-#   よって アプリ年度 = 測定日の年度(4月区切り) - 1 で取り込む。
-#     例: 2025-09-03 の測定(台帳では 2025 年度の開始時) → アプリの 2024 = 「昨年」
-#         2026-04 以降の測定(2026 年度) → アプリの 2025 = 「今年度」
+#   年度は日本の年度＝4 月 1 日開始。測定日の年度をそのまま使う。
+#     例: 2025-10-02 → 2025 年度(令和7) / 2026-04-09 → 2026 年度(令和8)
+#   以前はここで -1 していた。アプリ側の「今年度」が D.CUR = 2025 の固定値で
+#   止まっており、それに合わせるための細工だった(アプリが令和8年度に入っても
+#   2025 のままだったため)。アプリ側を今日の日付から年度を出す形に直したので、
+#   細工は不要になった。過去に -1 で取り込んだ測定は年度がずれているため、
+#   scripts/fix-measurement-year.mjs で測定日から付け直すこと。
 #
 # ID の対応:
 #   台帳の ID は 4 桁(1001〜)。嘉島町の既存 ID と衝突しないよう「2」を前置した
@@ -35,16 +37,28 @@ def sex_of(v):
 def cap60(v):
     return None if v is None else min(v, 60.0)
 def app_year(v):
-    # 測定日 → アプリの年度(= 4 月区切りの年度 - 1)
+    # 測定日 → 年度(4 月 1 日開始)。2026-03-31 は 2025 年度、2026-04-01 は 2026 年度
     if not isinstance(v, (datetime.datetime, datetime.date)): return None
-    fy = v.year - (1 if v.month < 4 else 0)
-    return fy - 1
+    return v.year - (1 if v.month < 4 else 0)
 
 # 基本チェックリストの点数化方向(kihon.js KCL_QUESTIONS と一致させること)。
 # 台帳は 0/1(1=該当=1点)。アプリは raw {'設問No': 'yes'|'no'} で持つ。No.12(BMI)は派生のため除外。
 POINT_ON = {1:'no',2:'no',3:'no',4:'no',5:'no',6:'no',7:'no',8:'no',9:'yes',10:'yes',
             11:'yes',13:'yes',14:'yes',15:'yes',16:'no',17:'yes',18:'yes',19:'no',20:'yes',
             21:'yes',22:'yes',23:'yes',24:'yes',25:'yes'}
+
+# 台帳の「評価日_終了時」が空欄のまま出力された行の補完。
+# 終了時の測定値は台帳に入っているのに日付だけが無く、取り込みから丸ごと漏れていた
+# （評価日が無い測定は文書キーを作れないため捨てられる）。現場に確認して確定した日付。
+# 和暦→西暦: 令和7年=2025 / 令和8年=2026。
+END_DATE_FIX = {
+    105: '2025/12/18',   # 井出 素子（友愛会（C型））R7.12/18。同じ会の斉藤様・宮田様と同じ終了日
+    206: '2026/07/09',   # 猿渡 信子（長嶺（C型））R8.7.9
+    207: '2026/07/16',   # 長野 秀子（長嶺（C型））R8.7.16
+}
+def parse_fix(sv):
+    m = re.match(r'(\d{4})/(\d{1,2})/(\d{1,2})$', sv or '')
+    return datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
 
 users = {}
 def ensure(_id, **kw):
@@ -94,6 +108,22 @@ for r in ws.iter_rows(min_row=2, values_only=True):
 
     h, w, bmi = num(r[12]), num(r[13]), num(r[14])
 
+    # 台帳にしか無い記入項目。アプリ側で作文・推定せず、書かれたとおりに取り込む。
+    # (これまで取り込んでおらず、提出 CSV では空欄・固定値・自動生成文になっていた)
+    def txt(v):
+        s = str(v).strip() if v not in (None, '') else ''
+        return s if s and s.lower() != 'none' else ''
+    examiner = txt(r[54])          # 測定者(村崎・東 など)
+    training = txt(r[55])          # 訓練方法(集団)。記入のある行だけ出す
+    selfTr = txt(r[56])            # 自己訓練有無
+    goal = txt(r[77])              # 目標
+    freeNote = txt(r[78])          # 自由記載
+    # 事業区分。台帳の「新総合事業」列が正（C型 は「サービスC」）。
+    # 地区名の「（C型）」は団体の改称でまとめると消えるため、測定の属性として持つ。
+    program = 'cType' if 'サービスC' in str(r[16] or '') or 'C型' in str(r[11] or '') else 'city'
+    shared = {'examiner': examiner, 'trainingType': training, 'selfTraining': selfTr,
+              'goal': goal, 'freeNote': freeNote, 'program': program}
+
     # 開始時の測定(+ 身長体重は開始時のもの・BMI も)
     ys = app_year(r[52])
     if ys is not None:
@@ -104,6 +134,9 @@ for r in ws.iter_rows(min_row=2, values_only=True):
             'gripR': num(r[69]), 'gripL': None,
             'height': h, 'weight': w, 'bmi': bmi,
             'source': '個人管理台帳(熊本市)・開始時',
+            'assistive': txt(r[57]), 'assistiveOther': txt(r[58]),   # 補装具(開始時)
+            'comment': txt(r[75]),                                    # 開始時コメント(現場が書いた文章)
+            **shared,
         })
         # 基本チェックリストは開始時に実施 → 開始時の年度に付ける
         raw = {}
@@ -114,16 +147,22 @@ for r in ws.iter_rows(min_row=2, values_only=True):
         # 問診票は測定と同じドキュメントに入れるので、年度ではなく開始時の評価日をキーにする
         if raw and dstr(r[52]):
             u['kcl'][dstr(r[52])] = raw
-    # 終了時の測定(身長は変わらないので引き継ぐ。体重は測っていないため入れない)
-    ye = app_year(r[53])
+    # 終了時の測定。
+    # 身長は変わらないので引き継ぐ。体重・BMI は短期集中予防では終了時に測らないため入れない
+    # (欠測であって 0 ではない。総合スコアでの前後比較はしないこと。項目ごとに比べる)
+    end_dt = r[53] if isinstance(r[53], (datetime.datetime, datetime.date)) else parse_fix(END_DATE_FIX.get(int(rid)))
+    ye = app_year(end_dt)
     if ye is not None:
         merge_meas(u, ye, {
-            'date': dstr(r[53]),
+            'date': dstr(end_dt),
             'balR': cap60(num(r[62])), 'balL': None,
             'tug': num(r[64]), 'walk5': num(r[66]), 'walk5max': num(r[68]),
             'gripR': num(r[70]), 'gripL': None,
             'height': h, 'weight': None, 'bmi': None,
             'source': '個人管理台帳(熊本市)・終了時',
+            'assistive': txt(r[59]), 'assistiveOther': txt(r[60]),   # 補装具(終了時)
+            'comment': txt(r[76]),                                    # 終了時コメント(現場が書いた文章)
+            **shared,
         })
 
 out = [u for u in users.values() if u.get('name')]

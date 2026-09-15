@@ -38,7 +38,7 @@ export default function Calendar() {
           <button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => set(s => (s.calM >= 12 ? { calM: 1, calY: s.calY + 1 } : { calM: s.calM + 1 }))} aria-label="次の月">
             <Icon name="chevR" size={15} strokeWidth={2} />
           </button>
-          <button className="btn btn-outline btn-sm" onClick={() => set({ calY: 2025, calM: 9 })}>今日</button>
+          <button className="btn btn-outline btn-sm" onClick={() => set({ calY: D.jstNow().getFullYear(), calM: D.jstNow().getMonth() + 1 })}>今日</button>
           <div style={{ flex: 1 }} />
           <div style={{ fontSize: 11.5, color: 'var(--fg-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>日付をクリックすると予定を追加できます</div>
         </div>

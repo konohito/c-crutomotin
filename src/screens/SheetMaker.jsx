@@ -480,7 +480,7 @@ export default function SheetMaker() {
   const perUser = kind === 'meas' || (kind === 'kcl' && kclId === 'print')
   const walkN = state.shWalkN || 5
   const isWalk = kind === 'walkin' || kind === 'walkinKcl'
-  const evs = allEvents(state).filter(e => e.kind === 'meas' && e.code && e.date.slice(0, 4) === '2025').sort((a, b) => a.date.localeCompare(b.date))
+  const evs = allEvents(state).filter(e => e.kind === 'meas' && e.code && D.fiscalYearOfDate(e.date) >= D.CUR).sort((a, b) => a.date.localeCompare(b.date))
   const defEv = evs.find(e => e.date >= D.TODAY) || evs[0]
   const evKey = state.shEvent || (defEv ? defEv.code + '@' + defEv.date : '')
   const code = +evKey.split('@')[0]

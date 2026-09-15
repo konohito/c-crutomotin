@@ -2,7 +2,7 @@
    VITE_FIREBASE_CONFIG があり、認証済みで、Firestore に users がある場合のみ実データを使う。
    未設定・データ無しなら false を返し、従来のシードデモのまま。
    個人情報を含むため、実データはログイン内（認証後）でのみ読み込む。 */
-import D, { axesOf, setUsers, replaceMunis } from '../data/engine.js'
+import D, { axesOf, setUsers, replaceMunis, setYears } from '../data/engine.js'
 import { dbEnabled, getFs } from './db.js'
 
 export const realDataEnabled = () => dbEnabled()
@@ -36,6 +36,12 @@ function scoreOf(sex, v) {
 export const compactDate = (date) => {
   const m = String(date || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
   return m ? m[1] + m[2].padStart(2, '0') + m[3].padStart(2, '0') : ''
+}
+/* 保存する評価日は必ず 0 詰めの YYYY/MM/DD に揃える。
+   「2026/09/7」のような書き方が混ざると、同じ日が別の日として数えられてしまう。 */
+export const normDate = (v) => {
+  const m = String(v ?? '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
+  return m ? `${m[1]}/${m[2].padStart(2, '0')}/${m[3].padStart(2, '0')}` : null
 }
 export const measKey = (id, date, year) => {
   const d = compactDate(date)
@@ -72,6 +78,17 @@ export function toEngineUser(u, measList) {
       ...s, date: m.date || null, review: !!m.review,
       year: Number(m.year), key: m._id || measKey(u.id, m.date, m.year),
       source: m.source || '',
+      /* 測定の目的。'cType' = 短期集中予防サービス（通所型サービスC）の介入前後の測定、
+         'city' = 自治体依頼のエリア報告向けの測定（既定）。
+         同じ方が両方を受けうるため、利用者ではなく測定の属性として持つ。 */
+      program: m.program === 'cType' ? 'cType' : 'city',
+      /* 台帳(熊本市の個人管理台帳)にしか無い記入項目。提出 CSV はここから出す。
+         アプリ側で作文・推定しない(以前は測定者が空、コメントが自動生成文、
+         補装具が備考からの推測、訓練方法が全員「集団」になっていた)。 */
+      examiner: m.examiner || '', trainingType: m.trainingType || '',
+      selfTraining: m.selfTraining || '', goal: m.goal || '', freeNote: m.freeNote || '',
+      assistive: m.assistive || '', assistiveOther: m.assistiveOther || '',
+      comment: m.comment || '',
     })
   }
   // 測定日の昇順。同じ年度に複数回あってもすべて残す（推移はこの配列を見る）
@@ -93,14 +110,41 @@ export function toEngineUser(u, measList) {
     joined: years.length ? Math.min(...years) : D.CUR, theta: 0,
     note: u.note || '', flags: u.flags || [], walkIn: !!u.walkIn,
     portal: u.portal || null, // 電子手帳アカウント { loginId, issuedAt }
+    // 統合（同一人物の名寄せ）関連。archived な方は台帳・集計・出力に出さない
+    archived: !!u.archived, mergedInto: u.mergedInto || null, extId: u.extId || '',
+    /* 短期集中予防サービス（C型）の対象者か。
+       正は測定側の program（測定の属性）。利用者側はそこから導くだけで二重に持たない
+       （別々に持つと必ず食い違うため）。C型の測定を 1 件でも持てば対象者。 */
+    cType: series.some(r => r.program === 'cType'),
+    // 地区（行政区）の履歴。[{ ward, muni, muniName, region, venueCode, dates:[測定日] }]
+    // 行政提出 CSV / 結果票は「その測定当時の地区」をここから引く
+    districtHistory: u.districtHistory || [],
     meas, inbody, kcl, series,
   }
 }
 
 // ---- 編集（Phase③）: メモリ即時反映 + Firestore 保存 --------------------------
-// 利用者の基本情報を更新（氏名・かな・性別・生年月日・市町村/行政区・介護度・電話）
-export async function saveUserFields(id, patch) {
+/* 利用者の基本情報を更新（氏名・かな・性別・生年月日・市町村/行政区・介護度・電話）。
+   districtChange は地区（市町村・行政区）を変えたときの扱い:
+     'fix'   … 入力の誤りを直す。過去の測定もまとめて新しい地区で扱う（既定。提出 CSV は今までどおり）
+     'moved' … 引っ越し・所属変更。これまでの測定は前の地区のまま出す（履歴に残す）
+   誤りの訂正で勝手に履歴が増えると、提出 CSV が過去の誤った地区のまま出てしまうため既定は 'fix'。 */
+export async function saveUserFields(id, patch, districtChange = 'fix') {
   const u = D.users.find(x => x.id === id)
+  // 地区が変わるか（変わる場合、'moved' なら変更前の地区をこれまでの測定日つきで履歴に残す）
+  let history = null
+  if (u && districtChange === 'moved') {
+    const wardChanged = patch.venueName !== undefined && patch.venueName !== u.venueName
+    const muniChanged = patch.muniName !== undefined && patch.muniName !== u.muniName
+    if (wardChanged || muniChanged) {
+      const dates = (u.series || []).map(r => r.date).filter(Boolean)
+      history = [...(u.districtHistory || []), {
+        ward: u.venueName || '', muni: u.muni || '', muniName: u.muniName || '',
+        region: u.region || '', venueCode: u.venueCode ?? null,
+        dates, fromUserId: u.id, source: 'edit', at: new Date().toISOString(),
+      }]
+    }
+  }
   if (u) {
     Object.assign(u, patch)
     if (patch.sex) u.sexLabel = patch.sex === 'M' ? '男' : '女'
@@ -110,6 +154,7 @@ export async function saveUserFields(id, patch) {
     }
     // 市町村は名前で登録・編集する（新しい市町村名を打てば自動で選択肢に増える）。
     if (patch.muniName !== undefined) u.muni = patch.muniName
+    if (history) u.districtHistory = history
   }
   if (dbEnabled()) {
     const { fs, db } = await getFs()
@@ -120,6 +165,7 @@ export async function saveUserFields(id, patch) {
     if (patch.muniName !== undefined) { doc.muniName = patch.muniName; doc.muni = patch.muniName }
     if (patch.venueName !== undefined) doc.ward = patch.venueName
     if (u && u.birth != null) doc.birth = u.birth
+    if (history) doc.districtHistory = history
     await fs.setDoc(fs.doc(db, 'users', id), doc, { merge: true })
   }
 }
@@ -147,7 +193,8 @@ export async function createUserDoc(u) {
 export async function saveMeasurement(id, year, values, date, key) {
   const u = D.users.find(x => x.id === id)
   const s = scoreOf(u ? u.sex : 'F', values)
-  let d = date === undefined ? undefined : (String(date).trim() || null)
+  // 評価日は 0 詰めに正規化して保存する（書式のゆれで同じ日が分かれるのを防ぐ）
+  let d = date === undefined ? undefined : (normDate(date) || null)
   const target = (u && u.series || []).find(r => key ? r.key === key : false)
     || (key ? null : (u && u.meas[year]) || null)
   const oldKey = target ? target.key : null
@@ -233,7 +280,7 @@ export async function moveMeasurementYear(id, fromY, toY, key) {
 export async function saveKclAnswers(id, year, answers, date) {
   const clean = {}
   Object.entries(answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
-  const d = date === undefined ? undefined : (String(date).trim() || null)
+  const d = date === undefined ? undefined : (normDate(date) || null)
   const u = D.users.find(x => x.id === id)
   if (u) {
     u.kcl = u.kcl || {}
@@ -269,8 +316,9 @@ export async function loadRealData() {
     const byUser = {}
     // ドキュメント ID（＝測定日キー）も渡す。同じ年度に複数回ある測定を区別するのに使う
     msnap.forEach(d => { const m = d.data(); (byUser[m.userId] ||= []).push({ ...m, _id: d.id }) })
+    // 統合でアーカイブした方は台帳から外す（削除はしていないので、統合画面から元に戻せる）
     const list = usnap.docs.map(d => toEngineUser({ id: d.id, ...d.data() }, byUser[d.id] || []))
-      .filter(u => u.name)
+      .filter(u => u.name && !u.archived)
     // 市町村と行政区を選択肢に登録(複数市町村に対応: 嘉島町 + 熊本市各区 など)。
     // 利用者数の多い市町村を先頭にする(当日受付などの既定値が従来どおり嘉島町になるように)
     const muniIds = [...new Set(list.map(u => u.muni).filter(Boolean))]
@@ -282,6 +330,8 @@ export async function loadRealData() {
       return { id, name: us[0].muniName || String(id), region: us[0].region || '', tel: '', venues: wards.map(w => [vc++, w]) }
     })
     replaceMunis(munis.length ? munis : [{ id: 'kashima', name: '嘉島町', region: '嘉島町圏域', tel: '', venues: [] }])
+    // 年度の選択肢を実データに合わせる（今年度＋データにある年度。固定しない）
+    setYears(list.flatMap(u => (u.series || []).map(r => Number(r.year))))
     setUsers(list)
     return { loaded: true }
   } catch (e) {

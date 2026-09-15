@@ -3,6 +3,8 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { dbEnabled, wardLabel, watchWalkins, updateWalkin, deleteWalkin, clearWalkInFlag, commitRecognition, commitKclRecognition, deleteSheetImage, sheetImageUrl } from '../lib/db.js'
 import { createUserDoc, saveMeasurement } from '../lib/realdata.js'
+import { wardIdCode, muniOfWard } from '../lib/helpers.js'
+import { findExisting } from '../lib/merge.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 import { KclAnswerChips, kclSideList, ansKind, ANS_STYLE } from '../ui/kclanswers.jsx'
@@ -15,17 +17,6 @@ import { KclAnswerChips, kclSideList, ansKind, ANS_STYLE } from '../ui/kclanswer
      → 正式登録(walkIn フラグを外す)で利用者台帳に載る */
 
 const distinct = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
-// RegisterModal と同じ採番規則: 行政区の既存 ID の先頭 2 桁から新規コードを推定
-function wardIdCode(ward) {
-  if (!ward) return null
-  const cnt = {}
-  D.users.filter(u => u.venueName === ward && /^\d{5}$/.test(String(u.id))).forEach(u => {
-    const c = String(u.id).slice(0, 2)
-    cnt[c] = (cnt[c] || 0) + 1
-  })
-  const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]
-  return top ? +top[0] : null
-}
 
 // 公開デモ用のサンプル(Firebase 未設定時のみ。流れを画面上で試せる)
 const DEMO_ENTRIES = [
@@ -171,20 +162,33 @@ export default function WalkIn() {
   // 仮登録して取り込み: 利用者作成(walkIn) + 測定値の本登録
   const commitEntry = async (e) => {
     if (!f.name.trim()) { showToast('氏名を入力してください'); return }
-    // 同じ日に同じ名前の方を仮登録済みなら、別人としての二重登録でないか確認する
-    const dup = sameDayUsers(e).find(u => nrm(u.name) === nrm(f.name))
-    if (dup && !window.confirm(`同じ名前の「${dup.name}」さん（ID ${dup.id}）を本日すでに仮登録しています。\n同じ人なら「キャンセル」を押し、上の「${dup.name} さんとして取り込む」を使ってください。\n別人として新規登録しますか？`)) return
+    const ward = (f.ward || '').trim()
+    /* 二重登録の防止。以前は「同じ日に仮登録した人」としか照合しておらず、
+       台帳に既にいる方や、別の地区で登録済みの方を見落として別人として登録されていた。
+       ここでは地区・市町村をまたいで台帳全体を照合する。 */
+    const hits = findExisting({ name: f.name, kana: f.kana, birthDate: f.birth, sex: f.sex })
+    if (hits.length) {
+      const h = hits[0]
+      const where = `${h.user.muniName} ${h.user.venueName || '—'}`
+      const msg = `すでに台帳に「${h.user.name}」さん（ID ${h.user.id} · ${where}）がいます。\n（${h.reasons.join(' · ')}）\n\n`
+        + `同じ方なら「キャンセル」を押し、上の「台帳から検索して紐づけ」で ${h.user.name} さんに取り込んでください。\n`
+        + `別の地区で登録されている方でも、同じ方なら紐づけてください（測定の履歴が分かれてしまいます）。\n\n`
+        + `それでも別人として新規登録しますか？`
+      if (!window.confirm(msg)) return
+    }
     setBusy(e.id)
     try {
-      const ward = (f.ward || '').trim()
       const code = wardIdCode(ward) ?? (mu.venues && mu.venues[0] ? mu.venues[0][0] : 900)
+      // 市町村は選んだ行政区から引く。以前はマスタ先頭（利用者数の一番多い市町村）に固定されており、
+      // 熊本市の行政区を選んでも市町村だけ嘉島町になる、という食い違いが起きていた
+      const owner = muniOfWard(ward) || mu
       const by = parseInt(f.birth, 10)
       const birth = isNaN(by) ? 1950 : by
       const u = {
         id: D.newUserId(code), name: f.name.trim(), kana: f.kana.trim(),
         sex: f.sex, sexLabel: f.sex === 'M' ? '男' : '女', birth,
         birthDate: f.birth.trim() || '—', age: D.CUR - birth,
-        muni: mu.id, muniName: mu.name, region: mu.region,
+        muni: owner.id, muniName: owner.name, region: owner.region,
         venueCode: code, venueName: ward, phone: '', careLevel: '',
         joined: D.CUR, isNew: true, walkIn: true, theta: 0, meas: {}, inbody: {}, kcl: {},
       }
@@ -387,6 +391,10 @@ export default function WalkIn() {
                 {(() => {
                   const cands = sameDayUsers(e)
                   const candIds = new Set(cands.map(u => u.id))
+                  /* 台帳全体（地区・市町村をまたぐ）から同じ方を自動で探す。
+                     地区が違うだけで別 ID になってしまうため、ここで拾えないと履歴が分断される。 */
+                  const rosterHits = findExisting({ name: f.name || e.ocrName, kana: f.kana || e.ocrKana, sex: f.sex })
+                    .filter(h => !candIds.has(h.user.id)).slice(0, 5)
                   const qt = linkQ.trim().toLowerCase()
                   // 検索対象は台帳の利用者 + 本日仮登録した人(他日の仮登録中の人は誤紐づけ防止のため除く)
                   const found = qt ? D.users.filter(u => (!u.walkIn || candIds.has(u.id))
@@ -410,6 +418,21 @@ export default function WalkIn() {
                       )}
                       {cands.length === 0 && (
                         <div style={{ fontSize: 11.5, color: 'var(--fg-4)', marginTop: 6 }}>本日仮登録した人はまだいません（この用紙が 1 枚目なら下のフォームで仮登録してください）</div>
+                      )}
+                      {/* 台帳（他の地区を含む）で見つかった同姓同名・同ふりがなの方 */}
+                      {rosterHits.length > 0 && (
+                        <div style={{ marginTop: 10, borderTop: '1px dashed var(--border-default)', paddingTop: 8 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--danger-700, #b91c1c)' }}>台帳に同じ方がいるかもしれません（別の{wardLabel()}も含めて検索）</div>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                            {rosterHits.map(h => (
+                              <button key={h.user.id} className="btn btn-sm" disabled={busy === e.id} onClick={() => commitToUser(e, h.user)}
+                                style={{ borderColor: 'var(--brand-500)', color: 'var(--brand-700)', fontWeight: 700 }}
+                                title={h.reasons.join(' · ')}>
+                                {h.user.name}（ID {h.user.id} · {h.user.muniName} {h.user.venueName || '—'}）として取り込む
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       )}
                       <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                         <input className="field" style={{ maxWidth: 240, height: 32, fontSize: 12.5 }}

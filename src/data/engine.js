@@ -36,9 +36,42 @@ export const MUNIS = [
   { id: 'misato',     name: '美里町', region: '南部圏域', count: 70, tel: '0964-46', venues: [[30, '美里町いきいきセンター'], [31, '砥用林業総合センター']] },
   { id: 'nadahama',   name: '灘浜村', region: '南部圏域', count: 48, tel: '0964-52', venues: [[34, '灘浜村漁民会館'], [35, '浜岡老人福祉センター']] },
 ];
-export const YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
-export const CUR = 2025; // 令和7年度
-export const ERA = { 2020: '令和2', 2021: '令和3', 2022: '令和4', 2023: '令和5', 2024: '令和6', 2025: '令和7' };
+/* ---- 年度（日本の年度＝4月1日開始） --------------------------------------------
+   年度は固定の配列で持たない。持つと毎年 4 月に「今年度が選べない」不具合になる
+   （実際 CUR=2025・YEARS=…2025 のまま令和8年度に入り、令和8年度が出なくなっていた）。
+   今日の日付から今年度を求め、実データにある年度と合わせて選択肢を組み立てる。 */
+
+// JST の「今」。UTC のまま判定すると 4/1 や元日の境目が 1 日ずれる
+export function jstNow(d = new Date()) {
+  return new Date(d.getTime() + (d.getTimezoneOffset() + 540) * 60000);
+}
+// 年度（4月開始）。2026/03/31 → 2025年度(令和7) / 2026/04/01 → 2026年度(令和8)
+export const fiscalYearOf = (d = jstNow()) => d.getFullYear() - (d.getMonth() < 3 ? 1 : 0);
+// 年度 → 元号表記（2019 = 令和1年度）
+export const eraLabel = (y) => (Number(y) >= 2019 ? '令和' + (Number(y) - 2018) : String(y));
+// YYYY/MM/DD の文字列 → 年度
+export const fiscalYearOfDate = (ds) => {
+  const m = String(ds || '').match(/(\d{4})\D+(\d{1,2})/);
+  return m ? +m[1] - (+m[2] < 4 ? 1 : 0) : null;
+};
+
+export const CUR = fiscalYearOf();       // 今年度（画面の既定・新規測定の年度）
+const FIRST_YEAR = 2020;                 // 台帳の最初の年度
+export const YEARS = [];
+export const ERA = {};
+/* 年度の選択肢を組み立て直す。FIRST_YEAR〜今年度を必ず入れ、
+   実データにそれより新しい/古い年度があればそれも足す（来年度以降も手を入れずに済む）。 */
+export function setYears(dataYears = []) {
+  const set = new Set(dataYears.map(Number).filter(Number.isFinite));
+  const last = Math.max(CUR, ...(set.size ? [...set] : [CUR]));
+  const first = Math.min(FIRST_YEAR, ...(set.size ? [...set] : [FIRST_YEAR]));
+  for (let y = first; y <= last; y++) set.add(y);
+  const arr = [...set].sort((a, b) => a - b);
+  YEARS.length = 0; arr.forEach(y => YEARS.push(y));
+  Object.keys(ERA).forEach(k => delete ERA[k]);
+  arr.forEach(y => { ERA[y] = eraLabel(y); });
+}
+setYears();
 /* 印刷用紙・画面見出しに使う「いまの年度」の和暦ラベル(4 月切り替えで自動更新)。
    データ上の年度キー(CUR)とは別物: 用紙の題字は常に実際の年度を表示する。
    例: 2026年4月〜2027年3月 → 令和8年度 */
@@ -126,7 +159,12 @@ MUNIS.forEach((m) => {
 });
 DATES[10][2025] = '2025/09/24';
 DATES[14][2025] = '2025/09/25';
-export const TODAY = '2025/09/24';
+/* 今日（JST・YYYY/MM/DD）。以前は '2025/09/24' の固定値で、
+   評価日を入れずに登録した測定にこの日付が入ってしまっていた。 */
+export const TODAY = (() => {
+  const d = jstNow();
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+})();
 
 // ---- 生成パラメータ -------------------------------------------------------------
 const GEN = {
@@ -383,5 +421,5 @@ export function replaceMunis(list) {
   regions.forEach(r => REGIONS.push(r));
 }
 
-const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, COLS, AXES, SHEET_COLS, STAFF, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf, ensureKcl, newUserId, setUsers, replaceMunis, fiscalEra, fiscalEraNum };
+const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, setYears, fiscalYearOf, fiscalYearOfDate, eraLabel, jstNow, COLS, AXES, SHEET_COLS, STAFF, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf, ensureKcl, newUserId, setUsers, replaceMunis, fiscalEra, fiscalEraNum };
 export default D;

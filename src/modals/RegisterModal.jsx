@@ -2,23 +2,12 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { createUserDoc } from '../lib/realdata.js'
 import { wardLabel } from '../lib/db.js'
+import { wardIdCode } from '../lib/helpers.js'
+import { findExisting } from '../lib/merge.js'
 import { CARE_OPTS } from './EditModals.jsx'
 import { Modal, ModalHead, Select } from '../ui/kit.jsx'
 
 const distinct = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
-
-// その行政区の既存参加者 ID（先頭2桁が行政区コード）から、新規 ID 用のコードを推定する。
-// 例: 三郎無田 の既存 ID が 17010, 17045… なら 17 → 新規は 17901 から採番（既存の付番規則に揃える）
-function wardIdCode(ward) {
-  if (!ward) return null
-  const cnt = {}
-  D.users.filter(u => u.venueName === ward && /^\d{5}$/.test(String(u.id))).forEach(u => {
-    const c = String(u.id).slice(0, 2)
-    cnt[c] = (cnt[c] || 0) + 1
-  })
-  const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0]
-  return top ? +top[0] : null
-}
 
 function Field({ label, hint, children }) {
   return (
@@ -37,8 +26,18 @@ export default function RegisterModal() {
   const mu = D.MUNIS.find(x => x.id === state.regMuni) || D.MUNIS[0]
   const wards = distinct(D.users.filter(u => u.muni === mu.id).map(u => u.venueName))
 
+  /* 二重登録の防止。地区・市町村をまたいで台帳全体を照合する。
+     参加者 ID は地区コードから採番されるため、同じ方でも地区が違うと別 ID になり、
+     測定の履歴が 2 本に分断されてしまう。登録前にここで気づけるようにする。 */
+  const dupHits = findExisting({ name: state.regName, kana: state.regKana, birthDate: state.regBirth, sex: state.regSex })
+
   const save = async () => {
     if (!state.regName.trim() || !state.regKana.trim()) { set({ regError: '氏名（漢字・かな）を入力してください' }); return }
+    if (dupHits.length && !window.confirm(
+      `すでに台帳に「${dupHits[0].user.name}」さん（ID ${dupHits[0].user.id} · ${dupHits[0].user.muniName} ${dupHits[0].user.venueName || '—'}）がいます。\n`
+      + `（${dupHits[0].reasons.join(' · ')}）\n\n`
+      + `同じ方なら新規登録せず、その方の個人ページから測定を追加してください。\n`
+      + `それでも別人として新規登録しますか？`)) return
     const ward = (state.regWard || '').trim()
     // 採番コード: その行政区の既存 ID の付番規則 → 会場マスタ → 既定(900) の順で決める
     const matched = ward ? (mu.venues || []).find(v => v[1] === ward) : null
@@ -114,6 +113,17 @@ export default function RegisterModal() {
             <input className="field t-num" value={state.regPhone} onChange={(e) => set({ regPhone: e.target.value })} placeholder="例: 096-237-0000" />
           </Field>
         </div>
+        {dupHits.length > 0 && (
+          <div style={{ fontSize: 12, color: 'var(--danger-700)', background: 'var(--danger-50)', borderRadius: 8, padding: '8px 12px', lineHeight: 1.8 }}>
+            <b>同じ方がすでに台帳にいるかもしれません</b>（別の{wardLabel()}も含めて検索しています）<br />
+            {dupHits.slice(0, 3).map(h => (
+              <span key={h.user.id}>
+                {h.user.name}（ID {h.user.id} · {h.user.muniName} {h.user.venueName || '—'} · 測定 {(h.user.series || []).length} 件）— {h.reasons.join(' · ')}<br />
+              </span>
+            ))}
+            同じ方なら新規登録せず、その方の個人ページから測定を追加してください
+          </div>
+        )}
         {state.regError && (
           <div style={{ fontSize: 12, color: 'var(--danger-700)', background: 'var(--danger-50)', borderRadius: 8, padding: '8px 12px' }}>{state.regError}</div>
         )}
