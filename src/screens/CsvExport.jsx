@@ -277,17 +277,29 @@ export function buildExport(state) {
         ? AREA_COLS
         : BASE_COLS.concat(state.expFrail ? FRAIL_COLS : [], state.expKcl ? KCL_COLS : [], state.expInbody ? INBODY_COLS : [])
   const header = cols.map(c => c[0])
-  const rows = users.map(u => {
-    const m = u.meas[y] || null
-    const fr = m ? frailtyOf(u, y) : null
-    const ib = u.inbody && u.inbody[y] ? u.inbody[y] : null
-    const kc = kclScore(u, y)
-    // その年度の開始時・終了時（提出様式の開始時/終了時の対と、事業区分の判定に使う）
+  const opts = { autoComment: !!state.expAutoComment }
+  const rows = []
+  for (const u of users) {
     const list = measOfYear(u, y)
-    const se = { ...startEnd(u, y), program: list.some(r => r.program === 'cType') ? 'cType' : 'city' }
-    return cols.map(c => c[1](u, y, m, fr, ib, kc, se, { autoComment: !!state.expAutoComment }))
-  })
-  return { header, rows, count: users.length }
+    /* 提出様式は 1 行 = 1 つの事業（新総合事業の欄が行ごとに 1 つ）。
+       同じ方が同じ年度に 短期集中予防(C型) と 自治体依頼 の両方を受けることがあるため、
+       行政提出書式では事業ごとに行を分ける。分けないと「サービスC」の行の終了時に
+       自治体依頼の測定が入り、別の事業の測定を混ぜて提出することになる。
+       ほかの書式は従来どおり 1 人 1 行（集計・確認用のため）。 */
+    const progs = state.expFormat === 'gov'
+      ? [...new Set(list.map(r => r.program || 'city'))]
+      : [null]
+    for (const pg of (progs.length ? progs : [null])) {
+      const se = { ...startEnd(u, y, pg || undefined), program: pg || (list.some(r => r.program === 'cType') ? 'cType' : 'city') }
+      // その行の代表の測定（身長・体重などはここから引く）
+      const m = pg ? (se.end || se.start) : (u.meas[y] || null)
+      const fr = m ? frailtyOf(u, y) : null
+      const ib = u.inbody && u.inbody[y] ? u.inbody[y] : null
+      const kc = kclScore(u, y)
+      rows.push(cols.map(c => c[1](u, y, m, fr, ib, kc, se, opts)))
+    }
+  }
+  return { header, rows, count: rows.length }
 }
 
 export function scopeLabel(state) {
