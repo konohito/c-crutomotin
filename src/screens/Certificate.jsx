@@ -28,7 +28,7 @@ function Field({ label, value, onChange, placeholder }) {
 }
 
 /* 証書 1 枚。A4 縦（794×1123px ＝ 210×297mm 相当）。 */
-export function CertPage({ cert, cfg, issueDate }) {
+export function CertPage({ cert, cfg, issueDate, issuer }) {
   const { row, badge, highlights, kept } = cert
   const u = row.user
   const lines = highlights.length ? highlights : kept
@@ -94,9 +94,9 @@ export function CertPage({ cert, cfg, issueDate }) {
         <div style={{ marginTop: 10, textAlign: 'center', lineHeight: 1.8 }}>
           {cfg.corpName && <div style={{ fontSize: 17 }}>{cfg.corpName}</div>}
           {cfg.officeName && <div style={{ fontSize: 21, fontWeight: 700 }}>{cfg.officeName}</div>}
-          {(cfg.issuerTitle || cfg.issuerName) && (
+          {(issuer && (issuer.title || issuer.name)) && (
             <div style={{ fontSize: 19, marginTop: 4 }}>
-              {cfg.issuerTitle}　{cfg.issuerName}
+              {issuer.title}　{issuer.name}
               <span style={{ display: 'inline-block', width: 44, height: 44, border: `2px solid ${SEAL}`, borderRadius: 6, color: SEAL, fontSize: 11, lineHeight: 1.15, marginLeft: 14, verticalAlign: 'middle', padding: 4, boxSizing: 'border-box' }}>印</span>
             </div>
           )}
@@ -109,6 +109,13 @@ export function CertPage({ cert, cfg, issueDate }) {
 export default function Certificate() {
   const { state, set, showToast } = useStore()
   const [cfg, setCfg] = useState({ ...CERT_DEFAULT })
+  /* 発行者は複数登録でき、印刷のたびに選べる（所長が出す回と担当者が出す回があるため）。
+     設定を開かなくても選べるよう、一覧のすぐ下にプルダウンを出す。 */
+  const issuers = (cfg.issuers && cfg.issuers.length) ? cfg.issuers : [{ title: '', name: '' }]
+  const issuerIdx = Math.min(state.certIssuer || 0, issuers.length - 1)
+  const issuer = issuers[issuerIdx]
+  const updIssuer = (k, v) => setCfg({ ...cfg, issuers: issuers.map((x, i) => (i === issuerIdx ? { ...x, [k]: v } : x)) })
+  const addIssuer = () => { setCfg({ ...cfg, issuers: [...issuers, { title: '', name: '' }] }); set({ certIssuer: issuers.length }) }
   const [cfgOpen, setCfgOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -133,7 +140,11 @@ export default function Certificate() {
 
   const saveCfg = async () => {
     setSaving(true)
-    try { await saveCertConfig(cfg); showToast('発行者の情報を保存しました') }
+    try {
+      // 古い「1人分だけ」の項目は消し、一覧の形に寄せる
+      await saveCertConfig({ corpName: cfg.corpName, officeName: cfg.officeName, issuers, issuerTitle: null, issuerName: null })
+      showToast('発行者の情報を保存しました')
+    }
     catch (e) { showToast('保存に失敗しました: ' + (e.message || '')) }
     setSaving(false)
   }
@@ -183,6 +194,16 @@ export default function Certificate() {
           )}
         </div>
 
+        {issuers.length > 1 && (
+          <div>
+            <Overline style={{ marginBottom: 8 }}>発行者</Overline>
+            <Select value={String(issuerIdx)} onChange={(e) => set({ certIssuer: Number(e.target.value) })}
+              options={issuers.map((x, i) => ({ v: String(i), l: `${x.title || ''} ${x.name || ''}`.trim() || '（未入力）' }))}
+              style={{ width: '100%' }} />
+            <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 4, lineHeight: 1.6 }}>この回に印を押す方を選んでください</div>
+          </div>
+        )}
+
         <div>
           <Overline style={{ marginBottom: 8 }}>証書の日付</Overline>
           <input className="field t-num" type="date" style={{ width: '100%' }}
@@ -198,11 +219,18 @@ export default function Certificate() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
               <Field label="法人名" value={cfg.corpName} onChange={(v) => setCfg({ ...cfg, corpName: v })} placeholder="例: 株式会社◯◯" />
               <Field label="事業所名" value={cfg.officeName} onChange={(v) => setCfg({ ...cfg, officeName: v })} placeholder="例: ◯◯介護予防センター" />
-              <Field label="肩書" value={cfg.issuerTitle} onChange={(v) => setCfg({ ...cfg, issuerTitle: v })} placeholder="例: 管理者" />
-              <Field label="氏名" value={cfg.issuerName} onChange={(v) => setCfg({ ...cfg, issuerName: v })} placeholder="例: 熊本 太郎" />
+              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--fg-2)', fontWeight: 600, marginBottom: 6 }}>
+                  発行者（印を押す方）{issuers.length > 1 ? `　${issuerIdx + 1} 人目 / ${issuers.length} 人` : ''}
+                </div>
+                <Field label="肩書" value={(issuer && issuer.title) || ''} onChange={(v) => updIssuer('title', v)} placeholder="例: 管理者" />
+                <div style={{ height: 8 }} />
+                <Field label="氏名" value={(issuer && issuer.name) || ''} onChange={(v) => updIssuer('name', v)} placeholder="例: 熊本 太郎" />
+                <button className="btn btn-sm" style={{ marginTop: 8, width: '100%' }} onClick={addIssuer}>＋ 発行者をもう一人ふやす</button>
+              </div>
               <button className="btn btn-primary btn-sm" disabled={saving || !dbEnabled()} onClick={saveCfg}>{saving ? '保存中…' : '保存する'}</button>
               <div style={{ fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.6 }}>
-                一度保存すると、次からこの内容で証書に刷られます。空欄の項目は証書に出ません
+                複数の方を登録しておくと、印刷のたびに上の「発行者」で選べます。空欄の項目は証書に出ません
               </div>
             </div>
           )}
@@ -230,7 +258,7 @@ export default function Certificate() {
               左の一覧からお渡しする方を選んでください。<br />選ぶとここに証書が表示されます
             </div>
           ) : chosen.map(x => (
-            <CertPage key={x.row.user.id + '-' + x.row.year} cert={x.cert} cfg={cfg} issueDate={issueDate} />
+            <CertPage key={x.row.user.id + '-' + x.row.year} cert={x.cert} cfg={cfg} issueDate={issueDate} issuer={issuer} />
           ))}
         </div>
       </div>

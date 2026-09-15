@@ -40,7 +40,7 @@ const initialState = {
     { date: '2025/09/30', kind: 'meet', title: '圏域連絡会議', venue: '県庁 3F 会議室', time: '14:00〜' },
   ],
   // 卒業証書（短期集中予防C型の修了者へ）
-  certYear: 'all', certPicked: {}, certDate: '',
+  certYear: 'all', certPicked: {}, certDate: '', certIssuer: 0,
   // 請求突き合わせ（期間は既定で直近2か月。画面側で今日から算出）
   bilFrom: '', bilTo: '', bilRegion: 'all', bilMuni: 'all',
   // CSV 出力

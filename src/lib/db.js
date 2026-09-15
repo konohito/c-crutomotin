@@ -221,12 +221,22 @@ export const measKeyOf = (id, date, year) => {
 
 /* 卒業証書などに刷る発行者（法人名・事業所名・肩書・氏名）。
    画面に直接書かず config/certificate から読む（事業所が増えても直せるように）。 */
-export const CERT_DEFAULT = { corpName: '', officeName: '', issuerTitle: '', issuerName: '' }
+export const CERT_DEFAULT = { corpName: '', officeName: '', issuers: [] }
+/* 発行者は複数登録できる（所長が出す回と、担当者が出す回があるため）。
+   以前の 1 人分だけの形（issuerTitle / issuerName）で保存されていたものは、
+   読み込むときに 1 人目として扱う。 */
+export function certIssuers(cfg) {
+  const list = Array.isArray(cfg && cfg.issuers) ? cfg.issuers.filter(x => x && (x.name || x.title)) : []
+  if (list.length) return list
+  if (cfg && (cfg.issuerName || cfg.issuerTitle)) return [{ title: cfg.issuerTitle || '', name: cfg.issuerName || '' }]
+  return []
+}
 export async function loadCertConfig() {
   if (!dbEnabled()) return { ...CERT_DEFAULT }
   const { fs, db } = await getFs()
   const snap = await fs.getDoc(fs.doc(db, 'config', 'certificate'))
-  return snap.exists() ? { ...CERT_DEFAULT, ...snap.data() } : { ...CERT_DEFAULT }
+  const raw = snap.exists() ? snap.data() : {}
+  return { ...CERT_DEFAULT, ...raw, issuers: certIssuers(raw) }
 }
 export async function saveCertConfig(patch) {
   if (!dbEnabled()) return
