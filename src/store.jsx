@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 import D from './data/engine.js'
 import { csvSplit, parseBirthYear } from './lib/helpers.js'
 import { dbEnabled } from './lib/db.js'
-import { createUserDoc, saveUserFields, saveMeasurement, saveInbody } from './lib/realdata.js'
+import { createUserDoc, saveUserFields, saveMeasurement, saveInbody, measKey } from './lib/realdata.js'
 
 // 読み取り設定（プロトタイプの props 相当）
 export const CONF_THRESHOLD = 80  // 信頼度しきい値(%)
@@ -285,8 +285,13 @@ export async function importCsvText({ text, fname, state, set, showToast }) {
         /* saveMeasurement はあり得ない値（体重 591kg など）をここで弾き、
            メモリと Firestore の両方を同じ内容に揃える。
            評価日を渡さないと年度キーの文書になり、同じ年度の 2 回目で上書きされて
-           前の測定が消えるため、必ず今日の日付を入れる。 */
-        if (live) await saveMeasurement(u.id, D.CUR, v, D.TODAY)
+           前の測定が消えるため、必ず今日の日付を入れる。
+           さらに「その日の測定」を文書キーで名指しして渡す。名指ししないと
+           saveMeasurement が「その年度の代表（＝前回の測定）」を書き換え先だと解釈し、
+           同じ年度の前の測定を今日の日付へ引っ越して無効化してしまう。
+           熊本市の短期集中予防（C型）は開始時と終了時を同じ年度に測るため、
+           これをやると開始時の記録が消える。 */
+        if (live) await saveMeasurement(u.id, D.CUR, v, D.TODAY, measKey(u.id, D.TODAY, D.CUR))
         else {
           const bmi = height && weight ? Math.round((weight / Math.pow(height / 100, 2)) * 10) / 10 : 22
           const vv = { ...v, bmi }
