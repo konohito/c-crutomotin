@@ -71,7 +71,7 @@ function SheetPage({ p, walkIn }) {
         <div style={{ color: 'var(--danger-500)', paddingTop: 2, flexShrink: 0 }}>
           <div style={{ fontSize: 15.5, fontWeight: 900, letterSpacing: '0.04em', textAlign: 'right' }}>【スタッフ記入用】</div>
           <div style={{ marginTop: 9, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12, fontWeight: 600 }}>
-            {[['ペースメーカー', '（ 有 ・ 無 ）'], ['人工骨 等', '（ 有 ・ 無 ）'], ['InBody', '（ 済 ・ 不可 ）']].map(([lb, opts]) => (
+            {[['ペースメーカー', '（ 有 ・ 無 ）'], ['人工骨 等', '（ 有 ・ 無 ）'], ['体組成計', '（ 済 ・ 不可 ）']].map(([lb, opts]) => (
               <div key={lb} style={{ display: 'flex', alignItems: 'flex-end', gap: 4 }}>
                 <span style={{ width: 104 }}>・{lb}</span>
                 <span style={{ letterSpacing: '0.02em' }}>{opts}</span>
@@ -207,7 +207,7 @@ function SheetPage({ p, walkIn }) {
             </div>
           </div>
           <div>
-            <div style={{ fontSize: 13.5, fontWeight: 700 }}>【InBody について】</div>
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>【体組成計について】</div>
             <div style={{ fontSize: 11, lineHeight: 1.65, color: 'var(--danger-600)', marginTop: 7 }}>
               ペースメーカー・心電計・人工肺などの医療用電子機器を装着していると測定が出来ません。<br />
               また、体内に人工骨や金属プレートが入っている場合は、金属は電気を通しやすいため、実際の体水分量や筋肉量と異なる結果（誤差）が出ることがあります。

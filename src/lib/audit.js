@@ -20,7 +20,7 @@ export const LIMITS = {
   weightJump: 15,
   weightJumpDays: 400,
   weightJumpAlways: 25,
-  // 体重は紙も InBody も「実測」なので、同じ日なら一致するはず。
+  // 体重は紙も体組成計も「実測」なので、同じ日なら一致するはず。
   // 3kg 以上ずれるときは、どちらかが別人の記録である可能性が高い
   inbodyWeightGap: 3,
 }
@@ -91,7 +91,7 @@ export function auditUsers(users) {
       }
     }
 
-    // (3) 同じ日の紙の体重と InBody の体重の食い違い（どちらも実測なので合うはず）
+    // (3) 同じ日の紙の体重と体組成計の体重の食い違い（どちらも実測なので合うはず）
     for (const r of series) {
       const ib = (u.inbody || {})[r.year]
       const pw = nz((r.values || {}).weight), iw = ib && nz(ib.weight)
@@ -100,7 +100,7 @@ export function auditUsers(users) {
       if (Math.abs(gap) >= LIMITS.inbodyWeightGap) {
         push({
           kind: 'inbodyWeight', level: 'warn', userId: u.id, name: u.name, ward: u.venueName, date: dateOf(r),
-          message: `記録用紙の体重 ${pw}kg と InBody の体重 ${iw}kg が ${Math.abs(gap)}kg 違います。`
+          message: `記録用紙の体重 ${pw}kg と体組成計の体重 ${iw}kg が ${Math.abs(gap)}kg 違います。`
             + `どちらも実測のため、別の方の測定が混ざっていないかご確認ください`,
         })
       }
@@ -170,7 +170,7 @@ export const KIND_LABEL = {
   range: 'あり得ない値・範囲外の値',
   heightJump: '身長が前回から大きく変わっている',
   weightJump: '体重が前回から大きく変わっている',
-  inbodyWeight: '記録用紙と InBody の体重が合わない',
+  inbodyWeight: '記録用紙と体組成計の体重が合わない',
   sameValues: '同じ日に測定値が完全に一致している',
   unassigned: '所属者未確定の測定（持ち主の確認が必要）',
 }

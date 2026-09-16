@@ -194,7 +194,7 @@ export async function importCsvText({ text, fname, state, set, showToast }) {
   const iWt = fi(h => h.includes('体重'))
   if (iName < 0) { showToast('「氏名」列が見つかりません。ヘッダー行をご確認ください'); return }
 
-  // InBody(体組成) 形式の判別: 骨格筋量・体脂肪率・SMI などの列があれば紐づけ取り込みにする
+  // 体組成計の書き出し形式の判別: 骨格筋量・体脂肪率・SMI などの列があれば紐づけ取り込みにする
   const iSmm = fi(h => h.includes('骨格筋量'))
   const iFat = fi(h => h.includes('体脂肪'))
   const iSmi = fi(h => /SMI|ＳＭＩ|骨格筋指数/i.test(h))
@@ -220,12 +220,12 @@ export async function importCsvText({ text, fname, state, set, showToast }) {
         await saveInbody(u.id, D.CUR, ib, (u.meas[D.CUR] && u.meas[D.CUR].date) || D.TODAY)
         linked++
       } catch (e) {
-        console.error('InBody 保存に失敗:', u.id, e)
+        console.error('体組成計データの保存に失敗:', u.id, e)
         failed++
       }
     }
     set(s => ({ rev: s.rev + 1 }))
-    showToast('「' + fname + '」から InBody データ ' + linked + ' 名分を台帳に保存しました'
+    showToast('「' + fname + '」から体組成計のデータ ' + linked + ' 名分を台帳に保存しました'
       + (unmatched ? '（未一致 ' + unmatched + ' 件）' : '')
       + (failed ? '　※ ' + failed + ' 件は保存できませんでした。通信を確認してやり直してください' : ''))
     return

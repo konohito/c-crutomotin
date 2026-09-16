@@ -301,18 +301,19 @@ export default function Detail() {
             ))}
           </Card>
 
-          {ibLast && (
+          {/* 体組成計から取り込むのは SMI（骨格筋指数）だけを出す。
+              骨格筋量・体脂肪率・点数は画面に出さない（データは台帳に残してあり、
+              記録用紙との体重の食い違い点検には引き続き使っている）。
+              SMI が無い方にはカードごと出さない（「—」だけの枠を作らないため）。 */}
+          {ibLast && ibLast.smi != null && (
             <Card pad>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                <div className="t-h4">体組成（InBody）</div>
+                <div className="t-h4">骨格筋指数（SMI）</div>
                 <div className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)' }}>{eraOf(ibLastY)}年度 · {ibLast.date}</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
                 {[
-                  ['骨格筋量', ibLast.smm, 'kg', ibPrev?.smm, 'high', 1],
-                  ['体脂肪率', ibLast.fatPct, '%', ibPrev?.fatPct, 'none', 1],
-                  ['SMI（骨格筋指数）', ibLast.smi, 'kg/m²', ibPrev?.smi, 'high', 1],
-                  ['InBody 点数', ibLast.score, '点', ibPrev?.score, 'high', 0],
+                  ['SMI（骨格筋指数）', ibLast.smi, 'kg/m²', ibPrev?.smi ?? null, 'high', 1],
                 ].map(([label, v, unit, pv, better, dec]) => {
                   const d = deltaOf(v, pv ?? null, dec, better)
                   const low = String(label).startsWith('SMI') && v !== null && v < smiCut
@@ -328,7 +329,7 @@ export default function Detail() {
                   )
                 })}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>SMI 男性 7.0 / 女性 5.7 kg/m² 未満は筋肉量低下（サルコペニア）の指標。CSV 取り込みで LookinBody の書き出しに対応しています。</div>
+              <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>SMI 男性 7.0 / 女性 5.7 kg/m² 未満は筋肉量低下（サルコペニア）の指標。体組成計の書き出し CSV から取り込めます。</div>
             </Card>
           )}
 

@@ -4,7 +4,7 @@
    個人情報を含むため、実データはログイン内（認証後）でのみ読み込む。 */
 import D, { axesOf, setUsers, replaceMunis, setYears } from '../data/engine.js'
 import { dbEnabled, getFs } from './db.js'
-import { assertSavable } from './validate.js'
+import { assertSavable, assertSmiSavable } from './validate.js'
 
 export const realDataEnabled = () => dbEnabled()
 
@@ -336,6 +336,8 @@ export async function addUserMemo(id, memo) {
    測定値(values)には触らない。ルールが userId/year を要求するので必ず一緒に書く。 */
 export async function saveInbody(id, year, inbody, date) {
   const u = D.users.find(x => x.id === id)
+  // SMI は画面に出す唯一の値なので、あり得ない値はここで止める（桁の打ち間違い対策）
+  assertSmiSavable(inbody && inbody.smi, u ? u.sex : 'F')
   const rep = u && u.meas && u.meas[year]
   const d = normDate(date) || (rep && rep.date) || null
   const key = (rep && rep.key) || measKey(id, d, year)

@@ -76,11 +76,11 @@ const CELL_LABEL = { padding: '4px 10px', background: 'var(--slate-50)', borderB
 function PdfPage({ p, state, count }) {
   const fl = p.frail ? FRAIL_LEVELS[p.frail.level] : null
   const smiCut = p.sexKey === 'M' ? 7.0 : 5.7
-  const ibRows = p.inbody ? [
-    ['骨格筋量', p.inbody.smm, 'kg', p.inbodyPrev?.smm],
-    ['体脂肪率', p.inbody.fatPct, '%', p.inbodyPrev?.fatPct],
-    ['SMI（骨格筋指数）', p.inbody.smi, 'kg/m²', p.inbodyPrev?.smi],
-    ['InBody 点数', p.inbody.score, '点', p.inbodyPrev?.score],
+  /* 結果票に刷るのは SMI（骨格筋指数）だけ。骨格筋量・体脂肪率・点数は出さない。
+     SMI が入っていない方は欄ごと出さない（空欄の枠を刷らないため）。 */
+  const hasSmi = !!(p.inbody && p.inbody.smi != null)
+  const ibRows = hasSmi ? [
+    ['SMI（骨格筋指数）', p.inbody.smi, 'kg/m²', p.inbodyPrev?.smi ?? null],
   ] : []
   return (
     <div className="pdf-page" style={{ padding: '24px 44px', lineHeight: 1.35 }}>
@@ -251,17 +251,17 @@ function PdfPage({ p, state, count }) {
         </div>
       )}
 
-      {/* InBody 体組成 */}
-      {state.incInbody && p.inbody && (
+      {/* 骨格筋指数（SMI）*/}
+      {state.incInbody && hasSmi && (
         <div style={{ marginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, borderBottom: '2px solid var(--slate-900)', paddingBottom: 3 }}>
-            <span style={{ fontSize: 16, fontWeight: 700 }}>体組成（InBody）</span>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>骨格筋指数（SMI）</span>
             <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>SMI 男性 7.0 / 女性 5.7 kg/m² 未満は筋肉量低下（サルコペニア）の指標です</span>
           </div>
-          <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+          <div style={{ display: 'flex', gap: 12, marginTop: 8, maxWidth: 260 }}>
             {ibRows.map(([label, v, unit, pv]) => {
               const low = label.startsWith('SMI') && v !== null && v < smiCut
-              const d = deltaOf(v, pv ?? null, 1, label === '体脂肪率' ? 'none' : 'high')
+              const d = deltaOf(v, pv ?? null, 1, 'high')
               return (
                 <div key={label} style={{ flex: 1, border: `1px solid ${low ? 'var(--danger-500)' : 'var(--slate-200)'}`, padding: '5px 12px 6px', background: low ? 'var(--danger-50)' : 'transparent' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}>
@@ -269,7 +269,7 @@ function PdfPage({ p, state, count }) {
                     <span style={{ fontSize: 10.5, color: 'var(--danger-600)', whiteSpace: 'nowrap' }}>前回比</span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                    <span className="t-num" style={{ fontSize: 23, fontWeight: 700, color: low ? 'var(--danger-700)' : 'var(--slate-900)' }}>{v === null ? '—' : fmtD(v, label === 'InBody 点数' ? 0 : 1)}</span>
+                    <span className="t-num" style={{ fontSize: 23, fontWeight: 700, color: low ? 'var(--danger-700)' : 'var(--slate-900)' }}>{v === null ? '—' : fmtD(v, 1)}</span>
                     <span style={{ fontSize: 12, color: 'var(--slate-500)' }}>{unit}</span>
                     <span className="t-num" style={{ fontSize: 14, fontWeight: 700, color: d.fg, marginLeft: 'auto' }}>{d.txt}</span>
                   </div>
@@ -435,7 +435,7 @@ export default function PdfExport() {
   ]
   const incs = [
     ['incRadar', 'レーダーチャート'], ['incTrend', '時系列の推移グラフ'], ['incPrev', '前回との比較'], ['incAvg', '市町村平均の列'],
-    ['incFrail', 'フレイル簡易評価'], ['incKcl', '基本チェックリスト（問診）'], ['incInbody', 'InBody（体組成）'], ['incComment', '総合コメント欄'],
+    ['incFrail', 'フレイル簡易評価'], ['incKcl', '基本チェックリスト（問診）'], ['incInbody', '骨格筋指数（SMI）'], ['incComment', '総合コメント欄'],
   ]
 
   return (
@@ -460,7 +460,7 @@ export default function PdfExport() {
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 8, background: u.id === pdfUser ? 'var(--brand-50)' : 'transparent', cursor: 'pointer' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</div>
-                    <div className="t-num" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{u.id} · {u.muniName}{u.inbody && u.inbody[y] ? ' · InBody あり' : ''}</div>
+                    <div className="t-num" style={{ fontSize: 10.5, color: 'var(--fg-3)' }}>{u.id} · {u.muniName}{u.inbody && u.inbody[y] && u.inbody[y].smi != null ? ' · SMI あり' : ''}</div>
                   </div>
                   {u.id === pdfUser && <Icon name="check" size={15} strokeWidth={2.2} style={{ color: 'var(--brand-600)' }} />}
                 </div>
@@ -501,7 +501,7 @@ export default function PdfExport() {
               <CheckRow key={k} on={state[k]} label={label} onClick={() => set({ [k]: !state[k] })} />
             ))}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>InBody はデータが紐づいている方のページにのみ掲載されます。本文の文字は印刷時 16pt 以上です。</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>SMI（骨格筋指数）はデータが入っている方のページにのみ掲載されます。本文の文字は印刷時 16pt 以上です。</div>
         </div>
         <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>

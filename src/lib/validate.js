@@ -56,6 +56,23 @@ export const RANGES = {
   },
 }
 
+/* SMI（骨格筋指数 = 四肢の筋肉量 ÷ 身長²）。体組成計から取り込む唯一の値。
+   測定値(values)とは別の場所（測定ドキュメントの inbody.smi）に入るため RANGES とは分けてある。
+
+   err … 人体としてあり得ない。取り込みを止める。
+         3 未満／12 超は成人の四肢筋肉量として成立しない（本番 1,194 件の実測は 3.8〜9.7）。
+         桁の打ち間違い（5.9 → 59）はここで止まる。
+   warn … あり得るが確認したい範囲。男女で筋肉量が違うため別々に持つ。
+   cut  … サルコペニア（筋肉量低下）の判定値。AWGS の基準で 男性 7.0 / 女性 5.7。
+          これは「異常値」ではなく評価の基準なので、保存は止めず画面で「基準未満」と出すだけ。 */
+export const SMI_RANGE = {
+  label: 'SMI（骨格筋指数）', unit: 'kg/m²',
+  err: [3, 12],
+  warn: { M: [5.0, 11], F: [4.0, 10] },
+  cut: { M: 7.0, F: 5.7 },
+}
+export const smiCutOf = (sex) => (sex === 'M' ? SMI_RANGE.cut.M : SMI_RANGE.cut.F)
+
 const num = (v) => (typeof v === 'number' && isFinite(v) ? v : (v === '' || v == null ? null : (isFinite(parseFloat(v)) ? parseFloat(v) : null)))
 const fmtRange = (lo, hi) => (lo == null ? `${hi} 以下` : hi == null ? `${lo} 以上` : `${lo}〜${hi}`)
 
@@ -107,6 +124,44 @@ export function checkValues(values) {
     }
   }
   return out
+}
+
+/* SMI を 1 件点検する。sex は 'M' / 'F'（不明なら女性側のゆるい下限で見る）。
+   未入力（null・空欄）は点検しない＝「0」と「未入力」を区別する。0 は実測値として扱い、
+   あり得ない値（3 未満）なので error になる。 */
+export function checkSmi(smi, sex) {
+  const out = []
+  const v = num(smi)
+  if (v === null) return out          // 未入力は点検対象外（0 とは別物）
+  const u = ` ${SMI_RANGE.unit}`
+  const [elo, ehi] = SMI_RANGE.err
+  const [wlo, whi] = sex === 'M' ? SMI_RANGE.warn.M : SMI_RANGE.warn.F
+  if (v < elo || v > ehi) {
+    const s = suggest(v, SMI_RANGE)
+    out.push({
+      field: 'smi', label: SMI_RANGE.label, value: v, level: 'error', suggest: s,
+      message: `${SMI_RANGE.label} ${v}${u} は人体としてあり得ない値です（${fmtRange(elo, ehi)}${u} の範囲）`
+        + (s != null ? `。${s}${u} の打ち間違いではありませんか？` : ''),
+    })
+  } else if (v < wlo || v > whi) {
+    out.push({
+      field: 'smi', label: SMI_RANGE.label, value: v, level: 'warn', suggest: null,
+      message: `${SMI_RANGE.label} ${v}${u} は${sex === 'M' ? '男性' : '女性'}の通常の範囲（${fmtRange(wlo, whi)}${u}）から外れています`,
+    })
+  }
+  return out
+}
+/* 体組成計の取り込み直前に呼ぶ。あり得ない SMI なら例外を投げて取り込みを止める。 */
+export function assertSmiSavable(smi, sex, { force = false } = {}) {
+  if (force) return []
+  const errs = checkSmi(smi, sex).filter(x => x.level === 'error')
+  if (errs.length) {
+    const e = new Error(errs.map(x => x.message).join(' / '))
+    e.name = 'ValueRangeError'
+    e.issues = errs
+    throw e
+  }
+  return []
 }
 
 export const errorsOf = (values) => checkValues(values).filter(x => x.level === 'error')

@@ -169,7 +169,7 @@ export function EditMeasModal() {
           )}
         </div>
       )}
-      <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '0 20px', lineHeight: 1.6 }}>BMI は身長・体重から自動計算されます。空欄は「未測定」として保存します。評価年を変えた場合、この年度の問診回答・InBody・評価日もまとめて移動します（移動先に既にデータがある年度へは移せません）。</div>
+      <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '0 20px', lineHeight: 1.6 }}>BMI は身長・体重から自動計算されます。空欄は「未測定」として保存します。評価年を変えた場合、この年度の問診回答・体組成計の記録・評価日もまとめて移動します（移動先に既にデータがある年度へは移せません）。</div>
       <div className="modal-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '16px 20px 20px' }}>
         <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
         <button className="btn btn-primary" onClick={save} disabled={busy || (hasError && !force)}>{busy ? '保存中…' : '保存'}</button>

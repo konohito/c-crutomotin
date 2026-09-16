@@ -52,11 +52,10 @@ const FRAIL_COLS = [
   ['フレイル判定', (u, y, m, fr) => fr ? FRAIL_LEVELS[fr.level].label : ''],
   ['フレイル該当項目', (u, y, m, fr) => fr ? fr.hitShorts.join('・') : ''],
 ]
+/* 体組成計から出す列は SMI（骨格筋指数）だけ。骨格筋量・体脂肪率・点数は出さない。
+   未入力は空欄、0 は "0.0" と出るので「未入力」と「0」は取り違えられない。 */
 const INBODY_COLS = [
-  ['骨格筋量(kg)', (u, y, m, fr, ib) => ib ? fmtCsv(ib.smm, 1) : ''],
-  ['体脂肪率(%)', (u, y, m, fr, ib) => ib ? fmtCsv(ib.fatPct, 1) : ''],
-  ['SMI(kg/m2)', (u, y, m, fr, ib) => ib ? fmtCsv(ib.smi, 1) : ''],
-  ['InBody点数', (u, y, m, fr, ib) => ib ? ib.score : ''],
+  ['SMI(kg/m2)', (u, y, m, fr, ib) => (ib ? fmtCsv(ib.smi, 1) : '')],
 ]
 const KCL_COLS = [
   ['基本CL合計点', (u, y, m, fr, ib, kc) => kc ? kc.total : ''],
@@ -411,7 +410,7 @@ export default function CsvExport() {
             <Overline style={{ marginRight: 8 }}>追加の列</Overline>
             <CheckRow on={state.expFrail} label="フレイル簡易評価（該当数・判定・該当項目）" onClick={() => set({ expFrail: !state.expFrail })} />
             <CheckRow on={state.expKcl} label="基本チェックリスト（合計点・事業対象者判定・領域別）" onClick={() => set({ expKcl: !state.expKcl })} />
-            <CheckRow on={state.expInbody} label="InBody（骨格筋量・体脂肪率・SMI・点数）" onClick={() => set({ expInbody: !state.expInbody })} />
+            <CheckRow on={state.expInbody} label="SMI（骨格筋指数）" onClick={() => set({ expInbody: !state.expInbody })} />
           </div>
         ) : state.expFormat === 'gov' ? (
           <div style={{ marginTop: 12 }}>
@@ -494,7 +493,7 @@ export default function CsvExport() {
           </div>
         ) : (
           <div style={{ fontSize: 12.5, color: 'var(--fg-2)', lineHeight: 1.8, marginTop: 8 }}>
-            ・列構成は県の指定様式に合わせて調整できます（現在は 基本情報 + 測定 8 項目 + BMI + 総合スコア{state.expFrail ? ' + フレイル評価' : ''}{state.expInbody ? ' + InBody' : ''}）<br />
+            ・列構成は県の指定様式に合わせて調整できます（現在は 基本情報 + 測定 8 項目 + BMI + 総合スコア{state.expFrail ? ' + フレイル評価' : ''}{state.expInbody ? ' + SMI' : ''}）<br />
             ・未測定の項目は空欄で出力されます（欠測扱い）<br />
             ・BOM 付き UTF-8 のため Excel でダブルクリックしてもそのまま開けます。県のシステムが Shift_JIS 指定の場合は Excel の「名前を付けて保存」で変換してください
           </div>
