@@ -8,6 +8,7 @@ import { findExisting } from '../lib/merge.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 import { KclAnswerChips, kclSideList, ansKind, ANS_STYLE } from '../ui/kclanswers.jsx'
+import { checkValues } from '../lib/validate.js'
 
 /* 当日受付 取り込み — 台帳に登録の無い当日参加者の受付キュー。
    当日受付用の記録用紙・問診票(様式 R7-02W / R7-03W)をスキャンすると、通常の取り込みではなくここに届く。
@@ -64,6 +65,8 @@ export default function WalkIn() {
   // 新規の仮登録・既存への紐づけのどちらでも、修正後の内容で登録される
   const [vals, setVals] = useState({})
   const [ans, setAns] = useState({})
+  // あり得ない値でも「用紙のとおり」と職員が確認したときだけ取り込みを通す
+  const [force, setForce] = useState(false)
 
   useEffect(() => {
     if (!dbEnabled()) return
@@ -129,10 +132,21 @@ export default function WalkIn() {
     D.SHEET_COLS.forEach(cid => { const x = String(vals[cid] ?? '').trim(); fv[cid] = x === '' ? null : x })
     return fv
   }
+  /* 入力中の測定値の点検（体重 591kg のような、あり得ない値を取り込む前に止める）。
+     BMI は身長・体重から出るので、ここでも同じ式で足してから点検する。 */
+  const numValuesOf = () => {
+    const o = {}
+    D.SHEET_COLS.forEach(cid => { const x = String(vals[cid] ?? '').trim(); o[cid] = x === '' ? null : Math.round(parseFloat(x) * 10) / 10 })
+    if (o.height && o.weight) o.bmi = Math.round((o.weight / Math.pow(o.height / 100, 2)) * 10) / 10
+    return o
+  }
+  const valIssues = checkValues(numValuesOf())
+  const valHasError = valIssues.some(x => x.level === 'error')
 
   // 既存の利用者にこの用紙を紐づけて取り込む(新規の利用者は作らない)
   const commitToUser = async (e, u) => {
     if (!u || busy) return
+    if (!e.kcl && valHasError && !force) { showToast('あり得ない値が残っています。値を直すか、確認のうえチェックを入れてください'); return }
     setBusy(e.id)
     try {
       if (e.kcl) {
@@ -145,7 +159,7 @@ export default function WalkIn() {
         if (dbEnabled()) await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: D.CUR } })
         const nums = {}
         D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
-        await saveMeasurement(u.id, D.CUR, nums)
+        await saveMeasurement(u.id, D.CUR, nums, undefined, undefined, { force })
       }
       // 台帳登録済みの利用者に紐づけた場合は、このエントリの正式登録も済んだ扱いにする
       const st = u.walkIn ? 'committed' : 'registered'
@@ -162,6 +176,7 @@ export default function WalkIn() {
   // 仮登録して取り込み: 利用者作成(walkIn) + 測定値の本登録
   const commitEntry = async (e) => {
     if (!f.name.trim()) { showToast('氏名を入力してください'); return }
+    if (!e.kcl && valHasError && !force) { showToast('あり得ない値が残っています。値を直すか、確認のうえチェックを入れてください'); return }
     const ward = (f.ward || '').trim()
     /* 二重登録の防止。以前は「同じ日に仮登録した人」としか照合しておらず、
        台帳に既にいる方や、別の地区で登録済みの方を見落として別人として登録されていた。
@@ -215,7 +230,7 @@ export default function WalkIn() {
       }
       const nums = {}
       D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
-      await saveMeasurement(u.id, D.CUR, nums)
+      await saveMeasurement(u.id, D.CUR, nums, undefined, undefined, { force })
       await updateWalkin(e.id, { walkinStatus: 'committed', userId: u.id, userName: u.name })
       deleteSheetImage(e.storagePath).catch(() => {})
       if (!dbEnabled()) setEntries(prev => prev.map(x => x.id === e.id ? { ...x, walkinStatus: 'committed', userId: u.id, userName: u.name } : x))
@@ -384,6 +399,25 @@ export default function WalkIn() {
                           </div>
                         )
                       })}
+                    </div>
+                  )}
+                  {/* 人体としてあり得ない値（小数点の読み落とし等）はここで止める */}
+                  {!e.kcl && valIssues.length > 0 && (
+                    <div style={{ marginTop: 8, borderRadius: 8, padding: '8px 10px', lineHeight: 1.6,
+                      border: '1px solid ' + (valHasError ? 'var(--danger-200, #f3c2c2)' : 'var(--warning-200, #f0dcae)'),
+                      background: valHasError ? 'var(--danger-50)' : 'var(--warning-50)' }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, marginBottom: 3 }}>
+                        {valHasError ? '入力をお確かめください（このままでは取り込めません）' : '念のためご確認ください'}
+                      </div>
+                      {valIssues.map((x, i) => (
+                        <div key={i} style={{ fontSize: 11.5, color: x.level === 'error' ? 'var(--danger-700)' : 'var(--fg-2)' }}>・{x.message}</div>
+                      ))}
+                      {valHasError && (
+                        <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, fontSize: 11.5, cursor: 'pointer' }}>
+                          <input type="checkbox" checked={force} onChange={(ev) => setForce(ev.target.checked)} />
+                          用紙のとおりで間違いないので、この値のまま取り込む
+                        </label>
+                      )}
                     </div>
                   )}
                 </div>

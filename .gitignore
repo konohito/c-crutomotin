@@ -18,3 +18,4 @@ functions/.env
 __pycache__/
 *.pyc
 dist-smoke
+firebase-debug.log

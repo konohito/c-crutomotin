@@ -2,6 +2,7 @@ import { useState } from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { saveUserFields, saveMeasurement, saveKclAnswers, moveMeasurementYear } from '../lib/realdata.js'
+import { checkValues } from '../lib/validate.js'
 import { eraOf } from '../lib/helpers.js'
 import { Modal, ModalHead, Select } from '../ui/kit.jsx'
 import { kclSideList } from '../ui/kclanswers.jsx'
@@ -111,19 +112,27 @@ export function EditMeasModal() {
     MEAS_FIELDS.forEach(([k]) => { o[k] = (v[k] == null ? '' : String(v[k])) }); return o
   })
   const [busy, setBusy] = useState(false)
+  const [force, setForce] = useState(false)
   if (!u) return null
   const upd = (k) => (e) => setF(s => ({ ...s, [k]: e.target.value }))
   const close = () => set({ editMeas: null })
+  // 入力中の値を測定値の形にする（点検の表示と保存で同じものを使う）
+  const valuesOf = () => {
+    const values = {}
+    MEAS_FIELDS.forEach(([k]) => { const x = f[k].trim(); values[k] = x === '' ? null : Math.round(parseFloat(x) * 100) / 100 })
+    if (values.height && values.weight) values.bmi = Math.round((values.weight / Math.pow(values.height / 100, 2)) * 10) / 10
+    return values
+  }
+  const issues = checkValues(valuesOf())
+  const hasError = issues.some(x => x.level === 'error')
   const save = async () => {
     setBusy(true)
     try {
-      const values = {}
-      MEAS_FIELDS.forEach(([k]) => { const x = f[k].trim(); values[k] = x === '' ? null : Math.round(parseFloat(x) * 100) / 100 })
-      if (values.height && values.weight) values.bmi = Math.round((values.weight / Math.pow(values.height / 100, 2)) * 10) / 10
+      const values = valuesOf()
       // 評価年を変えた場合は記録一式(測定値・問診回答・InBody・評価日)を移してから保存する
       const newY = parseInt(f.year, 10) || em.year
       if (newY !== em.year) await moveMeasurementYear(u.id, em.year, newY, em.key)
-      await saveMeasurement(u.id, newY, values, f.date, em.key)
+      await saveMeasurement(u.id, newY, values, f.date, em.key, { force })
       showToast(`${eraOf(newY)}年度の測定値を保存しました`)
       set({ editMeas: null, rev: state.rev + 1 })
     } catch (e) { showToast('保存に失敗しました: ' + (e.message || '')); setBusy(false) }
@@ -142,10 +151,28 @@ export function EditMeasModal() {
           </Field>
         ))}
       </div>
+      {issues.length > 0 && (
+        <div style={{ margin: '0 20px 4px', borderRadius: 8, padding: '10px 12px', lineHeight: 1.6,
+          border: '1px solid ' + (hasError ? 'var(--danger-200, #f3c2c2)' : 'var(--warn-200, #f0dcae)'),
+          background: hasError ? 'var(--danger-50, #fdf2f2)' : 'var(--warn-50, #fdf8ea)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+            {hasError ? '入力をお確かめください（このままでは保存できません）' : '念のためご確認ください'}
+          </div>
+          {issues.map((x, i) => (
+            <div key={i} style={{ fontSize: 12, color: x.level === 'error' ? 'var(--danger-700, #9b2c2c)' : 'var(--fg-2)' }}>・{x.message}</div>
+          ))}
+          {hasError && (
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, fontSize: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
+              用紙のとおりで間違いないので、この値のまま保存する
+            </label>
+          )}
+        </div>
+      )}
       <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '0 20px', lineHeight: 1.6 }}>BMI は身長・体重から自動計算されます。空欄は「未測定」として保存します。評価年を変えた場合、この年度の問診回答・InBody・評価日もまとめて移動します（移動先に既にデータがある年度へは移せません）。</div>
       <div className="modal-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '16px 20px 20px' }}>
         <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
-        <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '保存中…' : '保存'}</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy || (hasError && !force)}>{busy ? '保存中…' : '保存'}</button>
       </div>
     </Modal>
   )

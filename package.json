@@ -11,7 +11,8 @@
     "build:smoke": "vite build --config vite.smoke.config.mjs",
     "check:undefined": "node scripts/check-undefined.mjs",
     "check:screens": "node scripts/run-check.mjs scripts/check-screens.mjs",
-    "check": "npm run check:undefined && npm run check:screens"
+    "check:values": "node scripts/run-check.mjs scripts/check-values.mjs",
+    "check": "npm run check:undefined && npm run check:screens && npm run check:values"
   },
   "dependencies": {
     "firebase": "^12.16.0",

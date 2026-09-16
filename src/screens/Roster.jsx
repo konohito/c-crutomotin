@@ -1,11 +1,65 @@
+import { useMemo, useState } from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { wardLabel } from '../lib/db.js'
+import { auditUsers, auditSummary, KIND_LABEL } from '../lib/audit.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
 const GRID = '76px 1.5fr 96px 1.3fr 128px 110px 30px'
 const PER = 12
+
+/* データの点検 — あり得ない値・取り違えの疑いを台帳の上に出す。
+   見つけて並べるだけで、データは書き換えない（直すかどうかは原本を見た職員が決める）。
+   既定は閉じた状態にして、いつもの台帳の見た目を変えない。 */
+export function AuditPanel({ defaultOpen = false }) {
+  const { set } = useStore()
+  const [open, setOpen] = useState(defaultOpen)
+  // 台帳が大きいので、開いたときだけ点検する（毎回の描画で走らせない）
+  const findings = useMemo(() => (open ? auditUsers(D.users) : []), [open])
+  const sum = auditSummary(findings)
+  const groups = useMemo(() => {
+    const g = {}
+    for (const f of findings) (g[f.kind] = g[f.kind] || []).push(f)
+    return g
+  }, [findings])
+
+  return (
+    <Card style={{ padding: '10px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => setOpen(v => !v)}>
+        <Icon name="chevR" size={16} style={{ color: 'var(--slate-400)', transform: open ? 'rotate(90deg)' : 'none' }} />
+        <span style={{ fontSize: 13, fontWeight: 600 }}>データの点検</span>
+        <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>
+          {open
+            ? (findings.length === 0 ? '気になる記録はありませんでした' : `${sum.users} 名・${findings.length} 件（要修正 ${sum.error} 件）`)
+            : 'あり得ない値や、取り違えの疑いがある記録を探します'}
+        </span>
+      </div>
+      {open && findings.length > 0 && (
+        <div style={{ marginTop: 10, borderTop: '1px solid var(--border-default)', paddingTop: 10 }}>
+          {Object.entries(groups).map(([kind, list]) => (
+            <div key={kind} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{KIND_LABEL[kind] || kind}（{list.length} 件）</div>
+              {list.map((f, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12, lineHeight: 1.7, color: f.level === 'error' ? 'var(--danger-700)' : 'var(--fg-2)' }}>
+                  <span role="button" tabIndex={0} onClick={() => set({ screen: 'det', detId: f.userId })}
+                    style={{ color: 'var(--brand-600)', fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                    {f.name}（ID {f.userId}）
+                  </span>
+                  <span style={{ color: 'var(--fg-3)', whiteSpace: 'nowrap' }}>{f.date}</span>
+                  <span>{f.message}</span>
+                </div>
+              ))}
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: 'var(--fg-3)', lineHeight: 1.6 }}>
+            ここに出た記録は自動では直しません。記録用紙・評価用紙の原本を確かめたうえで、個人詳細から修正してください。
+          </div>
+        </div>
+      )}
+    </Card>
+  )
+}
 
 // フィルタ選択肢は実データ（D.users）から動的に作る。編集で市町村・行政区を追加すれば自動で増える。
 const distinct = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
@@ -43,6 +97,7 @@ export default function Roster() {
 
   return (
     <div className="screen">
+      <AuditPanel />
       {/* フィルタバー */}
       <Card style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Select value={state.rosMuni} onChange={(e) => set({ rosMuni: e.target.value, rosWard: 'all', rosPage: 0 })}

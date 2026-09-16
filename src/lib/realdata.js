@@ -4,6 +4,7 @@
    個人情報を含むため、実データはログイン内（認証後）でのみ読み込む。 */
 import D, { axesOf, setUsers, replaceMunis, setYears } from '../data/engine.js'
 import { dbEnabled, getFs } from './db.js'
+import { assertSavable } from './validate.js'
 
 export const realDataEnabled = () => dbEnabled()
 
@@ -190,7 +191,12 @@ export async function createUserDoc(u) {
 // date(評価日)を渡すと合わせて保存する(undefined なら触らない。'' は未記入=null 扱い)
 // key を渡すと その測定ドキュメントを更新する（同じ年度に複数回ある場合の指定用）。
 // 省略時は「その年度の最新の測定」、それも無ければ評価日から新しいドキュメントを作る。
-export async function saveMeasurement(id, year, values, date, key) {
+// opts.force=true で範囲チェックを素通しする（職員が「この値のまま保存」を選んだとき）。
+export async function saveMeasurement(id, year, values, date, key, opts = {}) {
+  /* 人体としてあり得ない値（体重 591kg・身長 51.6cm・握力 222kg など）は、
+     台帳にもメモリにも一切触れる前にここで止める。保存経路はすべてこの関数を通るため、
+     ここが最後の砦になる。しきい値と根拠は src/lib/validate.js を参照。 */
+  assertSavable(values, opts)
   const u = D.users.find(x => x.id === id)
   const s = scoreOf(u ? u.sex : 'F', values)
   // 評価日は 0 詰めに正規化して保存する（書式のゆれで同じ日が分かれるのを防ぐ）

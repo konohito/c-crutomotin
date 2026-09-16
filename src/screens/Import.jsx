@@ -8,9 +8,19 @@ import { saveMeasurement } from '../lib/realdata.js'
 import { Card, Pill, Modal, ModalHead, Select, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 import { kclSideList, ansKind, ANS_STYLE, kclStats, kclAutoOk } from '../ui/kclanswers.jsx'
+import { checkValues } from '../lib/validate.js'
 
 
 const GRID = '42px 168px repeat(8, 1fr) 92px 128px'
+
+/* 読み取り結果(recognition)の測定値を点検する。
+   体重 591kg のような、小数点の読み落としによるあり得ない値をここで拾う。 */
+function recIssues(rec) {
+  const v = {}
+  D.SHEET_COLS.forEach(cid => { v[cid] = rec && rec.fields && rec.fields[cid] ? rec.fields[cid].value : null })
+  if (v.height && v.weight) v.bmi = Math.round((v.weight / Math.pow(v.height / 100, 2)) * 10) / 10
+  return checkValues(v)
+}
 
 // バッチID(例: 20260724-ab12x)から測定日を推定する。読めなければ今日。
 function batchDate(batchId) {
@@ -106,6 +116,8 @@ function RecReviewModal({ rec, batchId, onClose, onDone }) {
     return o
   })
   const [busy, setBusy] = useState(false)
+  // あり得ない値でも「原本のとおり」と職員が確認したときだけ本登録を通す
+  const [force, setForce] = useState(false)
   // アップロードされた原本画像（読み取り値と見比べるため表示。クリックで拡大）
   const [img, setImg] = useState(null)
   const [zoom, setZoom] = useState(false)
@@ -122,8 +134,19 @@ function RecReviewModal({ rec, batchId, onClose, onDone }) {
   const qt = q.trim().toLowerCase()
   const cands = qt ? D.users.filter(u => u.name.toLowerCase().includes(qt) || u.kana.toLowerCase().includes(qt) || u.id.includes(qt)).slice(0, 6) : []
 
+  // 画面に入っている値（職員が直したあとの値）を点検する
+  const editedValues = () => {
+    const o = {}
+    D.SHEET_COLS.forEach(cid => { const t = String(vals[cid] ?? '').trim(); o[cid] = t === '' ? null : Math.round(parseFloat(t) * 10) / 10 })
+    if (o.height && o.weight) o.bmi = Math.round((o.weight / Math.pow(o.height / 100, 2)) * 10) / 10
+    return o
+  }
+  const issues = checkValues(editedValues())
+  const hasError = issues.some(x => x.level === 'error')
+
   const save = async () => {
     if (!sel) { showToast('本登録する利用者を選択してください'); return }
+    if (hasError && !force) { showToast('あり得ない値が残っています。値を直すか、確認のうえチェックを入れてください'); return }
     setBusy(true)
     const finalValues = {}
     D.SHEET_COLS.forEach(cid => { const t = String(vals[cid] ?? '').trim(); finalValues[cid] = t === '' ? null : t })
@@ -132,7 +155,7 @@ function RecReviewModal({ rec, batchId, onClose, onDone }) {
       // メモリの台帳にも反映（個人詳細・台帳の表示を即時更新）
       const nums = {}
       D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] === null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
-      await saveMeasurement(sel.id, D.CUR, nums)
+      await saveMeasurement(sel.id, D.CUR, nums, undefined, undefined, { force })
       showToast(`${sel.name} さんを本登録しました`)
       onDone()
       onClose()
@@ -212,9 +235,27 @@ function RecReviewModal({ rec, batchId, onClose, onDone }) {
             })}
           </div>
         </div>
+        {issues.length > 0 && (
+          <div style={{ marginTop: 10, borderRadius: 8, padding: '10px 12px', lineHeight: 1.6,
+            border: '1px solid ' + (hasError ? 'var(--danger-200, #f3c2c2)' : 'var(--warning-200, #f0dcae)'),
+            background: hasError ? 'var(--danger-50)' : 'var(--warning-50)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>
+              {hasError ? '読み取った値をお確かめください（このままでは本登録できません）' : '念のためご確認ください'}
+            </div>
+            {issues.map((x, i) => (
+              <div key={i} style={{ fontSize: 12, color: x.level === 'error' ? 'var(--danger-700)' : 'var(--fg-2)' }}>・{x.message}</div>
+            ))}
+            {hasError && (
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, fontSize: 12, cursor: 'pointer' }}>
+                <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
+                原本のとおりで間違いないので、この値のまま本登録する
+              </label>
+            )}
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 'auto' }}>
           <button className="btn btn-outline" onClick={onClose} disabled={busy}>キャンセル</button>
-          <button className="btn btn-primary" onClick={save} disabled={busy || !sel}>{busy ? '登録中…' : 'この内容で本登録'}</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy || !sel || (hasError && !force)}>{busy ? '登録中…' : 'この内容で本登録'}</button>
         </div>
         </div>
       </div>
@@ -286,8 +327,12 @@ function ProdImport() {
   // 用紙の様式番号(暗号)による区分で取り込みモードを変える:
   // 記録用紙 → 測定値の本登録 / 問診票(rec.kcl) → 回答の本登録(kclAnswers)
   const kclOk = (r) => kclAutoOk(r.kcl)
-  const ready = enriched.filter(x => x.rec.status === 'recognized' && x.u && (x.rec.kcl ? kclOk(x.rec) : !x.rec.needsReview))
-  const nNeed = enriched.filter(x => x.rec.status === 'recognized' && !(x.u && (x.rec.kcl ? kclOk(x.rec) : !x.rec.needsReview))).length
+  /* 読み取り値に人体としてあり得ない値（小数点の読み落とし等）が含まれる用紙は、
+     自動判定にせず必ず職員の目を通す。一括本登録で誤った値が入るのを防ぐ。 */
+  const rangeOk = (r) => recIssues(r).every(x => x.level !== 'error')
+  const autoOk = (x) => !!x.u && (x.rec.kcl ? kclOk(x.rec) : (!x.rec.needsReview && rangeOk(x.rec)))
+  const ready = enriched.filter(x => x.rec.status === 'recognized' && autoOk(x))
+  const nNeed = enriched.filter(x => x.rec.status === 'recognized' && !autoOk(x)).length
 
   // 問診票の確認モーダル(設問別の読み取り結果の確認・修正 + 台帳照合 + 本登録)
   const [assign, setAssign] = useState(null)
@@ -367,6 +412,10 @@ function ProdImport() {
       deleteSheetImage(rec.storagePath).catch(() => {})
       return
     }
+    /* 一括本登録の安全弁。あり得ない値の用紙は ready に入らない作りだが、
+       念のためここでも、Firestore に何か書く前に止める（中途半端に書き込まれるのを防ぐ）。 */
+    const bad = recIssues(rec).filter(x => x.level === 'error')
+    if (bad.length) throw new Error(bad[0].message)
     const finalValues = {}
     D.SHEET_COLS.forEach(cid => { finalValues[cid] = rec.fields && rec.fields[cid] ? rec.fields[cid].value : null })
     await commitRecognition({ batchId: rec.batchId, recognitionId: rec.id, user: u, finalValues, meta: { year: D.CUR, date: batchDate(rec.batchId) } })
@@ -491,7 +540,7 @@ function ProdImport() {
               <div />
             </div>
             {enriched.map(({ rec, u }) => {
-              const okAuto = u && (rec.kcl ? kclOk(rec) : !rec.needsReview)
+              const okAuto = autoOk({ rec, u })
               const st = rec.status === 'committed' ? ['登録済', 'var(--success-50)', 'var(--success-700)']
                 : rec.status === 'error' ? ['エラー', 'var(--danger-50)', 'var(--danger-700)']
                 : !okAuto ? ['要確認', 'var(--warning-50)', 'var(--warning-700)']
