@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useRef, useState } fro
 import D from './data/engine.js'
 import { csvSplit, parseBirthYear } from './lib/helpers.js'
 import { dbEnabled } from './lib/db.js'
+import { createUserDoc, saveUserFields, saveMeasurement, saveInbody } from './lib/realdata.js'
 
 // 読み取り設定（プロトタイプの props 相当）
 export const CONF_THRESHOLD = 80  // 信頼度しきい値(%)
@@ -137,7 +138,9 @@ export const staffNames = (ids) => (ids || []).map(id => { const st = D.STAFF.fi
 // ============ メモ ============
 
 export function memosFor(state, u) {
+  // 画面で足した直後の分（state）→ 台帳に保存済みの分（Firestore 由来の u.memos）→ 旧 note の順
   if (state.memos[u.id]) return state.memos[u.id]
+  if (Array.isArray(u.memos) && u.memos.length) return u.memos
   if (!u.note) return []
   const last = Object.values(u.meas).slice(-1)[0]
   return [{ date: last ? last.date : '2024/10/01', text: u.note, by: '測定時記録' }]
@@ -165,7 +168,12 @@ export function openSheetVals(state, no) {
 
 // ============ CSV 取り込み ============
 
-export function importCsvText({ text, fname, state, set, showToast }) {
+/* CSV の取り込み。
+   以前はここで D.users をメモリ上だけ書き換えており、「取り込みました」と出しても
+   Firestore には 1 件も入らず、再読み込みで丸ごと消えていた（現場で「入力が翌日に戻る」
+   と言われていた症状そのもの）。本番（Firebase 設定あり）では 1 件ずつ台帳へ保存し、
+   保存できなかった件数を必ず画面に出す。 */
+export async function importCsvText({ text, fname, state, set, showToast }) {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim())
   if (lines.length < 2) { showToast('CSV にデータ行が見つかりません'); return }
   const head = csvSplit(lines[0]).map(h => h.replace(/[\s　"]/g, ''))
@@ -192,41 +200,50 @@ export function importCsvText({ text, fname, state, set, showToast }) {
   const iSmi = fi(h => /SMI|ＳＭＩ|骨格筋指数/i.test(h))
   const iScore = fi(h => /InBody点数|ＩｎＢｏｄｙ|点数/i.test(h))
   if (iSmm >= 0 || iSmi >= 0 || iFat >= 0) {
-    let linked = 0, unmatched = 0
-    lines.slice(1).forEach(line => {
+    let linked = 0, unmatched = 0, failed = 0
+    const iWtLocal = fi(h => h.includes('体重'))
+    for (const line of lines.slice(1)) {
       const c = csvSplit(line)
       const val = (i) => (i >= 0 && i < c.length ? String(c[i]).trim() : '')
       const name = val(iName).replace(/[\s　]+/g, '')
-      if (!name) return
+      if (!name) continue
       const id = val(iId).replace(/[^\d]/g, '')
       const u = (id && D.users.find(x => x.id === id)) || D.users.find(x => x.name.replace(/[\s　]/g, '') === name)
-      if (!u) { unmatched++; return }
+      if (!u) { unmatched++; continue }
       const num = (i) => { const sv = val(i).replace(/[^\d.\-]/g, ''); if (!sv) return null; const n = parseFloat(sv); return isNaN(n) ? null : n }
-      const iWtLocal = fi(h => h.includes('体重'))
-      u.inbody = u.inbody || {}
-      u.inbody[D.CUR] = {
+      const ib = {
         weight: num(iWtLocal) ?? (u.meas[D.CUR] ? u.meas[D.CUR].values.weight : null),
         smm: num(iSmm), fatPct: num(iFat), smi: num(iSmi), score: num(iScore),
-        date: D.TODAY,
       }
-      linked++
-    })
+      try {
+        // saveInbody がメモリ（u.inbody）と Firestore の両方を更新する
+        await saveInbody(u.id, D.CUR, ib, (u.meas[D.CUR] && u.meas[D.CUR].date) || D.TODAY)
+        linked++
+      } catch (e) {
+        console.error('InBody 保存に失敗:', u.id, e)
+        failed++
+      }
+    }
     set(s => ({ rev: s.rev + 1 }))
-    showToast('「' + fname + '」から InBody データ ' + linked + ' 名分を台帳に紐づけました' + (unmatched ? '（未一致 ' + unmatched + ' 件）' : ''))
+    showToast('「' + fname + '」から InBody データ ' + linked + ' 名分を台帳に保存しました'
+      + (unmatched ? '（未一致 ' + unmatched + ' 件）' : '')
+      + (failed ? '　※ ' + failed + ' 件は保存できませんでした。通信を確認してやり直してください' : ''))
     return
   }
 
   const mu = D.MUNIS.find(x => x.id === state.csvMuni) || D.MUNIS[0]
-  let added = 0, updated = 0, measN = 0
-  lines.slice(1).forEach(line => {
+  const live = dbEnabled()
+  let added = 0, updated = 0, measN = 0, failedUser = 0, failedMeas = 0
+  for (const line of lines.slice(1)) {
     const c = csvSplit(line)
     const val = (i) => (i >= 0 && i < c.length ? String(c[i]).trim() : '')
     const name = val(iName).replace(/[\s　]+/g, '')
-    if (!name) return
+    if (!name) continue
     const id = val(iId).replace(/[^\d]/g, '')
     let u = (id && D.users.find(x => x.id === id)) || D.users.find(x => x.name.replace(/[\s　]/g, '') === name)
     const sexRaw = val(iSex)
     const sex = /女|F/i.test(sexRaw) ? 'F' : (/男|M/i.test(sexRaw) ? 'M' : 'F')
+    let isNewRow = false
     if (!u) {
       const code = mu.venues[0][0]
       const by = parseBirthYear(val(iBirth))
@@ -234,10 +251,28 @@ export function importCsvText({ text, fname, state, set, showToast }) {
         id: id || D.newUserId(code), name, kana: val(iKana) || '', sex,
         sexLabel: sex === 'M' ? '男' : '女', birth: by, birthDate: val(iBirth) || '—', age: D.CUR - by,
         muni: mu.id, muniName: mu.name, region: mu.region, venueCode: code, venueName: mu.venues[0][1],
-        phone: val(iTel), joined: D.CUR, isNew: true, theta: 0, meas: {},
+        phone: val(iTel), joined: D.CUR, isNew: true, theta: 0, meas: {}, inbody: {}, kcl: {},
       }
-      D.users.push(u); added++
-    } else { if (val(iTel)) u.phone = val(iTel); updated++ }
+      isNewRow = true
+    }
+    // 台帳（Firestore）へ保存してからメモリに足す。保存できなかった行は取り込まない
+    // （画面にだけ出て翌日に消える、という状態を作らないため）。
+    try {
+      if (isNewRow) {
+        if (live) await createUserDoc(u)
+        D.users.push(u); added++
+      } else {
+        if (val(iTel) && val(iTel) !== u.phone) {
+          if (live) await saveUserFields(u.id, { phone: val(iTel) })
+          else u.phone = val(iTel)
+        }
+        updated++
+      }
+    } catch (e) {
+      console.error('利用者の保存に失敗:', u.id, e)
+      failedUser++
+      continue
+    }
     const num = (i) => { const sv = val(i).replace(/[^\d.\-]/g, ''); if (!sv) return null; const n = parseFloat(sv); return isNaN(n) ? null : n }
     let walk5 = num(iWalk), balR = num(iBalR), balL = num(iBalL), gripR = num(iGripR), gripL = num(iGripL), tug = num(iTug), height = num(iHt), weight = num(iWt)
     if (balR === null && balL !== null) balR = balL
@@ -245,16 +280,31 @@ export function importCsvText({ text, fname, state, set, showToast }) {
     if (gripR === null && gripL !== null) gripR = gripL
     if (gripL === null && gripR !== null) gripL = gripR
     if (walk5 !== null && balR !== null && gripR !== null && tug !== null) {
-      const bmi = height && weight ? Math.round((weight / Math.pow(height / 100, 2)) * 10) / 10 : 22
-      const v = { walk5, balR, balL, gripR, gripL, tug, height, weight, bmi }
-      const ax = D.axesOf(u.sex, v)
-      u.meas[D.CUR] = { values: v, axes: ax, total: Math.round(((ax.walk + ax.balance + ax.grip + ax.mobility + ax.body) / 25) * 100), date: D.TODAY }
-      D.ensureKcl(u, D.CUR, D.TODAY)
-      measN++
+      const v = { walk5, walk5max: null, balR, balL, gripR, gripL, tug, height, weight }
+      try {
+        /* saveMeasurement はあり得ない値（体重 591kg など）をここで弾き、
+           メモリと Firestore の両方を同じ内容に揃える。
+           評価日を渡さないと年度キーの文書になり、同じ年度の 2 回目で上書きされて
+           前の測定が消えるため、必ず今日の日付を入れる。 */
+        if (live) await saveMeasurement(u.id, D.CUR, v, D.TODAY)
+        else {
+          const bmi = height && weight ? Math.round((weight / Math.pow(height / 100, 2)) * 10) / 10 : 22
+          const vv = { ...v, bmi }
+          const ax = D.axesOf(u.sex, vv)
+          u.meas[D.CUR] = { values: vv, axes: ax, total: Math.round(((ax.walk + ax.balance + ax.grip + ax.mobility + ax.body) / 25) * 100), date: D.TODAY }
+          D.ensureKcl(u, D.CUR, D.TODAY)
+        }
+        measN++
+      } catch (e) {
+        console.error('測定値の保存に失敗:', u.id, e)
+        failedMeas++
+      }
     }
-  })
+  }
   set(s => ({ screen: 'ros', rosStatus: 'all', rosRegion: 'all', rosMuni: 'all', rosSort: 'id', rosPage: 0, rev: s.rev + 1 }))
-  showToast('「' + fname + '」から ' + (added + updated) + ' 名を取り込みました（新規 ' + added + ' / 測定結果 ' + measN + ' 件）')
+  const ng = failedUser + failedMeas
+  showToast('「' + fname + '」から ' + (added + updated) + ' 名を台帳に保存しました（新規 ' + added + ' / 測定結果 ' + measN + ' 件）'
+    + (ng ? '　※ ' + ng + ' 件は保存できませんでした（利用者 ' + failedUser + ' / 測定 ' + failedMeas + '）。内容と通信を確認してやり直してください' : ''))
 }
 
 export function readCsvFile({ file, state, set, showToast }) {
@@ -267,7 +317,10 @@ export function readCsvFile({ file, state, set, showToast }) {
     const buf = new Uint8Array(reader.result)
     try { text = new TextDecoder('utf-8', { fatal: true }).decode(buf) }
     catch { try { text = new TextDecoder('shift-jis').decode(buf) } catch { text = new TextDecoder().decode(buf) } }
+    showToast('「' + fname + '」を取り込んでいます…')
+    // 取り込みは 1 件ずつ台帳へ保存する。途中で落ちても必ず画面に出す（黙って終わらせない）
     importCsvText({ text, fname, state, set, showToast })
+      .catch((e) => { console.error('CSV 取り込みに失敗:', e); showToast('取り込みに失敗しました: ' + ((e && e.message) || e)) })
   }
   reader.readAsArrayBuffer(file)
 }

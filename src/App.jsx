@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import D from './data/engine.js'
 import { useStore, pendingSheets, allEvents, StoreProvider } from './store.jsx'
 import { mdw } from './lib/helpers.js'
-import { dbEnabled, watchPendingCount } from './lib/db.js'
+import { dbEnabled, watchPendingCount, loadEvents } from './lib/db.js'
 import { Icon } from './ui/icons.jsx'
 import { Toast } from './ui/kit.jsx'
 import AuthGate, { useAuth } from './ui/AuthGate.jsx'
@@ -82,7 +82,8 @@ function useOcrPending() {
   useEffect(() => {
     if (!dbEnabled()) return
     let unsub = () => {}
-    watchPendingCount(setN).then(fn => { unsub = fn }).catch(() => {})
+    // 件数が取れなかったとき(null)はバッジを 0 にせず、前の値のままにする
+    watchPendingCount((v) => { if (v != null) setN(v) }).then(fn => { unsub = fn }).catch(() => {})
     return () => unsub()
   }, [])
   return n
@@ -228,8 +229,34 @@ const SCREENS = {
   merge: MergeScreen, billing: Billing, cert: Certificate,
 }
 
+/* カレンダーの予定を Firestore から読み込む。
+   予定はサイドバーの「次回の測定会」でも使うため、カレンダー画面ではなくここで一度だけ読む。
+   予定にしか出てこない地域（利用者がまだ 1 人もいない市町村）も選択肢に戻す。 */
+function useEventsBoot() {
+  const { setState } = useStore()
+  useEffect(() => {
+    if (!dbEnabled()) return
+    let alive = true
+    loadEvents().then((list) => {
+      if (!alive || !list.length) return
+      setState(s => {
+        const known = new Set(D.MUNIS.map(x => x.name).concat(s.customMunis.map(x => x.name)))
+        const extra = []
+        list.forEach(e => {
+          if (!e.muni || known.has(e.muni)) return
+          known.add(e.muni)
+          extra.push({ id: '_c' + e.muni, name: e.muni, region: e.region || '', venues: [] })
+        })
+        return { ...s, customEvents: list, customMunis: s.customMunis.concat(extra) }
+      })
+    }).catch((e) => console.warn('loadEvents failed:', e && e.message))
+    return () => { alive = false }
+  }, [setState])
+}
+
 function AppInner() {
   const { state, set } = useStore()
+  useEventsBoot()
   const Screen = SCREENS[state.screen] || Dashboard
   return (
     <div className="app-root">

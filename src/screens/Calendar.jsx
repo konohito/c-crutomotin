@@ -69,14 +69,16 @@ export default function Calendar() {
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 4 }}>
                 {c.dayEvs.slice(0, 2).map((e, j) => {
+                  // 圏域はマスタから引く。予定にしか出てこない地域は予定自身が持つ region を使う
                   const mu = e.muni ? muniByName(state, e.muni) : null
+                  const rg = (mu && mu.region) || e.region || ''
                   return (
                     <div key={j} style={{ padding: '3px 6px 4px', borderRadius: 4, background: EV_KINDS[e.kind][1], minWidth: 0 }}>
                       <div style={{ fontSize: 10.5, fontWeight: 600, color: EV_KINDS[e.kind][2], overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {e.kind === 'meas' ? '測定会 · ' + e.muni : e.title}
                       </div>
                       <div style={{ fontSize: 9.5, fontWeight: 500, color: EV_KINDS[e.kind][2], opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-                        {(mu ? mu.region + ' · ' : '') + (e.venue || '')}
+                        {(rg ? rg + ' · ' : '') + (e.venue || '')}
                       </div>
                     </div>
                   )
@@ -102,6 +104,7 @@ export default function Calendar() {
           <div style={{ display: 'flex', flexDirection: 'column', marginTop: 4 }}>
             {upcoming.map((e, i) => {
               const mu = e.muni ? muniByName(state, e.muni) : null
+              const rg = (mu && mu.region) || e.region || ''
               const sn = staffNames(e.staff)
               return (
                 <div key={i} style={{ display: 'flex', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--border-subtle)', alignItems: 'flex-start' }}>
@@ -111,7 +114,7 @@ export default function Calendar() {
                       {e.kind === 'meas' ? '測定会 — ' + e.muni : e.title}
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {(mu ? mu.region + ' · ' : '') + (e.venue ? e.venue + ' · ' : '') + (e.time || '')}
+                      {(rg ? rg + ' · ' : '') + (e.venue ? e.venue + ' · ' : '') + (e.time || '')}
                     </div>
                     {sn.length > 0 && (
                       <div style={{ fontSize: 11, color: 'var(--fg-3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>測定者: {sn.join('・')}</div>

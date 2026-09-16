@@ -81,6 +81,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // カレンダーの予定（測定会・体操教室・会議・研修）。承認職員が登録・編集できる。
+    // 削除は不可（取り消しは archived を true にする＝測定・統合と同じ扱い）。
+    match /events/{eventId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if false;
+    }
+
     // 統合（同一人物の名寄せ）の操作ログ。誰がいつどれを統合し、測定を何件付け替えたかを残す。
     // 「元に戻す」もこの記録を読んで行うため、削除は不可（取り消しは status を undone にする）。
     match /merges/{mergeId} {

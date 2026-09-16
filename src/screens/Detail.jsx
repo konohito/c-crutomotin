@@ -1,8 +1,9 @@
+import { useState } from 'react'
 import D from '../data/engine.js'
 import { useStore, memosFor } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAvg, frailtyOf, FRAIL_LEVELS, seriesOf, measAxisLabel } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAINS } from '../data/kihon.js'
-import { realDataEnabled } from '../lib/realdata.js'
+import { realDataEnabled, addUserMemo } from '../lib/realdata.js'
 import { wardLabel } from '../lib/db.js'
 import { useAuth } from '../ui/AuthGate.jsx'
 import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel } from '../ui/chart.jsx'
@@ -105,15 +106,26 @@ export default function Detail() {
   const smiCut = u.sex === 'M' ? 7.0 : 5.7
 
   const memos = memosFor(state, u)
-  const memoAdd = () => {
+  const [memoBusy, setMemoBusy] = useState(false)
+  /* 気づきメモは台帳（Firestore の利用者文書）に保存してから画面に足す。
+     以前は画面の中だけに持っていたため、「登録しました」と出ても再読み込みで消えていた。 */
+  const memoAdd = async () => {
     const t = state.memoDraft.trim()
-    if (!t) return
+    if (!t || memoBusy) return
     // 投稿者名と日付は本番ではログイン職員・実際の今日を使う
     const byName = authOn ? ((staffProfile && staffProfile.name) || '職員') : '相馬'
     const today = authOn ? new Date().toLocaleDateString('sv-SE').replace(/-/g, '/') : D.TODAY
-    const arr = memos.concat([{ date: today, text: t, by: byName }])
-    setState(s => ({ ...s, memos: { ...s.memos, [u.id]: arr }, memoDraft: '' }))
-    showToast('気づきを登録しました')
+    setMemoBusy(true)
+    try {
+      const saved = await addUserMemo(u.id, { date: today, text: t, by: byName })
+      const arr = memos.concat([saved])
+      setState(s => ({ ...s, memos: { ...s.memos, [u.id]: arr }, memoDraft: '' }))
+      showToast('気づきを登録しました')
+    } catch (e) {
+      // 入力は消さない（打ち直しにならないように）
+      showToast('気づきを保存できませんでした: ' + ((e && e.message) || ''))
+    }
+    setMemoBusy(false)
   }
 
   // 統合（同一人物の名寄せ）で引き継いだ過去の地区。測定当時の地区はここから辿れる
@@ -226,7 +238,7 @@ export default function Detail() {
                 onKeyDown={(e) => { if (e.key === 'Enter') memoAdd() }}
                 placeholder="例: 右膝の痛みを訴え"
               />
-              <button className="btn btn-primary" style={{ height: 36, fontSize: 12.5, flexShrink: 0 }} onClick={memoAdd}>追加</button>
+              <button className="btn btn-primary" style={{ height: 36, fontSize: 12.5, flexShrink: 0 }} onClick={memoAdd} disabled={memoBusy}>{memoBusy ? '保存中…' : '追加'}</button>
             </div>
           </Card>
 

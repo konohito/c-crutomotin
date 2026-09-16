@@ -98,9 +98,11 @@ export async function watchPendingCount(cb) {
     firestore.collectionGroup(db, 'recognitions'),
     firestore.where('status', 'in', ['recognized', 'error']),
   )
-  return firestore.onSnapshot(q, (snap) => cb(snap.size), (e) => {
+  /* 読み取りに失敗したときに 0 を返してはいけない（確認待ちの用紙が無いように見え、
+     取りこぼしに気づけなくなる）。失敗は失敗として呼び出し側へ渡し、バッジは前の値のままにする。 */
+  return firestore.onSnapshot(q, (snap) => cb(snap.size, null), (e) => {
     console.warn('watchPendingCount failed:', e && e.message)
-    cb(0)
+    cb(null, (e && e.message) || '読み取りに失敗しました')
   })
 }
 
@@ -217,6 +219,28 @@ export function normDate(v) {
 export const measKeyOf = (id, date, year) => {
   const d = normDate(date)
   return d ? `${id}_${d.replace(/\D/g, '')}` : `${id}_${year}`
+}
+
+/* カレンダーの予定（測定会・体操教室・会議）。
+   以前は画面の中だけに持っていたため「予定を登録しました」と出ても再読み込みで消えていた。
+   削除の導線は無い（監査性のため archived で下げる方針に揃える）。 */
+export async function loadEvents() {
+  if (!dbEnabled()) return []
+  const { fs, db } = await getFs()
+  const snap = await fs.getDocs(fs.collection(db, 'events'))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.archived)
+}
+export async function createEvent(ev) {
+  if (!dbEnabled()) return { ...ev, id: 'local-' + Date.now() }
+  const { fs, db } = await getFs()
+  const doc = {
+    date: ev.date || '', kind: ev.kind || 'meas', title: ev.title || '',
+    venue: ev.venue || '', muni: ev.muni || '', region: ev.region || '',
+    time: ev.time || '', staff: Array.isArray(ev.staff) ? ev.staff : [],
+    archived: false, createdAt: fs.serverTimestamp(),
+  }
+  const ref = await fs.addDoc(fs.collection(db, 'events'), doc)
+  return { ...ev, id: ref.id }
 }
 
 /* 卒業証書などに刷る発行者（法人名・事業所名・肩書・氏名）。

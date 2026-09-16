@@ -23,6 +23,33 @@ function AuthSplash({ label = '読み込んでいます…' }) {
   )
 }
 
+/* 台帳の読み込みに失敗したときの画面。
+   ここで止めずに本体を出すと、台帳が空（または見本用の名簿）のまま業務画面が開いてしまい、
+   「入力したものが消えた」ように見える。読めなかったことをはっきり出し、やり直せるようにする。 */
+function LoadFailed({ message, onRetry }) {
+  return (
+    <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--bg-canvas)' }}>
+      <div style={{ maxWidth: 420, textAlign: 'center' }}>
+        <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 26, marginBottom: 18 }} />
+        <div className="card" style={{ padding: '24px 26px' }}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>台帳を読み込めませんでした</div>
+          <div style={{ fontSize: 12.5, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.7 }}>
+            通信が不安定か、一時的にサーバーへつながらない可能性があります。<br />
+            <b>このまま入力すると保存できません。</b>電波の良い場所で「やり直す」を押してください。
+          </div>
+          {message && (
+            <div className="t-num" style={{ fontSize: 11, color: 'var(--fg-4)', marginTop: 10, wordBreak: 'break-all' }}>{message}</div>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 18 }}>
+            <button className="btn btn-primary" onClick={onRetry}>やり直す</button>
+            <button className="btn btn-outline" onClick={() => signOutUser()}>ログアウト</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // 権限がない（未承認の職員）ときの画面
 function NoAccess() {
   return (
@@ -47,12 +74,16 @@ function NoAccess() {
 // どちらでもなければ NoAccess を表示する。
 function RealDataBoot({ user, children }) {
   const [res, setRes] = useState(null)
+  const [tries, setTries] = useState(0)   // 「やり直す」で読み込み直すためのカウンタ
   const [portalU, setPortalU] = useState() // undefined=未確認 / null=利用者でもない / それ以外=利用者本人
   useEffect(() => {
     let alive = true
-    loadRealData().catch(() => ({ loaded: false })).then((r) => { if (alive) setRes(r || { loaded: false }) })
+    setRes(null)
+    loadRealData()
+      .catch((e) => ({ loaded: false, error: (e && e.message) || String(e) }))
+      .then((r) => { if (alive) setRes(r || { loaded: false, error: '読み込みに失敗しました' }) })
     return () => { alive = false }
-  }, [])
+  }, [tries])
   useEffect(() => {
     if (!res || !res.denied || !user) return
     let alive = true
@@ -65,6 +96,8 @@ function RealDataBoot({ user, children }) {
     if (portalU) return <Portal user={portalU} onSignOut={signOutUser} />
     return <NoAccess />
   }
+  // 読み込みに失敗した（権限の問題ではない）。空の台帳のまま業務画面を出さない。
+  if (!res.loaded) return <LoadFailed message={res.error} onRetry={() => setTries(n => n + 1)} />
   return children
 }
 

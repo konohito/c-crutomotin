@@ -16,7 +16,11 @@ export default function Staff() {
   const [revTarget, setRevTarget] = useState(null)
   const [revBusy, setRevBusy] = useState(false)
 
-  const reload = () => listStaff().then(setStaff).catch(() => setStaff([]))
+  const [listErr, setListErr] = useState('')
+  // 読み込みに失敗したときに「0 名」と見せない（承認済みの職員を二重に作ってしまうため）
+  const reload = () => listStaff()
+    .then(list => { setStaff(list); setListErr('') })
+    .catch(e => { setStaff([]); setListErr((e && e.message) || '読み込みに失敗しました') })
   useEffect(() => { reload() }, [])
 
   const saveName = async () => {
@@ -89,7 +93,13 @@ export default function Staff() {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', marginTop: 10 }}>
           {staff === null && <div style={{ fontSize: 12.5, color: 'var(--fg-3)', padding: '10px 0' }}>読み込み中…</div>}
-          {staff && staff.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--fg-3)', padding: '10px 0' }}>まだ承認済みの職員がいません。</div>}
+          {listErr && (
+            <div style={{ fontSize: 12.5, color: 'var(--danger-700)', background: 'var(--danger-50)', borderRadius: 8, padding: '8px 12px', margin: '10px 0', lineHeight: 1.7 }}>
+              職員の一覧を読み込めませんでした（0 名ではありません）。通信を確認して画面を再読み込みしてください。<br />
+              <span className="t-num" style={{ fontSize: 11, color: 'var(--fg-4)' }}>{listErr}</span>
+            </div>
+          )}
+          {staff && staff.length === 0 && !listErr && <div style={{ fontSize: 12.5, color: 'var(--fg-3)', padding: '10px 0' }}>まだ承認済みの職員がいません。</div>}
           {staff && staff.map(s => {
             const isMe = user && user.uid === s.uid
             const editing = edit.uid === s.uid

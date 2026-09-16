@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import D from '../data/engine.js'
 import { useStore, allMunis, EV_KINDS } from '../store.jsx'
 import { mdw } from '../lib/helpers.js'
+import { createEvent } from '../lib/db.js'
 import { Modal, ModalHead, Select } from '../ui/kit.jsx'
 
 function Field({ label, hint, children }) {
@@ -15,27 +17,41 @@ function Field({ label, hint, children }) {
 export default function EventModal() {
   const { state, set, setState, showToast } = useStore()
   const close = () => set({ evOpen: false })
+  const [busy, setBusy] = useState(false)
 
-  const save = () => {
+  /* 予定は Firestore に保存してから画面に足す。
+     保存できていないのに「登録しました」と出すと、翌日には予定が消えて見える。 */
+  const save = async () => {
+    if (busy) return
     const m = String(state.evDate).match(/(\d{4})[\/\-年.](\d{1,2})[\/\-月.](\d{1,2})/)
     if (!m) { showToast('日付は 2025/10/05 の形式で入力してください'); return }
     if (!state.evVenue.trim() && !state.evTitle.trim()) { showToast('タイトルまたは会場を入力してください'); return }
     const ds = m[1] + '/' + String(m[2]).padStart(2, '0') + '/' + String(m[3]).padStart(2, '0')
-    let muniName = ''
+    let muniName = '', region = ''
     let customMunis = state.customMunis
     if (state.evMuni === '__new') {
       const nm = state.evNewMuni.trim()
       if (!nm) { showToast('市町村・地域名を入力してください'); return }
-      const rg = state.evNewRegion.trim() || 'その他圏域'
-      customMunis = customMunis.concat([{ id: '_c' + Date.now(), name: nm, region: rg, venues: [] }])
+      region = state.evNewRegion.trim() || 'その他圏域'
+      customMunis = customMunis.concat([{ id: '_c' + Date.now(), name: nm, region, venues: [] }])
       muniName = nm
     } else {
       const muni = allMunis(state).find(x => x.id === state.evMuni)
       muniName = muni ? muni.name : ''
+      region = muni ? muni.region : ''
     }
-    const ev = { date: ds, kind: state.evKind, title: state.evTitle.trim() || EV_KINDS[state.evKind][0], venue: state.evVenue.trim(), muni: muniName, time: state.evTime.trim(), staff: state.evStaff.slice() }
-    setState(s => ({ ...s, customMunis, customEvents: s.customEvents.concat([ev]), evOpen: false, calY: +m[1], calM: +m[2] }))
-    showToast('予定を登録しました')
+    // 圏域は予定そのものにも持たせる。市町村マスタは利用者から作られるため、
+    // 予定にしか出てこない地域は再読み込みで引けなくなるため。
+    const ev = { date: ds, kind: state.evKind, title: state.evTitle.trim() || EV_KINDS[state.evKind][0], venue: state.evVenue.trim(), muni: muniName, region, time: state.evTime.trim(), staff: state.evStaff.slice() }
+    setBusy(true)
+    try {
+      const saved = await createEvent(ev)
+      setState(s => ({ ...s, customMunis, customEvents: s.customEvents.concat([saved]), evOpen: false, calY: +m[1], calM: +m[2] }))
+      showToast('予定を登録しました')
+    } catch (e) {
+      showToast('予定を保存できませんでした: ' + ((e && e.message) || ''))
+      setBusy(false)
+    }
   }
 
   return (
@@ -103,8 +119,8 @@ export default function EventModal() {
           </div>
         </Field>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
-          <button className="btn btn-outline" onClick={close}>キャンセル</button>
-          <button className="btn btn-primary" onClick={save}>登録する</button>
+          <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
+          <button className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '保存中…' : '登録する'}</button>
         </div>
       </div>
     </Modal>

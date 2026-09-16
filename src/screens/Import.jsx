@@ -269,6 +269,8 @@ function ProdImport() {
   // (null を混ぜると参照のたびに空チェックが要り、抜けると画面全体が落ちるため)
   const [batches, setBatches] = useState([])
   const [batchesLoaded, setBatchesLoaded] = useState(false)
+  // 読み込みに失敗したときは「取り込みがありません」ではなく失敗として出す
+  const [batchesErr, setBatchesErr] = useState('')
   /* 一覧は「測定日(撮影日)」単位でまとめる。同じ日に何回かに分けてアップロードしても
      (バッチは回ごとに分かれる)、現場で見たいのは日付ごとの1つのリストのため。
      各行の操作は行が属するバッチ(rec.batchId)に対して行う。 */
@@ -285,11 +287,12 @@ function ProdImport() {
   useEffect(() => {
     let unsub = () => {}
     watchBatches((list) => {
-      setBatches(list); setBatchesLoaded(true)
+      setBatches(list); setBatchesLoaded(true); setBatchesErr('')
       const open = list.filter(b => !b.finishedAt)
       setDateKey(prev => prev || (open[0] ? batchDate(open[0].id) : ''))
       if (!sweptRef.current) { sweptRef.current = true; sweepFinishedBatches(list).catch(() => {}) }
-    }).then(fn => { unsub = fn }).catch(() => { setBatches([]); setBatchesLoaded(true) })
+    }).then(fn => { unsub = fn })
+      .catch((e) => { setBatches([]); setBatchesLoaded(true); setBatchesErr((e && e.message) || '読み込みに失敗しました') })
     return () => unsub()
   }, [])
 
@@ -514,8 +517,19 @@ function ProdImport() {
         )}
       </Card>
 
+      {/* 読み込み失敗（0 件と見分けがつくように分けて出す） */}
+      {batchesErr && (
+        <div style={{ background: 'var(--danger-50)', border: '1px solid var(--danger-500)', borderRadius: 12, padding: '20px', lineHeight: 1.8 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--danger-700)' }}>読み取りキューを読み込めませんでした</div>
+          <div style={{ fontSize: 12.5, color: 'var(--fg-2)' }}>
+            取り込みが 0 件なのではなく、<b>一覧を取得できていません</b>。通信を確認してページを再読み込みしてください。
+          </div>
+          <div className="t-num" style={{ fontSize: 11, color: 'var(--fg-4)', marginTop: 4 }}>{batchesErr}</div>
+        </div>
+      )}
+
       {/* 空状態 */}
-      {batchesLoaded && batches.length === 0 && (
+      {batchesLoaded && !batchesErr && batches.length === 0 && (
         <div style={{ background: 'var(--bg-surface)', border: '1px dashed var(--border-strong)', borderRadius: 12, padding: '44px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
           <Icon name="camera" size={30} style={{ color: 'var(--slate-300)' }} />
           <div style={{ fontSize: 14, fontWeight: 500, color: 'var(--fg-2)' }}>まだ取り込みがありません</div>

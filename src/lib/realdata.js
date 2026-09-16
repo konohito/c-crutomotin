@@ -110,6 +110,9 @@ export function toEngineUser(u, measList) {
     phone: u.phone || '', careLevel: u.careLevel || '',
     joined: years.length ? Math.min(...years) : D.CUR, theta: 0,
     note: u.note || '', flags: u.flags || [], walkIn: !!u.walkIn,
+    /* 気づきメモ。利用者文書の配列項目に残す（以前は画面の中だけに置いていたため、
+       「登録しました」と出ても再読み込みで消えていた）。 */
+    memos: Array.isArray(u.memos) ? u.memos : [],
     portal: u.portal || null, // 電子手帳アカウント { loginId, issuedAt }
     // 統合（同一人物の名寄せ）関連。archived な方は台帳・集計・出力に出さない
     archived: !!u.archived, mergedInto: u.mergedInto || null, extId: u.extId || '',
@@ -309,6 +312,43 @@ export async function saveKclAnswers(id, year, answers, date) {
   return clean
 }
 
+/* 気づきメモを 1 件追加する（利用者文書の memos 配列に足す）。
+   arrayUnion で足すので、同じ方を 2 台の端末で同時に開いていても取りこぼさない。
+   メモは消さない（訂正は追記で残す）＝台帳の監査性を測定値と揃える。 */
+export async function addUserMemo(id, memo) {
+  const entry = { date: memo.date || '', text: String(memo.text || ''), by: memo.by || '', at: new Date().toISOString() }
+  if (dbEnabled()) {
+    const { fs, db } = await getFs()
+    await fs.setDoc(fs.doc(db, 'users', id), { memos: fs.arrayUnion(entry) }, { merge: true })
+  }
+  const u = D.users.find(x => x.id === id)
+  if (u) { u.memos = [...(u.memos || []), entry] }
+  return entry
+}
+
+/* InBody(体組成)の値を、その年度の測定ドキュメントに保存する。
+   CSV の紐づけ取り込みから呼ぶ（以前は画面の中だけに入れていたため再読み込みで消えていた）。
+   測定値(values)には触らない。ルールが userId/year を要求するので必ず一緒に書く。 */
+export async function saveInbody(id, year, inbody, date) {
+  const u = D.users.find(x => x.id === id)
+  const rep = u && u.meas && u.meas[year]
+  const d = normDate(date) || (rep && rep.date) || null
+  const key = (rep && rep.key) || measKey(id, d, year)
+  const clean = {}
+  for (const k of ['smm', 'smi', 'fatPct', 'score', 'weight']) {
+    clean[k] = (inbody && inbody[k] != null) ? inbody[k] : null
+  }
+  clean.testDate = d
+  if (dbEnabled()) {
+    const { fs, db } = await getFs()
+    await fs.setDoc(fs.doc(db, 'measurements', key), {
+      userId: id, year: Number(year), ...(d ? { date: d } : {}), inbody: clean,
+    }, { merge: true })
+  }
+  if (u) { u.inbody = u.inbody || {}; u.inbody[year] = { ...clean, date: d } }
+  return clean
+}
+
 // Firestore から全利用者・全測定を読み込み、エンジンへ適用する。
 // 戻り値: { loaded: 実データを適用したか, denied: 権限なし(未承認の職員) }
 export async function loadRealData() {
@@ -342,7 +382,11 @@ export async function loadRealData() {
     return { loaded: true }
   } catch (e) {
     if (e && e.code === 'permission-denied') return { loaded: false, denied: true }
+    /* 読み込みに失敗したときに、そのまま画面を出してはいけない。
+       本番の台帳が 1 件も入っていない状態（＝見本用のダミーの名簿）のまま業務画面が開き、
+       「データが消えた」ように見えるうえ、その上から登録・編集ができてしまう。
+       失敗は失敗として画面に出し、やり直せるようにする。 */
     console.error('loadRealData failed:', e)
-    return { loaded: false }
+    return { loaded: false, error: (e && e.message) || String(e) }
   }
 }

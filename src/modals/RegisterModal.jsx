@@ -54,8 +54,17 @@ export default function RegisterModal() {
       careLevel: state.regCare || '',
       joined: D.CUR, isNew: true, theta: 0, meas: {}, inbody: {}, kcl: {},
     }
+    /* 先に台帳（Firestore）へ保存し、成功したときだけ画面の一覧に足す。
+       以前は保存の失敗を伝えるトーストを、直後の「登録しました」が上書きしていたため、
+       保存できていないのに登録できたように見え、再読み込みで消えていた。 */
+    try {
+      await createUserDoc(u)
+    } catch (e) {
+      set({ regError: '保存できませんでした: ' + ((e && e.message) || '') + '　通信を確認してもう一度お試しください' })
+      showToast('保存できませんでした。登録は完了していません')
+      return
+    }
     D.users.push(u)
-    try { await createUserDoc(u) } catch (e) { showToast('保存に失敗しました: ' + (e.message || '')) }
     set(s => ({
       regOpen: false, regName: '', regKana: '', regBirth: '', regPhone: '', regWard: '', regCare: '',
       screen: 'ros', rosMuni: 'all', rosRegion: 'all', rosWard: 'all', rosStatus: 'new', rosSort: 'id', rosPage: 0,
