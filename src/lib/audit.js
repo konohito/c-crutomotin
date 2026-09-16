@@ -135,6 +135,30 @@ export function auditUsers(users) {
   return out
 }
 
+/* 所属者未確定の測定を点検結果の形にそろえる。
+   台帳の取り違えで別の方に付いていたもので、値は 1 項目も捨てずに保持している。
+   持ち主が分かったら、その方の測定として作り直して、こちらをアーカイブする。 */
+export function auditUnassigned(list) {
+  return (list || []).map(m => {
+    const v = m.values || {}
+    const parts = [
+      v.height != null && `身長 ${v.height}cm`,
+      v.weight != null && `体重 ${v.weight}kg`,
+      v.gripR != null && `握力 ${v.gripR}kg`,
+      v.tug != null && `TUG ${v.tug}秒`,
+      v.walk5 != null && `5m ${v.walk5}秒`,
+    ].filter(Boolean).join('・')
+    return {
+      kind: 'unassigned', level: 'warn', userId: null, key: m._id,
+      name: '（持ち主を確認中）', ward: '',
+      date: m.date || `${m.year}年度`,
+      message: `${parts}${m.examiner ? `／測定者 ${m.examiner}` : ''}。`
+        + `${m.detachedFromName ? `もと ${m.detachedFromName} さん（ID ${m.detachedFrom}）に付いていました。` : ''}`
+        + `${m.unassignedReason || ''}`,
+    }
+  })
+}
+
 export const auditSummary = (findings) => ({
   error: findings.filter(x => x.level === 'error').length,
   warn: findings.filter(x => x.level === 'warn').length,
@@ -148,4 +172,5 @@ export const KIND_LABEL = {
   weightJump: '体重が前回から大きく変わっている',
   inbodyWeight: '記録用紙と InBody の体重が合わない',
   sameValues: '同じ日に測定値が完全に一致している',
+  unassigned: '所属者未確定の測定（持ち主の確認が必要）',
 }

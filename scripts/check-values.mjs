@@ -19,7 +19,7 @@ import { StoreProvider } from '../src/store.jsx'
 import { AuditPanel } from '../src/screens/Roster.jsx'
 import { toEngineUser } from '../src/lib/realdata.js'
 import { checkValues } from '../src/lib/validate.js'
-import { auditUsers, auditSummary, KIND_LABEL } from '../src/lib/audit.js'
+import { auditUsers, auditUnassigned, auditSummary, KIND_LABEL } from '../src/lib/audit.js'
 
 let ng = 0
 const fail = (msg) => { ng++; console.log('  NG  ' + msg) }
@@ -91,6 +91,20 @@ console.log('=== 取り違えの手がかりを拾えるか ===')
   const ibw2 = auditUsers([mk('90005', 'お', { ...V, weight: 50 }, '2025/09/19', 2025, 51)])
   if (!ibw2.some(x => x.kind === 'inbodyWeight')) pass('1kg の差 … 誤って拾いませんでした')
   else fail('1kg の差 … 誤って拾っています')
+}
+
+// ---- 3b) 所属者未確定の測定が点検結果に出ること --------------------------------
+{
+  const un = auditUnassigned([{
+    _id: 'unassigned_20250916_1', date: '2025/09/16', year: 2025, examiner: '村崎',
+    values: { height: 151, weight: 52, gripR: 25.5, tug: 7, walk5: 3 },
+    unassigned: true, detachedFrom: '24104', detachedFromName: '桝田幸穂',
+    unassignedReason: '台帳の取り違えにより桝田様に付いていた測定。持ち主を確認中',
+  }])
+  if (un.length === 1 && un[0].kind === 'unassigned' && un[0].userId === null
+    && un[0].message.includes('151') && un[0].message.includes('桝田幸穂')) {
+    pass('所属者未確定の測定 … 点検結果に出ました（' + un[0].message.slice(0, 40) + '…）')
+  } else fail('所属者未確定の測定 … 点検結果に出ませんでした')
 }
 
 // ---- 4) 台帳の走査 -------------------------------------------------------------

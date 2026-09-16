@@ -8,6 +8,11 @@ import { assertSavable } from './validate.js'
 
 export const realDataEnabled = () => dbEnabled()
 
+/* 所属者未確定の測定（unassigned: true）。読み込みのたびに入れ替える。
+   利用者に紐づいていないので台帳・集計・提出物には一切出ない。点検パネルの表示用。 */
+const _unassigned = []
+export const unassignedMeasurements = () => _unassigned.slice()
+
 // 測定値（欠測を左右で補完）→ 5領域スコアと総合スコアを算出
 function scoreOf(sex, v) {
   const vv = {
@@ -361,7 +366,15 @@ export async function loadRealData() {
     const msnap = await fs.getDocs(fs.collection(db, 'measurements'))
     const byUser = {}
     // ドキュメント ID（＝測定日キー）も渡す。同じ年度に複数回ある測定を区別するのに使う
-    msnap.forEach(d => { const m = d.data(); (byUser[m.userId] ||= []).push({ ...m, _id: d.id }) })
+    _unassigned.length = 0
+    msnap.forEach(d => {
+      const m = d.data()
+      /* 持ち主が分からない測定（台帳の取り違えで別の方に付いていたもの）。
+         利用者に紐づけずに保持し、点検パネルに出して担当者に確認してもらう。
+         勝手に利用者を作らない・値は 1 項目も捨てない、という方針のための置き場。 */
+      if (m.unassigned) { _unassigned.push({ ...m, _id: d.id }); return }
+      ;(byUser[m.userId] ||= []).push({ ...m, _id: d.id })
+    })
     // 統合でアーカイブした方は台帳から外す（削除はしていないので、統合画面から元に戻せる）
     const list = usnap.docs.map(d => toEngineUser({ id: d.id, ...d.data() }, byUser[d.id] || []))
       .filter(u => u.name && !u.archived)

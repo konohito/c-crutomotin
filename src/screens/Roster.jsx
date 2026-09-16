@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { wardLabel } from '../lib/db.js'
-import { auditUsers, auditSummary, KIND_LABEL } from '../lib/audit.js'
+import { auditUsers, auditUnassigned, auditSummary, KIND_LABEL } from '../lib/audit.js'
+import { unassignedMeasurements } from '../lib/realdata.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -16,7 +17,10 @@ export function AuditPanel({ defaultOpen = false }) {
   const { set } = useStore()
   const [open, setOpen] = useState(defaultOpen)
   // 台帳が大きいので、開いたときだけ点検する（毎回の描画で走らせない）
-  const findings = useMemo(() => (open ? auditUsers(D.users) : []), [open])
+  const findings = useMemo(
+    () => (open ? auditUnassigned(unassignedMeasurements()).concat(auditUsers(D.users)) : []),
+    [open],
+  )
   const sum = auditSummary(findings)
   const groups = useMemo(() => {
     const g = {}
@@ -42,10 +46,15 @@ export function AuditPanel({ defaultOpen = false }) {
               <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{KIND_LABEL[kind] || kind}（{list.length} 件）</div>
               {list.map((f, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, fontSize: 12, lineHeight: 1.7, color: f.level === 'error' ? 'var(--danger-700)' : 'var(--fg-2)' }}>
-                  <span role="button" tabIndex={0} onClick={() => set({ screen: 'det', detId: f.userId })}
-                    style={{ color: 'var(--brand-600)', fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-                    {f.name}（ID {f.userId}）
-                  </span>
+                  {f.userId
+                    ? (
+                      <span role="button" tabIndex={0} onClick={() => set({ screen: 'det', detId: f.userId })}
+                        style={{ color: 'var(--brand-600)', fontWeight: 600, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                        {f.name}（ID {f.userId}）
+                      </span>
+                    )
+                    // 所属者未確定の測定は開く先の個人ページが無い
+                    : <span style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{f.name}</span>}
                   <span style={{ color: 'var(--fg-3)', whiteSpace: 'nowrap' }}>{f.date}</span>
                   <span>{f.message}</span>
                 </div>
