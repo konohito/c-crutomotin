@@ -172,8 +172,10 @@ export function EditMeasModal() {
         <Field label="評価日" hint="例: 2025/09/02">
           <input className="field t-num" value={f.date} onChange={upd('date')} placeholder="YYYY/MM/DD" autoFocus={isNew} />
         </Field>
-        {/* 年度は評価日から自動で決まる（4 月はじまり）。選べるようにすると食い違いが起きるため表示だけにする */}
-        <Field label="年度（評価日から自動）">
+        {/* 年度は評価日から自動で決まる（4 月はじまり）。選べるようにすると食い違いが起きるため表示だけにする。
+            「2026年2月なのに令和7年度」は正しいが現場には分かりにくいので、年度の期間も一緒に出す。 */}
+        <Field label="年度（評価日から自動）"
+          hint={newY ? `${eraOf(newY)}年度＝${newY}年4月〜${newY + 1}年3月。年度を変えたいときは評価日を直してください` : undefined}>
           <div className="field" style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-subtle)', color: newY ? 'var(--fg-1)' : 'var(--fg-4)' }}>
             {newY ? `${eraOf(newY)}年度` : '評価日を入れてください'}
           </div>
