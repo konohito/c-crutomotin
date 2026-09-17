@@ -179,6 +179,32 @@ try {
   fail('「測定を追加」の画面の描画に失敗しました → ' + e.message)
 }
 
+// ---- 7) 評価日を変えたときの選択肢が出ること -------------------------------------
+console.log('')
+console.log('=== 評価日を変えたときの選択肢 ===')
+try {
+  const before = D.users
+  const uu = {
+    id: '99003', name: '検査 次郎', kana: 'けんさ じろう', sex: 'M', sexLabel: '男', age: 80,
+    muniName: '熊本市東区', region: '熊本市圏域', venueName: '検査会場', venueCode: 900, phone: '', careLevel: '',
+    joined: 2026, archived: false, walkIn: false, flags: [], memos: [], inbody: {}, kcl: {},
+    series: [{ key: '99003_20260917', date: '2026/09/17', year: 2026, values: { height: 150, weight: 50 }, total: 70, axes: null }],
+    meas: {},
+  }
+  uu.meas[2026] = uu.series[0]
+  setUsers([uu])
+  const html = renderToStaticMarkup(h(StoreProvider,
+    { initial: { editMeas: { id: '99003', year: 2026, key: '99003_20260917' } } }, h(EditMeasModal, null)))
+  setUsers(before)
+  // 日付を変えていない状態では選択肢は出ない（いつもの編集を邪魔しない）
+  if (!html.includes('どちらですか')) pass('日付を変えていないときは、選択肢は出ません')
+  else fail('★日付を変えていないのに選択肢が出ています')
+  if (html.includes('年度（評価日から自動）')) pass('編集画面でも年度は自動表示です')
+  else fail('編集画面に年度の自動表示がありません')
+} catch (e) {
+  fail('編集画面の描画に失敗しました → ' + e.message)
+}
+
 console.log('')
 if (ng) { console.log(`失敗 ${ng} 件`); process.exit(1) }
 console.log('測定値の点検は期待どおりに動いています')

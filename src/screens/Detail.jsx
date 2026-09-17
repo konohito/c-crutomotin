@@ -250,8 +250,10 @@ export default function Detail() {
                     これが無いと、現場は今ある測定を開いて評価日を書き換えるしかなく、
                     その測定そのものが引っ越して今日の記録が消えてしまう（2026/09/17 の事故）。 */}
                 {canEdit && (
-                  <button className="btn btn-ghost btn-sm" style={{ height: 22, padding: '0 6px', fontSize: 11.5 }}
-                    onClick={() => set({ editMeas: { id: u.id, isNew: true } })}>測定を追加</button>
+                  <button className="btn btn-outline btn-sm" style={{ height: 26, padding: '0 10px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    onClick={() => set({ editMeas: { id: u.id, isNew: true } })}>
+                    <Icon name="plus" size={13} />昨年などの測定を追加
+                  </button>
                 )}
                 <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{canEdit ? '測定した年をクリックで編集' : '年 1 回測定'}</div>
               </div>

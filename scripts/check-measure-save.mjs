@@ -91,5 +91,32 @@ console.log('=== 評価日を変えると年度も一緒に動くか（食い違
 }
 
 console.log('')
+console.log('=== 編集画面で評価日を変えたとき、既定の「追加」で本日が残るか ===')
+{
+  const u = freshUser()
+  // 画面の既定（mode='add'）と同じ呼び出し: key を渡さず create:true
+  const y = D.fiscalYearOfDate('2025/02/27')
+  await saveMeasurement(u.id, y, V({ height: 148 }), '2025/02/27', undefined, { create: true })
+  const today = u.series.find(r => r.date === '2026/09/17')
+  const added = u.series.find(r => r.date === '2025/02/27')
+  if (u.series.length === 2) ok('測定が 2 件になりました（追加された）')
+  else fail(`★件数が ${u.series.length} 件（2 件になるはず）`)
+  if (today && today.values.height === 150) ok('本日の測定が残っています')
+  else fail('★本日の測定が消えました')
+  if (added && added.values.height === 148) ok('変えた日付の測定が別の記録として入りました')
+  else fail('★追加されていません')
+}
+
+console.log('')
+console.log('=== 「この測定の日付を直す」を選んだときは移動になるか ===')
+{
+  const u = freshUser()
+  const y = D.fiscalYearOfDate('2025/02/27')
+  await saveMeasurement(u.id, y, V(), '2025/02/27', '99001_20260917', { create: false })
+  if (u.series.length === 1 && u.series[0].date === '2025/02/27') ok('選んだときだけ移動になります（1 件のまま）')
+  else fail('★移動になっていません')
+}
+
+console.log('')
 if (ng) { console.log(`失敗 ${ng} 件`); process.exit(1) }
 console.log('測定の保存は期待どおりに動いています')

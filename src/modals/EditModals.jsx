@@ -115,6 +115,8 @@ export function EditMeasModal() {
   })
   const [busy, setBusy] = useState(false)
   const [force, setForce] = useState(false)
+  // 評価日を変えたときの扱い。'add'=別の日の測定として足す（既定） / 'move'=この測定の日付を直す
+  const [mode, setMode] = useState('add')
   if (!u) return null
   const upd = (k) => (e) => setF(s => ({ ...s, [k]: e.target.value }))
   const close = () => set({ editMeas: null })
@@ -133,28 +135,31 @@ export function EditMeasModal() {
      本日の測定が昨年へ引っ越して消える事故が起きた。入口を 1 つにして構造的に防ぐ。 */
   const dateNorm = normDate(f.date)
   const newY = dateNorm ? D.fiscalYearOfDate(dateNorm) : (isNew ? null : em.year)
-  // 追加のときは、同じ評価日の測定が既にないかを見る（上書き事故を防ぐ）
-  const dupe = isNew && dateNorm ? (u.series || []).find(r => r.date === dateNorm) : null
-  // 既存の測定で評価日を変えると、その測定そのものが移動する（新しい記録が増えるわけではない）
+  // 既存の測定で評価日を変えたとき。そのままだと「その測定自体の引っ越し」になる
   const orig = isNew ? null : ((em.key && (u.series || []).find(r => r.key === em.key)) || u.meas[em.year] || null)
-  const moving = !isNew && orig && orig.date && dateNorm && orig.date !== dateNorm
+  const dateChanged = !isNew && orig && orig.date && dateNorm && orig.date !== dateNorm
+  /* 日付を変えたときは「別の日の測定として足す」を既定にする。
+     現場が本当にやりたいのは「昨年の分も入れたい」であって、本日の記録を消すことではない。
+     警告を読まなくても正しい方に進むよう、既定を安全側（追加）にしてある。 */
+  const asNew = isNew || (dateChanged && mode === 'add')
+  // 追加になるときは、同じ評価日の測定が既にないかを見る（上書き事故を防ぐ）
+  const dupe = asNew && dateNorm ? (u.series || []).find(r => r.date === dateNorm && r.key !== (em && em.key)) : null
   const canSave = !!dateNorm && !dupe && (!hasError || force)
 
   const save = async () => {
     if (!dateNorm) { showToast('評価日を入れてください（例: 2025/09/02）'); return }
     if (dupe) { showToast(`${dateNorm} の測定はすでにあります。別の日付にしてください`); return }
-    if (moving) {
+    if (dateChanged && mode === 'move') {
       const ok = window.confirm(
         `この測定を ${orig.date} から ${dateNorm} へ移します。\n`
-        + `${orig.date} の記録は残りません（新しく増えるのではなく、移動します）。\n\n`
-        + `昨年などの測定を「足したい」場合は、キャンセルして\n個人ページの参加履歴にある「測定を追加」からご登録ください。\n\n`
+        + `${orig.date} の記録は残りません。\n\n`
         + `移動してよろしいですか？`)
       if (!ok) return
     }
     setBusy(true)
     try {
-      await saveMeasurement(u.id, newY, valuesOf(), dateNorm, isNew ? undefined : em.key, { force, create: isNew })
-      showToast(isNew ? `${eraOf(newY)}年度（${dateNorm}）の測定を追加しました` : `${eraOf(newY)}年度の測定値を保存しました`)
+      await saveMeasurement(u.id, newY, valuesOf(), dateNorm, asNew ? undefined : em.key, { force, create: asNew })
+      showToast(asNew ? `${dateNorm} の測定を追加しました（${eraOf(newY)}年度）` : `${eraOf(newY)}年度の測定値を保存しました`)
       set({ editMeas: null, rev: state.rev + 1 })
     } catch (e) { showToast('保存に失敗しました: ' + (e.message || '')); setBusy(false) }
   }
@@ -203,20 +208,30 @@ export function EditMeasModal() {
           {dateNorm} の測定はすでに登録されています。別の日付にしてください（同じ日に 2 件は作れません）。
         </div>
       )}
-      {moving && (
-        <div style={{ margin: '0 20px 4px', borderRadius: 8, padding: '10px 12px', fontSize: 12, lineHeight: 1.6,
-          border: '1px solid var(--warning-200, #f0dcae)', background: 'var(--warning-50)' }}>
-          <b>この測定そのものが {orig.date} から {dateNorm} へ移ります。</b>{orig.date} の記録は残りません。<br />
-          測定を「足したい」ときは、キャンセルして参加履歴の「測定を追加」からご登録ください。
+      {/* 日付を変えたら、何をしたいのかをその場で選んでもらう。
+          警告文を読まずに進めても「追加」（＝今ある記録が消えない側）になるようにしてある。 */}
+      {dateChanged && (
+        <div style={{ margin: '0 20px 4px', borderRadius: 8, padding: '10px 12px', lineHeight: 1.6,
+          border: '1px solid var(--brand-200, #cfe0f5)', background: 'var(--brand-50)' }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 6 }}>評価日を {orig.date} から {dateNorm} に変えました。どちらですか？</div>
+          {[
+            ['add', `${dateNorm} の測定として追加する`, `${orig.date} の測定はそのまま残ります（いつもはこちら）`],
+            ['move', 'この測定の日付を直す', `${orig.date} の記録は残りません（日付の打ち間違いを直すとき）`],
+          ].map(([v, l, d]) => (
+            <label key={v} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 0', cursor: 'pointer' }}>
+              <input type="radio" name="datemode" checked={mode === v} onChange={() => setMode(v)} style={{ marginTop: 3 }} />
+              <span style={{ fontSize: 12.5 }}><b>{l}</b><br /><span style={{ color: 'var(--fg-3)', fontSize: 11.5 }}>{d}</span></span>
+            </label>
+          ))}
         </div>
       )}
       <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '0 20px', lineHeight: 1.6 }}>
         年度は評価日から自動で決まります（4 月はじまり）。BMI は身長・体重から自動計算されます。空欄は「未測定」として保存します。
-        {isNew && ' 追加した測定は、いまある測定とは別の記録として残ります。'}
+        {asNew && ' 追加した測定は、いまある測定とは別の記録として残ります。'}
       </div>
       <div className="modal-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '16px 20px 20px' }}>
         <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
-        <button className="btn btn-primary" onClick={save} disabled={busy || !canSave}>{busy ? '保存中…' : (isNew ? '追加' : '保存')}</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy || !canSave}>{busy ? '保存中…' : (asNew ? '追加' : '保存')}</button>
       </div>
     </Modal>
   )
