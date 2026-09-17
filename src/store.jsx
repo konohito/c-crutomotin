@@ -76,8 +76,9 @@ const VENUE_EVENTS = (() => {
   return evs
 })()
 
-export function StoreProvider({ children }) {
-  const [state, setState] = useState(initialState)
+// initial は検査用（npm run check）に初期状態を差し込むためだけのもの。本番では渡さない
+export function StoreProvider({ children, initial }) {
+  const [state, setState] = useState(initial ? { ...initialState, ...initial } : initialState)
   const timers = useRef({})
 
   const set = useCallback((patch) => {

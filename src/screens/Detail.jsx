@@ -245,7 +245,16 @@ export default function Detail() {
           <Card pad>
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
               <div className="t-h4">参加履歴</div>
-              <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{canEdit ? '測定した年をクリックで編集' : '年 1 回測定'}</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                {/* 昨年など過去の測定を「足す」ための入口。
+                    これが無いと、現場は今ある測定を開いて評価日を書き換えるしかなく、
+                    その測定そのものが引っ越して今日の記録が消えてしまう（2026/09/17 の事故）。 */}
+                {canEdit && (
+                  <button className="btn btn-ghost btn-sm" style={{ height: 22, padding: '0 6px', fontSize: 11.5 }}
+                    onClick={() => set({ editMeas: { id: u.id, isNew: true } })}>測定を追加</button>
+                )}
+                <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>{canEdit ? '測定した年をクリックで編集' : '年 1 回測定'}</div>
+              </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', marginTop: 8 }}>
               {hist.map(h => {

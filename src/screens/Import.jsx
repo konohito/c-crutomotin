@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import D from '../data/engine.js'
 import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, needsReview, openSheetVals, CONF_THRESHOLD } from '../store.jsx'
-import { fmtD } from '../lib/helpers.js'
+import { fmtD, batchDate } from '../lib/helpers.js'
 import { ocrEnabled, recognizeSheet, matchUser } from '../lib/ocr.js'
 import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKclRecognition, rejectRecognition, sheetImageUrl, deleteSheetImage, markBatchDone, sweepFinishedBatches, batchAllDone } from '../lib/db.js'
 import { saveMeasurement } from '../lib/realdata.js'
@@ -22,13 +22,6 @@ function recIssues(rec) {
   return checkValues(v)
 }
 
-// バッチID(例: 20260724-ab12x)から測定日を推定する。読めなければ今日。
-function batchDate(batchId) {
-  const m = String(batchId || '').match(/^(\d{4})(\d{2})(\d{2})/)
-  if (m) return `${m[1]}/${m[2]}/${m[3]}`
-  const d = new Date()
-  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
-}
 
 // 実バックエンド(Document AI)で 1 枚読み取るライブ確認パネル。
 // VITE_OCR_ENDPOINT が設定されている時だけ表示される(デモ環境では非表示)。

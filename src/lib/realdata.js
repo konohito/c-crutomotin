@@ -209,8 +209,11 @@ export async function saveMeasurement(id, year, values, date, key, opts = {}) {
   const s = scoreOf(u ? u.sex : 'F', values)
   // 評価日は 0 詰めに正規化して保存する（書式のゆれで同じ日が分かれるのを防ぐ）
   let d = date === undefined ? undefined : (normDate(date) || null)
-  const target = (u && u.series || []).find(r => key ? r.key === key : false)
-    || (key ? null : (u && u.meas[year]) || null)
+  /* opts.create=true は「過去の測定を新しく足す」とき。既存の測定を掴まないようにする。
+     これが無いと、年度だけ指定して保存したときに その年度の既存の測定を上書きしてしまう。 */
+  const target = opts.create ? null
+    : ((u && u.series || []).find(r => key ? r.key === key : false)
+      || (key ? null : (u && u.meas[year]) || null))
   const oldKey = target ? target.key : null
   /* 新規の測定で評価日が渡されなかった場合は「今日」を入れる。
      日付が無いと年度キーのままになり、同じ年度に 2 回測ったときに
@@ -230,8 +233,15 @@ export async function saveMeasurement(id, year, values, date, key, opts = {}) {
     u.series = u.series || []
     if (!target) u.series.push(rec)
     u.series.sort((a, b) => (sortKeyOf(a) < sortKeyOf(b) ? -1 : sortKeyOf(a) > sortKeyOf(b) ? 1 : 0))
-    // 年度の代表（その年度の最新）を取り直す
-    u.meas[year] = u.series.filter(r => r.year === Number(year)).slice(-1)[0] || rec
+    /* 年度の代表（その年度の最新）を全年度ぶん取り直す。
+       評価日を変えると年度も変わるため、元の年度の代表が古い記録を指したままにならないようにする。 */
+    u.meas = {}
+    for (const r of u.series) {
+      const cur = u.meas[r.year]
+      if (!cur || sortKeyOf(r) >= sortKeyOf(cur)) u.meas[r.year] = r
+    }
+    const ys = Object.keys(u.meas).map(Number)
+    if (ys.length) u.joined = Math.min(...ys)
     // 評価日は測定ドキュメント共通のため、同年の問診カードの表示日も揃える
     if (d !== undefined && u.kcl && u.kcl[year]) u.kcl[year].date = d
   }
@@ -258,34 +268,12 @@ export async function saveMeasurement(id, year, values, date, key, opts = {}) {
   return s
 }
 
-// 評価年の修正: 記録(測定値・問診回答・InBody・評価日)を別の年度へ移す。
-// Firestore は削除不可(監査性)のため、元の年度のドキュメントには voided フラグを立てて
-// 読み込み時に飛ばす。移動先に既にデータがある場合はエラー(上書き事故防止)。
-// 測定ドキュメントは評価日をキーにしているため、評価年の変更は year 項目の付け替えで足りる
-// (ドキュメントを引っ越す必要がない＝移動先に既にデータがあっても衝突しない)。
-// key を渡すとその測定だけを移す。省略時はその年度の代表(最新)を移す。
-export async function moveMeasurementYear(id, fromY, toY, key) {
-  const u = D.users.find(x => x.id === id)
-  const rec = u ? ((u.series || []).find(r => key ? r.key === key : false) || u.meas[fromY] || null) : null
-  const docKey = (rec && rec.key) || key || `${id}_${fromY}`
-  if (dbEnabled()) {
-    const { fs, db } = await getFs()
-    await fs.setDoc(fs.doc(db, 'measurements', docKey), { userId: id, year: Number(toY) }, { merge: true })
-  }
-  if (u) {
-    if (rec) rec.year = Number(toY)
-    if (u.kcl && u.kcl[fromY] && !u.kcl[toY]) { u.kcl[toY] = u.kcl[fromY]; delete u.kcl[fromY] }
-    if (u.inbody && u.inbody[fromY] && !u.inbody[toY]) { u.inbody[toY] = u.inbody[fromY]; delete u.inbody[fromY] }
-    // 年度の代表を取り直す
-    u.meas = {}
-    for (const r of (u.series || [])) {
-      const cur = u.meas[r.year]
-      if (!cur || sortKeyOf(r) >= sortKeyOf(cur)) u.meas[r.year] = r
-    }
-    const ys = Object.keys(u.meas).map(Number)
-    if (ys.length) u.joined = Math.min(...ys)
-  }
-}
+/* 評価年の付け替え(moveMeasurementYear)は廃止した。
+   year 項目だけを書き換える作りだったため、ドキュメントのキー({利用者ID}_{測定日})と
+   評価日はそのままで年度だけがずれ、「評価日は本日・年度は昨年」という食い違った記録ができた。
+   その状態で評価日を直すとドキュメントごと引っ越し、本日の測定が消える事故が起きた(2026/09/17)。
+   いまは年度を評価日から自動で決めるため(fiscalYearOfDate)、この関数は不要。
+   過去の測定を足したいときは saveMeasurement(..., { create: true }) で新しい測定を作る。 */
 
 // 年度の基本チェックリスト回答を保存（はい/いいえのみ残し、丸ごと置き換える）
 // 誤読の訂正で「未回答」に戻した設問がきちんと消えるように、

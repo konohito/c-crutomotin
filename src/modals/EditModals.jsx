@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import { saveUserFields, saveMeasurement, saveKclAnswers, moveMeasurementYear } from '../lib/realdata.js'
+import { saveUserFields, saveMeasurement, saveKclAnswers, normDate } from '../lib/realdata.js'
 import { checkValues } from '../lib/validate.js'
 import { eraOf } from '../lib/helpers.js'
 import { Modal, ModalHead, Select } from '../ui/kit.jsx'
@@ -104,11 +104,13 @@ export function EditMeasModal() {
   const { state, set, showToast } = useStore()
   const em = state.editMeas
   const u = em && D.users.find(x => x.id === em.id)
+  // isNew = 過去の測定を新しく足すとき。既存の測定は一切さわらない
+  const isNew = !!(em && em.isNew)
   const [f, setF] = useState(() => {
     // 同じ年度に複数回ある場合は key でその 1 回を指す（無ければ年度の代表＝最新）
-    const m = (u && ((em.key && (u.series || []).find(r => r.key === em.key)) || u.meas[em.year])) || {}
+    const m = isNew ? {} : ((u && ((em.key && (u.series || []).find(r => r.key === em.key)) || u.meas[em.year])) || {})
     const v = m.values || {}
-    const o = { year: String(em.year), date: m.date || '' }
+    const o = { date: m.date || '' }
     MEAS_FIELDS.forEach(([k]) => { o[k] = (v[k] == null ? '' : String(v[k])) }); return o
   })
   const [busy, setBusy] = useState(false)
@@ -125,26 +127,52 @@ export function EditMeasModal() {
   }
   const issues = checkValues(valuesOf())
   const hasError = issues.some(x => x.level === 'error')
+
+  /* 年度は評価日から自動で決まる（4月はじまり）。
+     以前は年度を別に選べたため、「評価日は今日・年度は昨年」という食い違った記録が作れてしまい、
+     本日の測定が昨年へ引っ越して消える事故が起きた。入口を 1 つにして構造的に防ぐ。 */
+  const dateNorm = normDate(f.date)
+  const newY = dateNorm ? D.fiscalYearOfDate(dateNorm) : (isNew ? null : em.year)
+  // 追加のときは、同じ評価日の測定が既にないかを見る（上書き事故を防ぐ）
+  const dupe = isNew && dateNorm ? (u.series || []).find(r => r.date === dateNorm) : null
+  // 既存の測定で評価日を変えると、その測定そのものが移動する（新しい記録が増えるわけではない）
+  const orig = isNew ? null : ((em.key && (u.series || []).find(r => r.key === em.key)) || u.meas[em.year] || null)
+  const moving = !isNew && orig && orig.date && dateNorm && orig.date !== dateNorm
+  const canSave = !!dateNorm && !dupe && (!hasError || force)
+
   const save = async () => {
+    if (!dateNorm) { showToast('評価日を入れてください（例: 2025/09/02）'); return }
+    if (dupe) { showToast(`${dateNorm} の測定はすでにあります。別の日付にしてください`); return }
+    if (moving) {
+      const ok = window.confirm(
+        `この測定を ${orig.date} から ${dateNorm} へ移します。\n`
+        + `${orig.date} の記録は残りません（新しく増えるのではなく、移動します）。\n\n`
+        + `昨年などの測定を「足したい」場合は、キャンセルして\n個人ページの参加履歴にある「測定を追加」からご登録ください。\n\n`
+        + `移動してよろしいですか？`)
+      if (!ok) return
+    }
     setBusy(true)
     try {
-      const values = valuesOf()
-      // 評価年を変えた場合は記録一式(測定値・問診回答・InBody・評価日)を移してから保存する
-      const newY = parseInt(f.year, 10) || em.year
-      if (newY !== em.year) await moveMeasurementYear(u.id, em.year, newY, em.key)
-      await saveMeasurement(u.id, newY, values, f.date, em.key, { force })
-      showToast(`${eraOf(newY)}年度の測定値を保存しました`)
+      await saveMeasurement(u.id, newY, valuesOf(), dateNorm, isNew ? undefined : em.key, { force, create: isNew })
+      showToast(isNew ? `${eraOf(newY)}年度（${dateNorm}）の測定を追加しました` : `${eraOf(newY)}年度の測定値を保存しました`)
       set({ editMeas: null, rev: state.rev + 1 })
     } catch (e) { showToast('保存に失敗しました: ' + (e.message || '')); setBusy(false) }
   }
   return (
     <Modal onClose={close} width={440}>
-      <ModalHead icon="sheet" iconBg="var(--brand-50)" iconFg="var(--brand-600)" title={`測定値を編集（${eraOf(em.year)}年度）`} sub={`${u.name} · ID ${u.id}`} onClose={close} />
+      <ModalHead icon="sheet" iconBg="var(--brand-50)" iconFg="var(--brand-600)"
+        title={isNew ? '測定を追加' : `測定値を編集（${eraOf(em.year)}年度）`}
+        sub={`${u.name} · ID ${u.id}`} onClose={close} />
       <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, padding: 20 }}>
-        <Field label="評価年（年度）" hint="変えると記録一式が移ります">
-          <Select value={f.year} onChange={upd('year')} options={D.YEARS.map(y => ({ v: String(y), l: eraOf(y) + '年度' }))} style={{ width: '100%' }} />
+        <Field label="評価日" hint="例: 2025/09/02">
+          <input className="field t-num" value={f.date} onChange={upd('date')} placeholder="YYYY/MM/DD" autoFocus={isNew} />
         </Field>
-        <Field label="評価日" hint="例: 2025/09/02"><input className="field t-num" value={f.date} onChange={upd('date')} placeholder="YYYY/MM/DD" /></Field>
+        {/* 年度は評価日から自動で決まる（4 月はじまり）。選べるようにすると食い違いが起きるため表示だけにする */}
+        <Field label="年度（評価日から自動）">
+          <div className="field" style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-subtle)', color: newY ? 'var(--fg-1)' : 'var(--fg-4)' }}>
+            {newY ? `${eraOf(newY)}年度` : '評価日を入れてください'}
+          </div>
+        </Field>
         {MEAS_FIELDS.map(([k, label, unit]) => (
           <Field key={k} label={`${label}（${unit}）`}>
             <input className="field t-num" inputMode="decimal" value={f[k]} onChange={upd(k)} placeholder="—" />
@@ -169,10 +197,26 @@ export function EditMeasModal() {
           )}
         </div>
       )}
-      <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '0 20px', lineHeight: 1.6 }}>BMI は身長・体重から自動計算されます。空欄は「未測定」として保存します。評価年を変えた場合、この年度の問診回答・体組成計の記録・評価日もまとめて移動します（移動先に既にデータがある年度へは移せません）。</div>
+      {dupe && (
+        <div style={{ margin: '0 20px 4px', borderRadius: 8, padding: '10px 12px', fontSize: 12, lineHeight: 1.6,
+          border: '1px solid var(--danger-200, #f3c2c2)', background: 'var(--danger-50, #fdf2f2)', color: 'var(--danger-700, #9b2c2c)' }}>
+          {dateNorm} の測定はすでに登録されています。別の日付にしてください（同じ日に 2 件は作れません）。
+        </div>
+      )}
+      {moving && (
+        <div style={{ margin: '0 20px 4px', borderRadius: 8, padding: '10px 12px', fontSize: 12, lineHeight: 1.6,
+          border: '1px solid var(--warning-200, #f0dcae)', background: 'var(--warning-50)' }}>
+          <b>この測定そのものが {orig.date} から {dateNorm} へ移ります。</b>{orig.date} の記録は残りません。<br />
+          測定を「足したい」ときは、キャンセルして参加履歴の「測定を追加」からご登録ください。
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: 'var(--fg-3)', padding: '0 20px', lineHeight: 1.6 }}>
+        年度は評価日から自動で決まります（4 月はじまり）。BMI は身長・体重から自動計算されます。空欄は「未測定」として保存します。
+        {isNew && ' 追加した測定は、いまある測定とは別の記録として残ります。'}
+      </div>
       <div className="modal-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '16px 20px 20px' }}>
         <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
-        <button className="btn btn-primary" onClick={save} disabled={busy || (hasError && !force)}>{busy ? '保存中…' : '保存'}</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy || !canSave}>{busy ? '保存中…' : (isNew ? '追加' : '保存')}</button>
       </div>
     </Modal>
   )

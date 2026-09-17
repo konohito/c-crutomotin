@@ -3,7 +3,7 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { dbEnabled, wardLabel, watchWalkins, updateWalkin, deleteWalkin, clearWalkInFlag, commitRecognition, commitKclRecognition, deleteSheetImage, sheetImageUrl } from '../lib/db.js'
 import { createUserDoc, saveMeasurement } from '../lib/realdata.js'
-import { wardIdCode, muniOfWard } from '../lib/helpers.js'
+import { wardIdCode, muniOfWard, batchDate } from '../lib/helpers.js'
 import { findExisting } from '../lib/merge.js'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -153,13 +153,13 @@ export default function WalkIn() {
         if (dbEnabled()) await commitKclRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, answers: ans, year: D.CUR })
         const clean = {}
         Object.entries(ans).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
-        u.kcl[D.CUR] = { raw: { ...((u.kcl[D.CUR] || {}).raw || {}), ...clean }, date: (u.kcl[D.CUR] || {}).date || null }
+        u.kcl[D.CUR] = { raw: { ...((u.kcl[D.CUR] || {}).raw || {}), ...clean }, date: (u.kcl[D.CUR] || {}).date || batchDate(e.batchId) }
       } else {
         const finalValues = finalValuesOf()
-        if (dbEnabled()) await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: D.CUR } })
+        if (dbEnabled()) await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: D.fiscalYearOfDate(batchDate(e.batchId)) ?? D.CUR, date: batchDate(e.batchId) } })
         const nums = {}
         D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
-        await saveMeasurement(u.id, D.CUR, nums, undefined, undefined, { force })
+        await saveMeasurement(u.id, D.fiscalYearOfDate(batchDate(e.batchId)) ?? D.CUR, nums, batchDate(e.batchId), undefined, { force })
       }
       // 台帳登録済みの利用者に紐づけた場合は、このエントリの正式登録も済んだ扱いにする
       const st = u.walkIn ? 'committed' : 'registered'
@@ -214,7 +214,7 @@ export default function WalkIn() {
         if (dbEnabled()) await commitKclRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, answers: ans, year: D.CUR })
         const clean = {}
         Object.entries(ans).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
-        u.kcl[D.CUR] = { raw: clean, date: null }
+        u.kcl[D.CUR] = { raw: clean, date: batchDate(e.batchId) }
         await updateWalkin(e.id, { walkinStatus: 'committed', userId: u.id, userName: u.name })
         deleteSheetImage(e.storagePath).catch(() => {})
         if (!dbEnabled()) setEntries(prev => prev.map(x => x.id === e.id ? { ...x, walkinStatus: 'committed', userId: u.id, userName: u.name } : x))
@@ -226,11 +226,11 @@ export default function WalkIn() {
       }
       const finalValues = finalValuesOf()
       if (dbEnabled()) {
-        await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: D.CUR } })
+        await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: D.fiscalYearOfDate(batchDate(e.batchId)) ?? D.CUR, date: batchDate(e.batchId) } })
       }
       const nums = {}
       D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
-      await saveMeasurement(u.id, D.CUR, nums, undefined, undefined, { force })
+      await saveMeasurement(u.id, D.fiscalYearOfDate(batchDate(e.batchId)) ?? D.CUR, nums, batchDate(e.batchId), undefined, { force })
       await updateWalkin(e.id, { walkinStatus: 'committed', userId: u.id, userName: u.name })
       deleteSheetImage(e.storagePath).catch(() => {})
       if (!dbEnabled()) setEntries(prev => prev.map(x => x.id === e.id ? { ...x, walkinStatus: 'committed', userId: u.id, userName: u.name } : x))

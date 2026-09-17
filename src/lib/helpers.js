@@ -5,6 +5,16 @@ export const eraOf = (y) => D.ERA[y] || D.eraLabel(y)
 
 export const fmtD = (v, dec) => D.fmt(v, dec)
 
+/* バッチID(例: 20260915-ab12x)から「用紙を撮影した日」を取り出す。読めなければ今日。
+   評価日はこの撮影日を使う。取り込んだ日を使うと、後日まとめて取り込んだときに
+   実際の測定日とずれる（2026/09/15 に測った 6 名が 9/17 で記録されていた）。 */
+export function batchDate(batchId) {
+  const m = String(batchId || '').match(/^(\d{4})(\d{2})(\d{2})/)
+  if (m) return `${m[1]}/${m[2]}/${m[3]}`
+  const d = new Date()
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`
+}
+
 // 前回比の表示テキストと色（better: 'low' | 'high' | 'none'）
 export function deltaOf(cur, prev, dec, better) {
   if (cur === null || cur === undefined || prev === null || prev === undefined) return { txt: '—', fg: 'var(--fg-4)' }

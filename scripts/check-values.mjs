@@ -17,6 +17,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import D, { setUsers } from '../src/data/engine.js'
 import { StoreProvider } from '../src/store.jsx'
 import { AuditPanel } from '../src/screens/Roster.jsx'
+import { EditMeasModal } from '../src/modals/EditModals.jsx'
 import { toEngineUser } from '../src/lib/realdata.js'
 import { checkValues } from '../src/lib/validate.js'
 import { auditUsers, auditUnassigned, auditSummary, KIND_LABEL } from '../src/lib/audit.js'
@@ -154,6 +155,28 @@ try {
   else fail('点検パネルは描画できましたが、見つけた内容が出ていません')
 } catch (e) {
   fail('点検パネルの描画に失敗しました → ' + e.message)
+}
+
+// ---- 6) 「測定を追加」の画面が描けること -----------------------------------------
+console.log('')
+console.log('=== 測定を追加する画面の描画 ===')
+try {
+  const before = D.users
+  setUsers([{
+    id: '99002', name: '検査 花子', kana: 'けんさ はなこ', sex: 'F', sexLabel: '女', age: 80,
+    muniName: '熊本市東区', region: '熊本市圏域', venueName: '検査会場', venueCode: 900, phone: '', careLevel: '',
+    joined: 2026, archived: false, walkIn: false, flags: [], memos: [], meas: {}, inbody: {}, kcl: {}, series: [],
+  }])
+  const html = renderToStaticMarkup(h(StoreProvider, { initial: { editMeas: { id: '99002', isNew: true } } }, h(EditMeasModal, null)))
+  setUsers(before)
+  const need = ['測定を追加', '年度（評価日から自動）', '評価日']
+  const miss = need.filter(s => !html.includes(s))
+  if (!miss.length) pass(`「測定を追加」の画面を描画できました（${html.length} 文字）`)
+  else fail('描画できましたが見当たらない表示があります: ' + miss.join('・'))
+  if (!html.includes('評価年（年度）')) pass('年度を選ぶ欄は無くなっています（評価日から自動）')
+  else fail('★年度を選ぶ欄がまだ残っています')
+} catch (e) {
+  fail('「測定を追加」の画面の描画に失敗しました → ' + e.message)
 }
 
 console.log('')
