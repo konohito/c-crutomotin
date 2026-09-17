@@ -10,7 +10,7 @@
    使い方: node scripts/check-measure-save.mjs
    （import.meta.env が無い素の node で動くため dbEnabled() は false になり、
      Firestore への書き込みは起きない） */
-import D, { setUsers } from '../src/data/engine.js'
+import D, { setUsers, eraLabel, fiscalYearOfDate } from '../src/data/engine.js'
 import { toEngineUser, saveMeasurement, measKey } from '../src/lib/realdata.js'
 
 let ng = 0
@@ -115,6 +115,30 @@ console.log('=== 「この測定の日付を直す」を選んだときは移動
   await saveMeasurement(u.id, y, V(), '2025/02/27', '99001_20260917', { create: false })
   if (u.series.length === 1 && u.series[0].date === '2025/02/27') ok('選んだときだけ移動になります（1 件のまま）')
   else fail('★移動になっていません')
+}
+
+console.log('')
+console.log('=== 元号の換算（令和N = 西暦 - 2018。2019年＝令和元年）===')
+for (const [y, want] of [[2018, '2018'], [2019, '令和1'], [2024, '令和6'], [2025, '令和7'], [2026, '令和8'], [2027, '令和9']]) {
+  const got = eraLabel(y)
+  if (got === want) ok(`${y} 年度 → ${got}`)
+  else fail(`★${y} 年度 → ${got}（${want} のはず）`)
+}
+console.log('')
+console.log('=== 評価日 → 年度（4月はじまり）===')
+for (const [d, wantY, wantEra] of [
+  ['2025/02/27', 2024, '令和6'],   // 2月なので前の年度
+  ['2025/03/31', 2024, '令和6'],
+  ['2025/04/01', 2025, '令和7'],
+  ['2025/09/16', 2025, '令和7'],
+  ['2026/02/27', 2025, '令和7'],   // 2026年でも2月は令和7年度
+  ['2026/03/31', 2025, '令和7'],
+  ['2026/04/01', 2026, '令和8'],
+  ['2026/09/17', 2026, '令和8'],
+]) {
+  const y = fiscalYearOfDate(d)
+  if (y === wantY && eraLabel(y) === wantEra) ok(`${d} → ${eraLabel(y)}年度`)
+  else fail(`★${d} → ${eraLabel(y)}年度（${wantEra}年度 のはず）`)
 }
 
 console.log('')

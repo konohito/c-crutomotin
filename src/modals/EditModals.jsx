@@ -3,7 +3,7 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { saveUserFields, saveMeasurement, saveKclAnswers, normDate } from '../lib/realdata.js'
 import { checkValues } from '../lib/validate.js'
-import { eraOf } from '../lib/helpers.js'
+import { eraOf, jpDate } from '../lib/helpers.js'
 import { Modal, ModalHead, Select } from '../ui/kit.jsx'
 import { kclSideList } from '../ui/kclanswers.jsx'
 
@@ -173,11 +173,12 @@ export function EditMeasModal() {
           <input className="field t-num" value={f.date} onChange={upd('date')} placeholder="YYYY/MM/DD" autoFocus={isNew} />
         </Field>
         {/* 年度は評価日から自動で決まる（4 月はじまり）。選べるようにすると食い違いが起きるため表示だけにする。
-            「2026年2月なのに令和7年度」は正しいが現場には分かりにくいので、年度の期間も一緒に出す。 */}
+            年度だけを見せると「2026年2月なのに令和7年度」が誤りに見えるので、
+            元になった評価日と、その年度の期間を必ず並べて出す。 */}
         <Field label="年度（評価日から自動）"
           hint={newY ? `${eraOf(newY)}年度＝${newY}年4月〜${newY + 1}年3月。年度を変えたいときは評価日を直してください` : undefined}>
           <div className="field" style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-subtle)', color: newY ? 'var(--fg-1)' : 'var(--fg-4)' }}>
-            {newY ? `${eraOf(newY)}年度` : '評価日を入れてください'}
+            {dateNorm ? `${jpDate(dateNorm)} → ${eraOf(newY)}年度` : '評価日を入れてください'}
           </div>
         </Field>
         {MEAS_FIELDS.map(([k, label, unit]) => (
