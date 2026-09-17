@@ -249,6 +249,10 @@ export async function saveMeasurement(id, year, values, date, key, opts = {}) {
     const { fs, db } = await getFs()
     const doc = { userId: id, year: Number(year), values: s.values }
     if (d !== undefined) doc.date = d
+    /* 過去の測定を足すとき、その評価日に無効化済みのドキュメントが残っていることがある
+       （引っ越しや訂正のあと）。merge で書くと voided が立ったままになり、
+       「追加したのに画面に出ない」状態になるため、ここで必ず有効に戻す。 */
+    if (opts.create) doc.voided = false
     if (oldKey && oldKey !== newKey) {
       // 日付が変わってドキュメントが引っ越すとき。中身を引き継いでから元を無効化する
       const snap = await fs.getDoc(fs.doc(db, 'measurements', oldKey))
