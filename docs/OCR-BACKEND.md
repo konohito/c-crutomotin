@@ -143,10 +143,35 @@ cd functions && npm install
 | 変数 | 例 | 説明 |
 |---|---|---|
 | `DOCAI_PROJECT_ID` | `my-proj` | ローカルのみ必要（本番は自動設定） |
-| `DOCAI_LOCATION` | `us` | プロセッサのロケーション |
+| `DOCAI_LOCATION` | `us` | Document AI プロセッサのロケーション（**下記「保存・処理のリージョン」参照**） |
 | `DOCAI_PROCESSOR_ID` | `abcdef012345` | 作成したプロセッサ ID |
 | `OCR_API_KEY` | （任意） | フロントの `VITE_OCR_API_KEY` と一致させる簡易認証 |
 | `OCR_ALLOW_ORIGIN` | `https://konohito.github.io` | CORS 許可オリジン |
+| `VISION_READ` | `1` | ビジョン AI 読み取り。`0` で無効化 |
+| `GEMINI_MODEL` | `gemini-2.5-pro` | 先頭に試すモデル。見つからなければ候補を順に試す |
+| `VERTEX_LOCATION` | `asia-northeast1` | Vertex AI の呼び出しリージョン。既定は東京 |
+
+### 保存・処理のリージョン
+
+記録用紙の写真には氏名・測定値が写っている。委託元（嘉島町）には
+**個人情報の保存・処理を日本国内に限定している**と回答しており（`docs/kashima/`）、
+リージョンの変更はこの回答に直接かかわる。
+
+| 処理 | リージョン | 決まる場所 |
+|---|---|---|
+| Cloud Functions（画像の受け取り・変換） | `asia-northeast1`（東京） | `functions/index.js` の `setGlobalOptions` |
+| Cloud Firestore / Cloud Storage | `asia-northeast1`（東京） | GCP プロジェクトの設定 |
+| Vertex AI（ビジョン AI 読み取り） | `asia-northeast1`（東京） | `VERTEX_LOCATION`（既定値。`src/visionread.js`） |
+| Document AI（文字認識） | **`DOCAI_LOCATION` 次第。既定 `us`** | `DOCAI_LOCATION` |
+
+**Document AI は既定のままだと米国のプロセッサに画像を送る。**
+日本国内に閉じるには、東京リージョンでプロセッサを作り直し、
+`DOCAI_LOCATION=asia-northeast1` と新しい `DOCAI_PROCESSOR_ID` を設定する
+（プロセッサ ID はリージョンごとに別物なので、ロケーションだけ変えると動かない）。
+
+Vertex AI は、指定したリージョンに最新世代のモデルが無ければ 404 になるが、
+`MODELS` の次の候補へ自動的に落ちる（東京では `gemini-2.5-pro` 系になる見込み）。
+どのモデルで読んだかは Functions のログに出る。
 
 ### 5. ローカルで確認（エミュレータ）
 

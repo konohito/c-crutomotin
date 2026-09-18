@@ -10,7 +10,8 @@
    - 用紙の判別(問診票かどうか)が文字認識ごと失敗した写真 … ビジョン AI 単独で読む
 
    モデルは GEMINI_MODEL で切替可能(既定 gemini-2.5-pro)。見つからない場合は
-   候補リストを順に試す。呼び出しは Cloud Functions のサービスアカウント(ADC)で行い、
+   候補リストを順に試す。呼び出しリージョンは VERTEX_LOCATION(既定 asia-northeast1 = 東京)。
+   呼び出しは Cloud Functions のサービスアカウント(ADC)で行い、
    API キー等の秘密情報は不要(プロジェクトで aiplatform API の有効化が必要)。 */
 const { GoogleAuth } = require('google-auth-library')
 const { QS } = require('./kclread')
@@ -25,6 +26,20 @@ const MODELS = [...new Set([
 ])]
 const MAX_BYTES = 15 * 1024 * 1024   // Vertex のインライン上限(20MB)手前で足切り
 const TIMEOUT_MS = 90 * 1000
+
+/* 呼び出しリージョン。既定は東京(asia-northeast1)。
+   記録用紙の写真には氏名・測定値が写っているため、処理を日本国内に閉じる
+   (嘉島町への回答書 docs/kashima/回答書.html で「東京リージョン」と回答している)。
+   'global' を指定すると従来のグローバルエンドポイントに戻る。
+   なお、リージョンによっては最新世代のモデルが未提供で 404 になるが、
+   その場合は MODELS の次の候補へ自動的に落ちる。 */
+const LOCATION = process.env.VERTEX_LOCATION || 'asia-northeast1'
+
+// リージョン指定時はリージョン別ホストを使う(global のみホスト名に接頭辞が付かない)
+function vertexUrl(project, model, location = LOCATION) {
+  const host = location === 'global' ? 'aiplatform.googleapis.com' : `${location}-aiplatform.googleapis.com`
+  return `https://${host}/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`
+}
 
 const PROMPT = `あなたは介護予防健診の紙用紙を写真から読み取る係です。写真を見て、次の JSON だけを返してください(説明文は不要)。
 
@@ -85,7 +100,7 @@ async function callVertex(imageBuffer, mimeType) {
   const models = _model ? [_model] : MODELS
   let lastErr = null
   for (const model of models) {
-    const url = `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/${model}:generateContent`
+    const url = vertexUrl(project, model)
     const ctl = new AbortController()
     const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS)
     try {
@@ -96,8 +111,8 @@ async function callVertex(imageBuffer, mimeType) {
       })
       const txt = await res.text()
       // モデルが存在しない(404)・混雑や割当超過(429)は次の候補モデルで続行する
-      if (res.status === 404) { lastErr = new Error(`モデル ${model} が見つかりません`); continue }
-      if (res.status === 429) { lastErr = new Error(`モデル ${model} が混雑/割当超過です`); continue }
+      if (res.status === 404) { lastErr = new Error(`モデル ${model} が ${LOCATION} に見つかりません`); continue }
+      if (res.status === 429) { lastErr = new Error(`モデル ${model} が混雑/割当超過です(${LOCATION})`); continue }
       if (!res.ok) {
         // Vertex のエラー JSON から要点(message)だけを取り出す(権限不足・API 無効などの切り分け用)
         let msg = txt.slice(0, 300)
@@ -234,4 +249,4 @@ async function readSheetVision(imageBuffer, mimeType) {
   return vis
 }
 
-module.exports = { readSheetVision, parseVisionJson, mapVisionAnswers, mergeKcl, kclFromVision }
+module.exports = { readSheetVision, parseVisionJson, mapVisionAnswers, mergeKcl, kclFromVision, vertexUrl }

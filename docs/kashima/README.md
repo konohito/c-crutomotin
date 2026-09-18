@@ -49,15 +49,22 @@ EOF
 | 承認された職員のみがデータにアクセスできる | `firestore.rules` の `isStaff()`（`staff/{uid}` がある者のみ許可。self-signup では読めない） |
 | 記録用紙画像は認証済み職員のみ | `storage.rules` |
 | 処理は東京リージョン | `functions/index.js` `setGlobalOptions({ region: 'asia-northeast1' })` |
+| AI 読み取りは東京リージョン | `functions/src/visionread.js` の `VERTEX_LOCATION`（既定 `asia-northeast1`）。テストで固定 |
 | 削除の控えは職員からも読めない | `firestore.rules` の `deletedRecords`（`allow read: if false`）、`docs/削除と復元.md` |
 | 消去対象のコレクション一覧 | `firestore.rules` の `match /<コレクション>/` 一覧 |
 | ISMAP 登録 | Google Cloud 公式ブログ（2021/3/18、2023/11/13）— GCP・Firebase とも登録済み |
 
 ## 未対応（送付前に確認が必要）
 
-- **AI 読み取りのリージョン**。`functions/src/visionread.js` の Vertex AI 呼び出しは
-  `locations/global` エンドポイント、`functions/src/config.js` の Document AI は既定 `us`。
-  回答書は「東京リージョン」と記載しているため、**リージョンを日本国内に固定するか、記載を改めるか**の
-  いずれかが必要。
+- **Document AI が米国のまま**。`DOCAI_LOCATION` の既定は `us` で、記録用紙の画像（氏名・測定値が写る）を
+  米国のプロセッサへ送っている。回答書の「個人情報の処理は東京リージョン」と食い違うため、**送付前に**
+  東京リージョンでプロセッサを作り直し、`DOCAI_LOCATION=asia-northeast1` と新しい `DOCAI_PROCESSOR_ID` を
+  GitHub の Variables に設定すること（プロセッサ ID はリージョンごとに別物）。詳細は `docs/OCR-BACKEND.md`。
 - **委託終了時の一括消去スクリプトが未整備**。現状、消去は手作業になる。
   `deletedRecords` を含む全コレクションを消す運用手順またはスクリプトを用意しておくこと。
+
+## 済み
+
+- **Vertex AI の呼び出しリージョンを東京に固定**（`VERTEX_LOCATION`、既定 `asia-northeast1`）。
+  以前はグローバルエンドポイント（`locations/global`）で、処理国が定まっていなかった。
+  次回デプロイから東京で処理される。

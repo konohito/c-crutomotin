@@ -3,7 +3,7 @@
    Vertex AI の呼び出し自体はモックできない(本番で検証)ため、モデル応答を
    固定 JSON として与え、その後段がすべて仕様どおりに動くことを確かめる。 */
 const assert = require('assert')
-const { parseVisionJson, mapVisionAnswers, mergeKcl, kclFromVision } = require('../src/visionread')
+const { parseVisionJson, mapVisionAnswers, mergeKcl, kclFromVision, vertexUrl } = require('../src/visionread')
 
 let failed = 0
 const ok = (label, fn) => {
@@ -123,6 +123,26 @@ ok('kclFromVision: unclear が多すぎる写真は読取不可(誤読回避)', 
   const kv = kclFromVision({ type: 'kcl', side: 'back', answers: ans })
   assert.strictEqual(kv.readable, false)
   assert.ok(kv.reason.includes('撮り直し'))
+})
+
+// ---- 呼び出し先リージョン ----------------------------------------------------
+/* 記録用紙の写真には氏名・測定値が写る。処理を日本国内に閉じる約束
+   (docs/kashima/回答書.html)を、URL の組み立てで固定する。 */
+ok('vertexUrl: 既定は東京リージョンのエンドポイント', () => {
+  const url = vertexUrl('my-project', 'gemini-2.5-pro')
+  assert.ok(url.startsWith('https://asia-northeast1-aiplatform.googleapis.com/'), `ホストが東京でない: ${url}`)
+  assert.ok(url.includes('/locations/asia-northeast1/'), `ロケーションが東京でない: ${url}`)
+  assert.ok(!url.includes('/locations/global/'), 'global に戻ってはいけない')
+})
+ok('vertexUrl: global 指定のときだけ接頭辞なしのホストを使う', () => {
+  const url = vertexUrl('my-project', 'gemini-2.5-pro', 'global')
+  assert.strictEqual(url,
+    'https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/publishers/google/models/gemini-2.5-pro:generateContent')
+})
+ok('vertexUrl: 他リージョンもホストとロケーションが揃う', () => {
+  const url = vertexUrl('p', 'm', 'us-central1')
+  assert.ok(url.startsWith('https://us-central1-aiplatform.googleapis.com/'))
+  assert.ok(url.includes('/locations/us-central1/'))
 })
 
 if (failed) { console.error(`\n${failed} 件失敗`); process.exit(1) }

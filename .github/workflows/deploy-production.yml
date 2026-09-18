@@ -68,6 +68,7 @@ jobs:
             echo "OCR_ALLOW_ORIGIN=${{ vars.OCR_ALLOW_ORIGIN || 'https://cruto-motion.web.app' }}"
             echo "GEMINI_MODEL=${{ vars.GEMINI_MODEL || '' }}"
             echo "VISION_READ=${{ vars.VISION_READ || '1' }}"
+            echo "VERTEX_LOCATION=${{ vars.VERTEX_LOCATION || 'asia-northeast1' }}"
           } > .env
 
       - if: steps.guard.outputs.ready == 'true'
