@@ -107,8 +107,14 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '1GiB', timeoutSeconds:
       // Gemini は信頼度を返さない。誤読を台帳に入れないため、必ず職員の確認を通す
       rec.needsReview = true
       if (vis.type === 'kcl') {
-        const kv = kclFromVision(vis)
-        if (kv) rec.kcl = { ...kv, debug: { ...(kv.debug || {}), visionModel: vis.model || null } }
+        /* 問診票と分かった写真は、読めても読めなくても必ず kcl を付ける。
+           付けないと記録用紙(測定値すべて空)として静かに流れ、撮り直しに気づけない。 */
+        const kv = kclFromVision(vis) || {
+          side: vis.side || null, answers: {}, readable: false,
+          reason: 'ビジョンAIが問診票と判断しましたが、おもて面・うら面の別や回答欄を読み取れませんでした（用紙全体がはっきり写るように撮り直してください）',
+          via: 'vision', debug: {},
+        }
+        rec.kcl = { ...kv, debug: { ...(kv.debug || {}), visionModel: vis.model || null } }
       }
       await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: FieldValue.serverTimestamp() })
       if (rec.walkIn) {
