@@ -54,14 +54,17 @@ B. 体力測定 記録用紙(様式 R7-02 など。測定値を桁ごとのマ�
 {
   "type": "kcl" | "record" | "other",
   "side": "front" | "back" | null,
+  "form": "R7-02" | "R7-02W" | "R7-03" | "R7-03W" | null,
   "id": "12345" | null,
   "name": "山田花子" | null,
   "kana": "やまだはなこ" | null,
-  "answers": { "1": "yes", "2": "no", ... } | null
+  "answers": { "1": "yes", "2": "no", ... } | null,
+  "values": { "height": "163.2", "weight": "unclear", "gripR": null, ... } | null
 }
 
 ルール:
 - type: 問診票なら "kcl"、記録用紙なら "record"、どちらでもなければ "other"
+- form: 用紙の左上に刷られている様式番号。読めなければ null
 - id: 用紙右上の「参加者ID」欄の 5 桁の数字(印字またはシール)。読めなければ null
 - name: 氏名欄の名前。( ) 内の会場名などは含めない。読めなければ null
 - answers は type が "kcl" のときのみ。キーは用紙に印刷されている設問番号:
@@ -75,7 +78,25 @@ B. 体力測定 記録用紙(様式 R7-02 など。測定値を桁ごとのマ�
 - 塗りが枠からはみ出す・小さい・チェックや斜線でも、記入の意図が明らかなら yes/no と判定する
 - 少しでも迷う設問は必ず "unclear" にする。推測で yes/no にしない
 - おもて面の「記入例」の行は answers に含めない
-- 写真が横向き・逆さでも、印刷内容から向きを判断して読む`
+- 写真が横向き・逆さでも、印刷内容から向きを判断して読む
+
+- values は type が "record" のときのみ。キーと用紙上のラベルの対応:
+  "height"=身長 / "weight"=体重 / "gripR"=握力(右) / "gripL"=握力(左) /
+  "walk5"=5m通常歩行 / "walk5max"=5m最大歩行 / "tug"=TUG(Timed Up and Go) /
+  "balR"=開眼片足立ち(右) / "balL"=開眼片足立ち(左)
+- 各項目の値:
+  "163.2" = 読み取れた値。**必ず小数点付きの文字列**で返す(数値型にしない)
+  "unclear" = 記入が薄い・ボケ・見切れなどで自信を持って読めない
+  null      = 記入枠が空欄(測定していない)
+- 測定値の読み方(取り違えが起きやすいので厳守すること):
+  - 記入枠は「1 マスに 1 桁」で、整数部の枠と小数部の枠が小数点の印字で仕切られている。
+    枠の並びどおりに読み、小数点の位置を勝手に動かさない
+  - 整数部の先頭マスは空欄のことがある(例: 体重「□50.4」)。空欄のマスは無いものとして詰めて読む
+  - 各行には「前回値」や下書きが印字・記入されていることがある。
+    **採用するのは行のいちばん右にある記入枠**で、前回値や下書きは絶対に拾わない
+  - 単位(cm・kg・秒)は値に含めない
+  - 桁が読み取れても数として不自然なとき(例: 身長 16.3、体重 504)は "unclear" にする
+  - 少しでも迷う項目は必ず "unclear" にする。推測で数字を埋めない`
 
 // ---- Vertex AI 呼び出し ------------------------------------------------------
 let _auth = null
@@ -144,10 +165,14 @@ function parseVisionJson(text) {
   return {
     type,
     side: obj.side === 'front' || obj.side === 'back' ? obj.side : null,
+    // 様式番号(R7-02W / R7-03W なら飛び込み用紙)。表記ゆれを吸収して大文字・ハイフン無しに寄せる
+    form: typeof obj.form === 'string' && obj.form.trim()
+      ? obj.form.trim().toUpperCase().replace(/[\s-‐－]/g, '') : null,
     id: /^\d{5}$/.test(idRaw) ? idRaw : null,
     name: typeof obj.name === 'string' && obj.name.trim() ? obj.name.trim() : null,
     kana: typeof obj.kana === 'string' && obj.kana.trim() ? obj.kana.trim() : null,
     answers: obj.answers && typeof obj.answers === 'object' ? obj.answers : null,
+    values: obj.values && typeof obj.values === 'object' ? obj.values : null,
   }
 }
 
