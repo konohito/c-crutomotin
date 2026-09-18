@@ -4,6 +4,7 @@ import { useStore, memosFor } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, radarGeo, colsPlus, itemAvg, autoLines, muniBmiAvg, frailtyOf, FRAIL_LEVELS, seriesOf, measAxisLabel } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAINS } from '../data/kihon.js'
 import { realDataEnabled, addUserMemo } from '../lib/realdata.js'
+import { planUserDeletion, deleteUser } from '../lib/deletion.js'
 import { wardLabel } from '../lib/db.js'
 import { useAuth } from '../ui/AuthGate.jsx'
 import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel } from '../ui/chart.jsx'
@@ -507,8 +508,94 @@ export default function Detail() {
               </Card>
             ))}
           </div>
+
+          {/* 利用者の削除。いちばん下に、閉じた状態で置いてある。
+              他のボタンの隣には置かない（誤って押されないようにするため）。 */}
+          {canEdit && <DeleteUserPanel u={u} />}
         </div>
       </div>
     </div>
+  )
+}
+
+/* この利用者を削除する。個人ページのいちばん下に、閉じた状態で置く。
+
+   誤操作を防ぐため段階を踏む:
+     ① 「この利用者を削除する…」を押して開く
+     ② 何が一緒に消えるか（測定の件数・年度・提出への影響）を読む
+     ③ 氏名をそのとおりに入力する
+     ④ 「削除する」を押す
+   消す前に控えが自動で保存される（src/lib/deletion.js）。 */
+function DeleteUserPanel({ u }) {
+  const { set, showToast } = useStore()
+  const { user, profile } = useAuth()
+  const byName = (profile && profile.name) || (user && (user.email || user.uid)) || '職員'
+  const [open, setOpen] = useState(false)
+  const [plan, setPlan] = useState(null)
+  const [typed, setTyped] = useState('')
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const openPanel = async () => {
+    setOpen(true); setPlan(null)
+    try { setPlan(await planUserDeletion(u.id)) }
+    catch (e) { showToast('確認に失敗しました: ' + (e.message || '')) }
+  }
+  const run = async () => {
+    setBusy(true)
+    try {
+      const r = await deleteUser(u.id, { by: (user && user.uid) || null, byName, reason: reason.trim() || null })
+      showToast(`${u.name} さんを削除しました（測定 ${r.measurementCount} 件も一緒に削除）`)
+      set({ screen: 'ros', rev: Date.now() })
+    } catch (e) { showToast('削除に失敗しました: ' + (e.message || '')); setBusy(false) }
+  }
+  const nameOk = typed.replace(/[\s　]/g, '') === String(u.name || '').replace(/[\s　]/g, '')
+
+  return (
+    <Card pad style={{ borderColor: 'var(--danger-200, #f3c2c2)' }}>
+      {!open ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 12, color: 'var(--fg-3)' }}>
+            特定できない方を台帳から消すときに使います。消す前に控えが自動で保存されます。
+          </div>
+          <button className="btn btn-outline btn-sm" style={{ color: 'var(--danger-700)', borderColor: 'var(--danger-200, #f3c2c2)' }}
+            onClick={openPanel}>この利用者を削除する…</button>
+        </div>
+      ) : (
+        <div>
+          <div className="t-h4" style={{ color: 'var(--danger-700)' }}>{u.name} さんを台帳から削除します</div>
+          {!plan ? (
+            <div style={{ fontSize: 12.5, color: 'var(--fg-3)', marginTop: 8 }}>何が消えるかを調べています…</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12.5, lineHeight: 1.8, marginTop: 8 }}>
+                <div>・この方の<b>測定 {plan.measurements.length} 件</b>も一緒に消えます
+                  {plan.years.length ? `（${plan.years.map(y => eraOf(y) + '年度').join('・')}）` : ''}</div>
+                {plan.techo && <div>・電子手帳の記録も消えます</div>}
+                {plan.portalCount > 0 && <div>・電子手帳のログイン {plan.portalCount} 件も消えます</div>}
+                {plan.walkinCount > 0 && <div>・当日受付の用紙 {plan.walkinCount} 枚は取り込み待ちに戻ります（用紙は消えません）</div>}
+                <div>・台帳・集計・提出データから見えなくなります</div>
+              </div>
+              {(plan.warnings || []).map((w, i) => (
+                <div key={i} style={{ marginTop: 8, borderRadius: 8, padding: '8px 10px', fontSize: 12, lineHeight: 1.6,
+                  border: '1px solid var(--warning-200, #f0dcae)', background: 'var(--warning-50)' }}>{w}</div>
+              ))}
+              <div style={{ marginTop: 10, fontSize: 12 }}>
+                間違いなければ、確認のため氏名「<b>{u.name}</b>」を入力してください。
+              </div>
+              <input className="field" style={{ marginTop: 6, height: 34, fontSize: 13 }} value={typed}
+                onChange={(e) => setTyped(e.target.value)} placeholder={u.name} />
+              <input className="field" style={{ marginTop: 8, height: 32, fontSize: 12.5 }} value={reason}
+                onChange={(e) => setReason(e.target.value)} placeholder="消す理由（任意・記録に残ります）" />
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <button className="btn btn-outline" onClick={() => { setOpen(false); setTyped('') }} disabled={busy}>やめる</button>
+                <button className="btn" style={{ background: 'var(--danger-600, #c0392b)', color: '#fff', opacity: nameOk ? 1 : 0.5 }}
+                  onClick={run} disabled={busy || !nameOk}>{busy ? '削除中…' : '削除する'}</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </Card>
   )
 }

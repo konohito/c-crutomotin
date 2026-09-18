@@ -3,7 +3,10 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { wardLabel } from '../lib/db.js'
 import { auditUsers, auditUnassigned, auditSummary, KIND_LABEL } from '../lib/audit.js'
-import { unassignedMeasurements } from '../lib/realdata.js'
+import { unassignedMeasurements, realDataEnabled } from '../lib/realdata.js'
+import { planUserDeletion, deleteUsersBulk } from '../lib/deletion.js'
+import { eraOf } from '../lib/helpers.js'
+import { useAuth } from '../ui/AuthGate.jsx'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -107,6 +110,7 @@ export default function Roster() {
   return (
     <div className="screen">
       <AuditPanel />
+      {realDataEnabled() && <BulkDeletePanel />}
       {/* フィルタバー */}
       <Card style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <Select value={state.rosMuni} onChange={(e) => set({ rosMuni: e.target.value, rosWard: 'all', rosPage: 0 })}
@@ -174,5 +178,139 @@ export default function Roster() {
         </div>
       </Card>
     </div>
+  )
+}
+
+/* まとめて削除。特定できない方を何人か選んで、一度に台帳から消すための画面。
+
+   利用者台帳の一覧そのものには手を入れていない（並びも列も従来どおり）。
+   チェックボックスをこのパネルの中だけに置いてあるのは、
+   台帳の表に選択列を足すと、日常の閲覧のたびに削除が目に入るため。
+   既定は閉じた状態で、開かないと何も選べない。
+
+   1 人失敗しても残りは続ける（全員やり直しにしない）。 */
+export function BulkDeletePanel() {
+  const { set, showToast } = useStore()
+  const { user, profile } = useAuth()
+  const byName = (profile && profile.name) || (user && (user.email || user.uid)) || '職員'
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const [picked, setPicked] = useState([])
+  const [plans, setPlans] = useState(null)
+  const [reason, setReason] = useState('')
+  const [typed, setTyped] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const qt = q.trim().toLowerCase()
+  const list = useMemo(() => {
+    const base = D.users.filter(u => u && u.name && !u.archived && !u.walkIn)
+    if (!qt) return base.slice(0, 30)
+    return base.filter(u => u.name.toLowerCase().includes(qt) || (u.kana || '').toLowerCase().includes(qt) || String(u.id).includes(qt)).slice(0, 30)
+  }, [qt, open, result])
+
+  const toggle = (id) => { setPlans(null); setTyped(''); setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : p.concat([id]))) }
+  const preview = async () => {
+    setPlans(null)
+    try { setPlans(await Promise.all(picked.map(id => planUserDeletion(id)))) }
+    catch (e) { showToast('確認に失敗しました: ' + (e.message || '')) }
+  }
+  const run = async () => {
+    setBusy(true); setResult(null)
+    try {
+      const r = await deleteUsersBulk(picked, { by: (user && user.uid) || null, byName, reason: reason.trim() || null })
+      setResult(r)
+      setPicked([]); setPlans(null); setTyped('')
+      showToast(r.failed.length ? `${r.done.length} 名を削除（${r.failed.length} 名は失敗）` : `${r.done.length} 名を削除しました`)
+      set(s => ({ rev: s.rev + 1 }))
+    } catch (e) { showToast('削除に失敗しました: ' + (e.message || '')) }
+    setBusy(false)
+  }
+
+  const totalMeas = plans ? plans.reduce((a, p) => a + p.measurements.length, 0) : 0
+  const pastYears = plans ? [...new Set(plans.flatMap(p => p.pastYears))].sort() : []
+  const confirmWord = `${picked.length}名削除`
+  const canRun = plans && picked.length > 0 && typed.replace(/[\s　]/g, '') === confirmWord
+
+  return (
+    <Card style={{ padding: '10px 16px', borderColor: open ? 'var(--danger-200, #f3c2c2)' : undefined }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => setOpen(v => !v)}>
+        <Icon name="chevR" size={16} style={{ color: 'var(--slate-400)', transform: open ? 'rotate(90deg)' : 'none' }} />
+        <span style={{ fontSize: 13, fontWeight: 600 }}>まとめて削除</span>
+        <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>
+          特定できない方を選んで台帳から消します（消す前に控えが自動で保存されます）
+        </span>
+      </div>
+      {open && (
+        <div style={{ marginTop: 10, borderTop: '1px solid var(--border-default)', paddingTop: 10 }}>
+          <input className="field" style={{ height: 34, fontSize: 12.5 }} value={q}
+            onChange={(e) => setQ(e.target.value)} placeholder="氏名・ふりがな・ID で絞り込む" />
+          <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 8, border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
+            {list.map(u => (
+              <label key={u.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px', borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={picked.includes(u.id)} onChange={() => toggle(u.id)} />
+                <span className="t-num" style={{ fontSize: 12, color: 'var(--fg-3)', width: 56 }}>{u.id}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 0 }}>{u.name}</span>
+                <span style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>{u.muniName} {u.venueName}</span>
+                <span className="t-num" style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>測定 {(u.series || []).length} 件</span>
+              </label>
+            ))}
+            {!list.length && <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--fg-3)' }}>該当する方がいません</div>}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5 }}><b>{picked.length}</b> 名を選択中</span>
+            <button className="btn btn-outline btn-sm" onClick={preview} disabled={!picked.length || busy}>何が消えるか確認する</button>
+            {picked.length > 0 && <button className="btn btn-ghost btn-sm" onClick={() => { setPicked([]); setPlans(null); setTyped('') }} disabled={busy}>選択を解除</button>}
+          </div>
+
+          {plans && (
+            <div style={{ marginTop: 10, borderRadius: 8, padding: '10px 12px', lineHeight: 1.7,
+              border: '1px solid var(--danger-200, #f3c2c2)', background: 'var(--danger-50, #fdf2f2)' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>次の {plans.length} 名と、測定 {totalMeas} 件を削除します</div>
+              <div style={{ maxHeight: 160, overflowY: 'auto', marginTop: 6 }}>
+                {plans.map(p => (
+                  <div key={p.userId} style={{ fontSize: 12 }}>
+                    ・{p.name}（ID {p.userId}）… 測定 {p.measurements.length} 件
+                    {p.years.length ? `（${p.years.map(y => eraOf(y) + '年度').join('・')}）` : ''}
+                    {p.walkinCount ? ` / 当日受付の用紙 ${p.walkinCount} 枚は取り込み待ちに戻ります` : ''}
+                  </div>
+                ))}
+              </div>
+              {pastYears.length > 0 && (
+                <div style={{ marginTop: 8, borderRadius: 6, padding: '8px 10px', fontSize: 12,
+                  border: '1px solid var(--warning-200, #f0dcae)', background: 'var(--warning-50)' }}>
+                  {pastYears.map(y => eraOf(y) + '年度').join('・')}の集計に入っています。
+                  提出が済んでいる場合は、提出先への訂正のご連絡が必要です。
+                </div>
+              )}
+              <input className="field" style={{ marginTop: 8, height: 32, fontSize: 12.5 }} value={reason}
+                onChange={(e) => setReason(e.target.value)} placeholder="消す理由（任意・記録に残ります）" />
+              <div style={{ fontSize: 12, marginTop: 8 }}>間違いなければ「<b>{confirmWord}</b>」と入力してください。</div>
+              <input className="field" style={{ marginTop: 6, height: 34, fontSize: 13 }} value={typed}
+                onChange={(e) => setTyped(e.target.value)} placeholder={confirmWord} />
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <button className="btn btn-outline" onClick={() => { setPlans(null); setTyped('') }} disabled={busy}>やめる</button>
+                <button className="btn" style={{ background: 'var(--danger-600, #c0392b)', color: '#fff', opacity: canRun ? 1 : 0.5 }}
+                  onClick={run} disabled={busy || !canRun}>{busy ? '削除中…' : `${picked.length} 名を削除する`}</button>
+              </div>
+            </div>
+          )}
+
+          {result && (
+            <div style={{ marginTop: 10, borderRadius: 8, padding: '10px 12px', fontSize: 12, lineHeight: 1.7,
+              border: '1px solid var(--border-default)', background: 'var(--bg-subtle)' }}>
+              <div><b>削除できた {result.done.length} 名</b>{result.done.length ? '：' + result.done.map(x => x.name).join('・') : ''}</div>
+              {result.failed.length > 0 && (
+                <div style={{ color: 'var(--danger-700)', marginTop: 4 }}>
+                  <b>できなかった {result.failed.length} 名</b>（この方々は消えていません。もう一度お試しください）
+                  {result.failed.map(x => <div key={x.userId}>・{x.name}（ID {x.userId}）… {x.error}</div>)}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
   )
 }

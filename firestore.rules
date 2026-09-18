@@ -71,7 +71,10 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isStaff() || isPortalOwner(userId);
       allow create, update: if isStaff();
-      allow delete: if false;
+      /* 削除を許可する（特定不明の方を台帳から外して、データベースをきれいに保つため）。
+         画面からの削除は必ず deletedRecords に控えを書いてから行う（src/lib/deletion.js）。
+         控えが書けなければ本体は消えない。 */
+      allow delete: if isStaff();
     }
 
     // アプリ全体の設定（卒業証書に刷る法人名・事業所名など）。職員が編集できる。
@@ -104,7 +107,8 @@ service cloud.firestore {
       allow list: if isStaff();
       allow create, update: if isStaff()
         && request.resource.data.keys().hasAll(['userId', 'year']);
-      allow delete: if false;
+      // 削除を許可する。画面からの削除は deletedRecords に控えを書いてから行う
+      allow delete: if isStaff();
     }
 
     // 電子手帳の利用者アカウント紐付け（authUid → 参加者ID）。発行・解除は職員のみ。
@@ -120,7 +124,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['goal', 'interests', 'updatedAt'])
         && (!('goal' in request.resource.data) || request.resource.data.goal.size() <= 400)
         && (!('interests' in request.resource.data) || request.resource.data.interests.size() <= 30);
-      allow delete: if false;
+      allow delete: if isStaff();   // 利用者を削除するとき一緒に消す（控えを取ってから）
 
       match /logs/{logId} {
         allow read: if isStaff() || isPortalOwner(userId);
@@ -134,6 +138,25 @@ service cloud.firestore {
         allow update: if false;       // 記録は追記式（訂正は削除して入れ直す）
         allow delete: if isStaff();   // 誤入力の訂正は職員のみ
       }
+    }
+
+    /* 削除の控え。消した中身をそのまま入れておく置き場。
+       あとから「あの方のものだった」と分かったときに戻すために残す。
+       画面には出さない＝職員からも読めない（read を false にしてある）。
+       戻すのは管理者が Admin SDK で行う（手順は docs/削除と復元.md）。
+       書いたあとの改ざん・消去もできないようにしてある。 */
+    match /deletedRecords/{recordId} {
+      allow read: if false;
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+
+    /* 誰がいつ何を消したかの記録。中身（測定値など）は入れない。
+       職員は見られるが、消したり書き換えたりはできない。 */
+    match /deletionLogs/{logId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
     }
   }
 }

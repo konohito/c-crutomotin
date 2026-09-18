@@ -3,6 +3,9 @@ import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { saveUserFields, saveMeasurement, saveKclAnswers, normDate } from '../lib/realdata.js'
 import { checkValues } from '../lib/validate.js'
+import { planMeasurementDeletion, deleteMeasurement } from '../lib/deletion.js'
+import { dbEnabled } from '../lib/db.js'
+import { useAuth } from '../ui/AuthGate.jsx'
 import { eraOf, jpDate } from '../lib/helpers.js'
 import { Modal, ModalHead, Select } from '../ui/kit.jsx'
 import { kclSideList } from '../ui/kclanswers.jsx'
@@ -102,6 +105,8 @@ const MEAS_FIELDS = [
 ]
 export function EditMeasModal() {
   const { state, set, showToast } = useStore()
+  const { user, profile } = useAuth()
+  const byName = (profile && profile.name) || (user && (user.email || user.uid)) || '職員'
   const em = state.editMeas
   const u = em && D.users.find(x => x.id === em.id)
   // isNew = 過去の測定を新しく足すとき。既存の測定は一切さわらない
@@ -117,6 +122,9 @@ export function EditMeasModal() {
   const [force, setForce] = useState(false)
   // 評価日を変えたときの扱い。'add'=別の日の測定として足す（既定） / 'move'=この測定の日付を直す
   const [mode, setMode] = useState('add')
+  // 測定の削除。開かないと押せない形にして、保存ボタンの誤操作と切り離す
+  const [delOpen, setDelOpen] = useState(false)
+  const [delReason, setDelReason] = useState('')
   if (!u) return null
   const upd = (k) => (e) => setF(s => ({ ...s, [k]: e.target.value }))
   const close = () => set({ editMeas: null })
@@ -163,6 +171,18 @@ export function EditMeasModal() {
       set({ editMeas: null, rev: state.rev + 1 })
     } catch (e) { showToast('保存に失敗しました: ' + (e.message || '')); setBusy(false) }
   }
+
+  // 何が消えるか（提出済みの年度に入っていないかを含む）
+  const delPlan = (!isNew && orig) ? planMeasurementDeletion(u.id, orig.key) : { warnings: [] }
+  const doDelete = async () => {
+    setBusy(true)
+    try {
+      await deleteMeasurement(u.id, orig.key, { by: (user && user.uid) || null, byName, reason: delReason.trim() || null })
+      showToast(`${orig.date || orig.year + '年度'} の測定を削除しました`)
+      set({ editMeas: null, rev: state.rev + 1 })
+    } catch (e) { showToast('削除に失敗しました: ' + (e.message || '')); setBusy(false) }
+  }
+
   return (
     <Modal onClose={close} width={440}>
       <ModalHead icon="sheet" iconBg="var(--brand-50)" iconFg="var(--brand-600)"
@@ -232,6 +252,34 @@ export function EditMeasModal() {
         年度は評価日から自動で決まります（4 月はじまり）。BMI は身長・体重から自動計算されます。空欄は「未測定」として保存します。
         {asNew && ' 追加した測定は、いまある測定とは別の記録として残ります。'}
       </div>
+      {/* 削除は「取り消し」ではなく消す操作なので、保存ボタンから離し、開かないと押せない形にしてある。
+          消す前に必ず何が消えるかを出し、控えを取ってから消す（src/lib/deletion.js）。 */}
+      {!isNew && orig && dbEnabled() && (
+        <div style={{ margin: '4px 20px 0', borderTop: '1px solid var(--border-subtle)', paddingTop: 10 }}>
+          {!delOpen ? (
+            <button className="btn btn-ghost btn-sm" style={{ height: 24, padding: '0 6px', fontSize: 11.5, color: 'var(--danger-700)' }}
+              onClick={() => setDelOpen(true)}>この測定を削除する…</button>
+          ) : (
+            <div style={{ borderRadius: 8, padding: '10px 12px', lineHeight: 1.6,
+              border: '1px solid var(--danger-200, #f3c2c2)', background: 'var(--danger-50, #fdf2f2)' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 4 }}>
+                {orig.date || `${orig.year}年度`} の測定を削除します
+              </div>
+              <div style={{ fontSize: 12 }}>この 1 件だけを消します。{u.name} さんは台帳に残ります。</div>
+              {(delPlan.warnings || []).map((w, i) => (
+                <div key={i} style={{ fontSize: 12, color: 'var(--danger-700)', marginTop: 4 }}>・{w}</div>
+              ))}
+              <input className="field" style={{ marginTop: 8, height: 32, fontSize: 12.5 }} value={delReason}
+                onChange={(e) => setDelReason(e.target.value)} placeholder="消す理由（任意・記録に残ります）" />
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                <button className="btn btn-outline btn-sm" onClick={() => setDelOpen(false)} disabled={busy}>やめる</button>
+                <button className="btn btn-sm" style={{ background: 'var(--danger-600, #c0392b)', color: '#fff' }}
+                  onClick={doDelete} disabled={busy}>{busy ? '削除中…' : '削除する'}</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <div className="modal-foot" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '16px 20px 20px' }}>
         <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
         <button className="btn btn-primary" onClick={save} disabled={busy || !canSave}>{busy ? '保存中…' : (asNew ? '追加' : '保存')}</button>

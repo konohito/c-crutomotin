@@ -16,7 +16,7 @@ import { createElement as h } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import D, { setUsers } from '../src/data/engine.js'
 import { StoreProvider } from '../src/store.jsx'
-import { AuditPanel } from '../src/screens/Roster.jsx'
+import { AuditPanel, BulkDeletePanel } from '../src/screens/Roster.jsx'
 import { EditMeasModal } from '../src/modals/EditModals.jsx'
 import { toEngineUser } from '../src/lib/realdata.js'
 import { checkValues } from '../src/lib/validate.js'
@@ -206,6 +206,22 @@ try {
   else fail('★評価日が併記されていません')
 } catch (e) {
   fail('編集画面の描画に失敗しました → ' + e.message)
+}
+
+// ---- 8) 削除の画面が描けること（既定では閉じている） ----------------------------
+console.log('')
+console.log('=== 削除の画面 ===')
+try {
+  const html = renderToStaticMarkup(h(StoreProvider, null, h(BulkDeletePanel, null)))
+  if (html.includes('まとめて削除')) pass('「まとめて削除」のパネルを描画できました')
+  else fail('「まとめて削除」のパネルが出ません')
+  // 閉じているうちは削除ボタンも選択欄も出ない（誤操作を防ぐため）
+  if (!html.includes('名を削除する') && !html.includes('何が消えるか確認する')) pass('閉じているときは削除の操作が出ません')
+  else fail('★閉じているのに削除の操作が出ています')
+  if (html.includes('控えが自動で保存されます')) pass('控えが残ることを画面で伝えています')
+  else fail('控えの説明が出ていません')
+} catch (e) {
+  fail('削除の画面の描画に失敗しました → ' + e.message)
 }
 
 console.log('')
