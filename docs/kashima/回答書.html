@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>安全管理措置に関する回答書</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "IPAPGothic", "IPAGothic", sans-serif;
+    color: #111827; background: #ffffff;
+    font-size: 10.2pt; line-height: 1.75; margin: 0;
+  }
+  .page { width: 180mm; margin: 0 auto; padding: 0 0 6mm; }
+  .page + .page { page-break-before: always; padding-top: 0; }
+  .fig, table.grid, .pledge, .sign, .nope { break-inside: avoid; page-break-inside: avoid; }
+  h2, h3, .cap { break-after: avoid; page-break-after: avoid; }
+
+  .date { text-align: right; font-size: 10pt; }
+  .to { font-size: 12.5pt; font-weight: bold; margin: 6px 0 14px; }
+  .from { margin-left: auto; width: 96mm; border: 1px solid #1f3f8f; padding: 9px 12px; background: #f7f9ff; }
+  .from .cap { font-size: 8.4pt; color: #1f3f8f; letter-spacing: .08em; font-weight: bold; margin-bottom: 4px; }
+  .from table { width: 100%; border-collapse: collapse; font-size: 9.6pt; }
+  .from th { text-align: left; font-weight: normal; color: #4b5563; width: 20mm; vertical-align: top; padding: 1.5px 0; white-space: nowrap; }
+  .from td { padding: 1.5px 0; }
+  .corp { font-size: 12pt; font-weight: bold; letter-spacing: .04em; }
+  .fill { color: #9ca3af; }
+
+  h1 { text-align: center; font-size: 14.5pt; letter-spacing: .06em; margin: 20px 0 4px; }
+  .sub { text-align: center; font-size: 9.6pt; color: #4b5563; margin-bottom: 18px; }
+
+  h2 {
+    font-size: 11.4pt; margin: 20px 0 8px; padding: 5px 10px;
+    background: #1f3f8f; color: #fff; border-radius: 2px;
+  }
+  h3 { font-size: 10.4pt; margin: 14px 0 5px; color: #1f3f8f; border-left: 3px solid #1f3f8f; padding-left: 7px; }
+  p { margin: 5px 0 9px; }
+  ul { margin: 5px 0 9px; padding-left: 1.3em; }
+  li { margin: 2px 0; }
+  .note { font-size: 9pt; color: #4b5563; }
+
+  table.grid { width: 100%; border-collapse: collapse; font-size: 9.4pt; margin: 6px 0 4px; }
+  table.grid th, table.grid td { border: 1px solid #94a3b8; padding: 5px 7px; vertical-align: top; }
+  table.grid th { background: #e8edf9; font-weight: bold; text-align: left; }
+  table.grid td.c { text-align: center; }
+  .cap { font-size: 9.2pt; font-weight: bold; margin: 14px 0 4px; }
+
+  .pledge { border: 2px solid #1f3f8f; background: #f7f9ff; padding: 12px 14px; margin: 10px 0 12px; }
+  .pledge .q { font-size: 11pt; font-weight: bold; line-height: 1.9; }
+
+  /* ---- 図1 ---- */
+  .fig { border: 1px solid #cbd5e1; border-radius: 4px; padding: 12px 13px; background: #fff; }
+  .fig .ftitle { font-size: 11.5pt; font-weight: bold; }
+  .fig .fsub { font-size: 8.6pt; color: #6b7280; margin: 2px 0 12px; }
+  .band { border: 1px solid #d5dbe4; border-radius: 4px; padding: 9px 10px; margin-bottom: 4px; }
+  .band.gc { border: 2px solid #1f5fd0; }
+  .band > .bt { font-size: 9.4pt; font-weight: bold; margin-bottom: 7px; }
+  .band.gc > .bt { color: #1f5fd0; }
+  .band.gc > .bt .reg { color: #111827; }
+  .band.gc > .bt .hint { font-weight: normal; font-size: 8.6pt; color: #4b5563; margin-left: 6px; }
+  .cards { display: flex; gap: 7px; flex-wrap: wrap; }
+  .card { flex: 1 1 0; min-width: 0; border: 1px solid #d5dbe4; border-radius: 3px; padding: 7px 8px; background: #fbfcfe; }
+  .card .n { font-size: 9.2pt; font-weight: bold; color: #1f5fd0; }
+  .card .d { font-size: 8.3pt; color: #374151; line-height: 1.5; margin-top: 2px; }
+  .tag { display: inline-block; font-size: 7.6pt; border: 1px solid #1f5fd0; color: #1f5fd0; border-radius: 2px; padding: 0 4px; margin-top: 4px; }
+  .tag.gray { border-color: #9ca3af; color: #6b7280; }
+  .tag.red { border-color: #b03030; color: #b03030; }
+  .arrow { text-align: center; font-size: 8.6pt; color: #374151; margin: 6px 0; }
+  .nope { border: 1px solid #d5dbe4; border-radius: 4px; padding: 9px 10px; margin-top: 4px; background: #fdfdfd; }
+  .nope .bt { font-size: 9.4pt; font-weight: bold; margin-bottom: 4px; }
+  .nope ul { margin: 0; padding-left: 1.1em; font-size: 8.6pt; }
+  .x { color: #b03030; font-weight: bold; }
+
+  .sign { margin-top: 26px; border: 1px solid #94a3b8; }
+  .sign table { width: 100%; border-collapse: collapse; font-size: 9.6pt; }
+  .sign th { background: #e8edf9; border: 1px solid #94a3b8; padding: 6px 8px; text-align: left; width: 28mm; }
+  .sign td { border: 1px solid #94a3b8; padding: 12px 8px; }
+  .end { text-align: right; margin-top: 16px; font-size: 10pt; }
+</style>
+</head>
+<body>
+
+<!-- ============ 1ページ目 ============ -->
+<section class="page">
+  <div class="date">令和８年９月１８日</div>
+  <div class="to">嘉島町　御中</div>
+
+  <div class="from">
+    <div class="cap">回答事業者</div>
+    <table>
+      <tr><th>事業者名</th><td class="corp">株式会社クルート</td></tr>
+      <tr><th>所在地</th><td class="fill">■ご記入ください</td></tr>
+      <tr><th>代表者</th><td class="fill">代表取締役　■ご記入ください</td></tr>
+      <tr><th>本件担当</th><td class="fill">■部署・氏名・連絡先をご記入ください</td></tr>
+    </table>
+  </div>
+
+  <h1>安全管理措置に関する回答書</h1>
+  <div class="sub">一般介護予防事業（地区巡回型介護予防検診）委託事業　／　独自システム（クラウド環境）の利用について</div>
+
+  <p>平素より大変お世話になっております。標記委託事業の遂行にあたり利用しております当社システム
+  「Cruto motion」について、貴町よりご照会をいただきました安全管理措置の確認事項に対し、下記のとおり回答いたします。</p>
+
+  <p class="note">※ 本書は、先般ご提出いたしました資料に、「３．委託期間完了後のデータ完全消去について（誓約）」を追加し、
+  あわせて事業者名を明記のうえ再提出するものです。前回資料において重複しておりました記述（第三者がデータに触れないことの担保）は
+  「４」に一本化いたしました。前回資料は本書に差し替えのうえご保管ください。</p>
+
+  <h2>１．システム利用の概要（操作主体およびデータ保存場所）</h2>
+
+  <h3>(1) 操作主体</h3>
+  <p>本システムにおける個人情報の入力・閲覧・加工・出力等のすべての業務操作は、
+  <strong>当社の従事者のみ</strong>が行います。クラウド事業者（Google）を含む第三者が業務データを操作することはありません。
+  また、再委託先・外部業者等にアカウントを付与することはありません（契約上の再委託禁止規定を遵守しております）。</p>
+
+  <h3>(2) データの保存場所</h3>
+  <p>個人情報を含むデータは、Google Cloud／Firebase の<strong>東京リージョン（asia-northeast1）に限定</strong>して保存しており、
+  国外のデータセンターに保存することはありません。システム構成とデータの流れは図１のとおりです。</p>
+
+</section>
+
+<!-- ============ 図1 ============ -->
+<section class="page">
+  <div class="cap" style="margin-top:0;">図１　システム概要図（データの保存場所と操作主体）</div>
+  <div class="fig" id="fig1">
+    <div class="ftitle">Cruto motion　システム概要図（データの保存場所と操作主体）</div>
+    <div class="fsub">一般介護予防事業（地区巡回型介護予防検診）委託事業　／　株式会社クルート</div>
+
+    <div class="band">
+      <div class="bt">操作主体（当社の従事者のみ）</div>
+      <div class="cards">
+        <div class="card">
+          <div class="n">現場スタッフ（測定会）</div>
+          <div class="d">記録用紙の撮影・測定値の確認／修正</div>
+        </div>
+        <div class="card">
+          <div class="n">事務スタッフ（事業所）</div>
+          <div class="d">台帳管理・集計・帳票出力・町への提出データ作成</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow">▼　HTTPS（TLS 暗号化）／ 職員ログイン（ID・パスワード認証）を経由してのみ接続</div>
+
+    <div class="band gc">
+      <div class="bt">Google Cloud ／ Firebase　<span class="reg">東京リージョン（asia-northeast1）</span><span class="hint">個人情報はこの範囲内にのみ保存されます</span></div>
+      <div class="cards" style="margin-bottom:7px;">
+        <div class="card">
+          <div class="n">Cloud Firestore</div>
+          <div class="d">利用者台帳・測定記録・問診結果（個人情報）</div>
+          <div class="tag">東京</div>
+        </div>
+        <div class="card">
+          <div class="n">Cloud Storage</div>
+          <div class="d">記録用紙の撮影画像（個人情報）</div>
+          <div class="tag">東京</div>
+        </div>
+        <div class="card">
+          <div class="n">Cloud Functions</div>
+          <div class="d">画像の受け取り・読み取り処理・記録への変換</div>
+          <div class="tag">東京</div>
+        </div>
+        <div class="card">
+          <div class="n">Vertex AI（文字読み取り）</div>
+          <div class="d">記録用紙画像の文字起こし。処理のみで保存はしない</div>
+          <div class="tag">東京</div>
+        </div>
+      </div>
+      <div class="cards">
+        <div class="card">
+          <div class="n">Firebase Authentication</div>
+          <div class="d">職員アカウント（メールアドレス・パスワード）の認証基盤。受検者の個人情報は保持しない</div>
+          <div class="tag gray">受検者の個人情報なし</div>
+        </div>
+        <div class="card">
+          <div class="n">Firebase Hosting</div>
+          <div class="d">アプリ本体（画面のプログラム）の配信のみ。個人情報は一切含まない</div>
+          <div class="tag gray">受検者の個人情報なし</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow">▼　当社従事者が出力・確認のうえ提出</div>
+
+    <div class="band">
+      <div class="bt">成果物の提出</div>
+      <div class="cards">
+        <div class="card" style="flex:0 0 100%;">
+          <div class="n">嘉島町　御中</div>
+          <div class="d">個人結果票（PDF）・実績報告・提出様式 CSV を当社より提出</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="arrow">▼　委託期間終了後（本書「３」の誓約）</div>
+
+    <div class="band">
+      <div class="bt">返却後のデータ完全消去</div>
+      <div class="cards">
+        <div class="card">
+          <div class="n">① 返却（納品）</div>
+          <div class="d">個人情報データを貴町へ返却し、受領をご確認いただく</div>
+        </div>
+        <div class="card">
+          <div class="n">② 完全消去</div>
+          <div class="d">クラウド上・バックアップ・当社端末のすべてから復元不可能な状態で消去</div>
+          <div class="tag red">30 日以内</div>
+        </div>
+        <div class="card">
+          <div class="n">③ 消去報告書の提出</div>
+          <div class="d">消去日・対象・方法・実施者を記載した報告書を貴町へ提出</div>
+          <div class="tag red">消去後 10 日以内</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nope">
+      <div class="bt">本システムで行っていないこと</div>
+      <ul>
+        <li><span class="x">×</span>　クラウド事業者（Google）の従業員が業務データを閲覧・加工することはありません。</li>
+        <li><span class="x">×</span>　当社従事者以外の第三者（再委託先・外部業者等）にアカウントを付与することはありません。</li>
+        <li><span class="x">×</span>　個人情報を国外のデータセンターに保存することはありません。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2ページ目 ============ -->
+<section class="page">
+  <div class="cap">表１　データの種類ごとの保存先・保存場所</div>
+  <table class="grid" id="tbl1">
+    <thead>
+      <tr><th style="width:30%">データの種類</th><th style="width:26%">保存先</th><th style="width:26%">保存場所（リージョン）</th><th style="width:18%">個人情報</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>利用者台帳・体力測定記録・問診結果</td><td>Cloud Firestore（Google Cloud）</td><td>日本国内　東京（asia-northeast1）</td><td>含む</td></tr>
+      <tr><td>記録用紙の撮影画像</td><td>Cloud Storage（Google Cloud）</td><td>日本国内　東京（asia-northeast1）</td><td>含む</td></tr>
+      <tr><td>撮影画像の読み取り処理</td><td>Cloud Functions ／ Vertex AI（Google Cloud）</td><td>日本国内　東京（asia-northeast1）</td><td>処理のみ（保存しない）</td></tr>
+      <tr><td>帳票（個人結果票 PDF）・提出用 CSV</td><td>当社事業所内の業務用端末</td><td>日本国内（当社事業所）</td><td>含む</td></tr>
+      <tr><td>職員のログインアカウント（メールアドレス等）</td><td>Firebase Authentication（Google Cloud）</td><td>Google 認証基盤</td><td>含まない（受検者情報なし）</td></tr>
+      <tr><td>アプリ本体（画面のプログラム）</td><td>Firebase Hosting（Google Cloud）</td><td>配信用ネットワーク</td><td>含まない</td></tr>
+    </tbody>
+  </table>
+  <p class="note">※ 職員のログインアカウント（当社従事者のメールアドレス）は認証基盤で管理されますが、受検者の個人情報は一切含まれません。
+  アプリ本体の配信ネットワークで扱うのは画面のプログラムのみで、個人情報は通過・保存されません。</p>
+
+  <h2>２．利用しているクラウドサービスの安全性（ISMAP 登録状況）</h2>
+
+  <p>本システムの基盤として利用している <strong>Google Cloud Platform</strong> および <strong>Firebase</strong> は、いずれも
+  <strong>ISMAP（政府情報システムのためのセキュリティ評価制度）のクラウドサービスリストに登録済み</strong>です。</p>
+
+  <table class="grid">
+    <thead>
+      <tr><th style="width:34%">サービス名</th><th style="width:22%">ISMAP 登録</th><th>本システムでの用途</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Google Cloud Platform</td><td class="c">登録済み</td><td>Cloud Firestore／Cloud Storage／Cloud Functions／Vertex AI</td></tr>
+      <tr><td>Firebase</td><td class="c">登録済み</td><td>Firebase Authentication（職員ログイン）／Firebase Hosting（画面配信）</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    出典：ISMAP ポータルサイト「ISMAP クラウドサービスリスト」（独立行政法人情報処理推進機構）<br>
+    　　　https://www.ismap.go.jp/　（「Google Cloud Platform」「Firebase」で検索いただけます）<br>
+    　　　Google Cloud 公式ブログ「Google Cloud、ISMAP の登録を完了」（2021年3月18日）／
+    「Google Cloud、Looker の ISMAP 登録を完了」（2023年11月13日・Firebase を含む計7サービスの登録完了を記載）
+  </p>
+  <p class="note">※ ISMAP クラウドサービスリストの該当ページのキャプチャ（写し）が必要な場合は、別途お送りいたしますのでお申し付けください。</p>
+
+</section>
+
+<!-- ============ 3. 消去 ============ -->
+<section class="page">
+  <h2 style="margin-top:0;">３．委託期間完了後のデータ完全消去について（誓約）</h2>
+
+  <h3>(1) 誓約事項</h3>
+  <div class="pledge">
+    <div class="q">「委託期間終了後、データを当庁に返却した後は、クラウド上を含め全ての個人情報を完全に消去し、
+    後日消去報告書を提出する」ことを誓約いたします。</div>
+  </div>
+  <p>すなわち、仕様書に基づき委託期間終了後に個人情報データを貴町へ返却（納品）したのち、
+  当社が管理するシステムおよびクラウド上（バックアップ環境を含む）に保存された本業務に係る個人情報のすべてを、
+  <strong>復元不可能な状態で完全に消去</strong>いたします。消去完了後は、速やかに<strong>消去報告書</strong>を貴町へ提出いたします。</p>
+  <h3>(2) 消去の対象</h3>
+  <p>本業務に係る個人情報について、以下のすべてを消去の対象とします。運用上の控え（削除済みデータの退避領域）や
+  読み取り処理の中間データも漏れなく対象に含めます。</p>
+
+  <div class="cap">表２　消去の対象と消去方法</div>
+  <table class="grid" id="tbl2">
+    <thead>
+      <tr><th style="width:36%">消去の対象</th><th style="width:28%">保存先</th><th>消去の方法</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>利用者台帳・体力測定記録・問診結果・電子手帳の記録</td><td>Cloud Firestore</td><td>該当コレクションのドキュメントを完全削除（論理削除ではなく実体を削除）</td></tr>
+      <tr><td>削除済みデータの控え（運用上の退避領域）</td><td>Cloud Firestore</td><td>同上。控えは平時も職員が閲覧できない設定としており、消去時に併せて完全削除</td></tr>
+      <tr><td>読み取りキュー・当日受付の未処理データ（中間データ）</td><td>Cloud Firestore</td><td>同上</td></tr>
+      <tr><td>記録用紙の撮影画像</td><td>Cloud Storage</td><td>オブジェクトを削除（保持している旧世代・一時ファイルを含む）</td></tr>
+      <tr><td>受検者向け電子手帳のログインアカウント（利用している場合）</td><td>Firebase Authentication</td><td>アカウントを削除</td></tr>
+      <tr><td>帳票（個人結果票 PDF）・提出用 CSV・作業用ファイル</td><td>当社事業所内の業務用端末</td><td>ファイルを削除のうえ、ごみ箱からも完全削除</td></tr>
+      <tr><td>バックアップ環境</td><td>Google Cloud</td><td>バックアップ設定を無効化し、保持期間の経過をもって消去完了とする</td></tr>
+      <tr><td>個人情報を含む送受信ファイル・紙媒体（存在する場合）</td><td>当社事業所</td><td>電子ファイルは完全削除、紙媒体はシュレッダー等により裁断処理</td></tr>
+    </tbody>
+  </table>
+  <p class="note">※ Cloud Firestore・Cloud Storage は Google Cloud のマネージドサービスであり、当社による削除操作の後、
+  記憶媒体上のデータは Google Cloud のデータ削除プロセス（ISMAP の評価対象に含まれるもの）により消去されます。
+  当社側に復元用のコピーを残すことはありません。</p>
+
+</section>
+
+<!-- ============ 3.(3) 以降 ============ -->
+<section class="page">
+  <h3 style="margin-top:0;">(3) 消去の時期</h3>
+  <ul>
+    <li>個人情報データを貴町へ返却し、<strong>受領のご確認をいただいた日から 30 日以内</strong>に消去を実施します。</li>
+    <li>消去完了後<strong>10 日以内</strong>に、消去報告書を貴町へ提出します。</li>
+    <li>貴町よりご指定の期日がある場合は、そのご指示に従います。</li>
+  </ul>
+
+  <h3>(4) 消去報告書の記載事項</h3>
+  <ul>
+    <li>委託業務名・委託期間</li>
+    <li>消去を実施した年月日</li>
+    <li>消去した個人情報の種類・件数（表２の区分による）</li>
+    <li>消去の方法</li>
+    <li>消去実施者および確認者の氏名</li>
+    <li>当社代表者による証明（記名押印）</li>
+  </ul>
+
+</section>
+
+<!-- ============ 4. 第三者担保 ============ -->
+<section class="page">
+  <h2 style="margin-top:0;">４．第三者がデータに触れないことの担保</h2>
+  <p>第三者が本システムのデータに触れないことを、次の技術的・組織的措置により担保しています。</p>
+  <ul>
+    <li><strong>アカウントの限定</strong>：システムにログインできるのは当社の従事者のみです。ログインは ID（メールアドレス）・パスワード認証によります。</li>
+    <li><strong>管理者による許可制</strong>：ログインできただけではデータを閲覧できません。管理者が職員として登録した利用者のみが、システムのデータにアクセスできる設定としています（サーバ側のセキュリティルールにより強制）。</li>
+    <li><strong>再委託の不実施</strong>：再委託先・外部業者等の第三者にアカウントを付与することはありません。</li>
+    <li><strong>クラウド事業者の従業員による閲覧の排除</strong>：Google Cloud の利用規約・データ処理条項において、顧客データへのアクセスは厳格に制限されています。Google の従業員が本業務のデータを閲覧・加工することはありません。</li>
+    <li><strong>通信・保存時の暗号化</strong>：端末とクラウド間の通信はすべて HTTPS（TLS）で暗号化され、保存データは Google Cloud の既定により暗号化されています。</li>
+    <li><strong>削除済みデータの隔離</strong>：誤削除に備えた控えは、当社職員からも画面上一切閲覧できない設定としており、書き換え・消去もできません（消去は本書「３」の手順により管理者が実施します）。</li>
+    <li><strong>操作記録の保全</strong>：削除等の重要操作については、実施者・日時・対象の記録を残しています。</li>
+  </ul>
+
+  <p style="margin-top:14px;">以上のとおり回答いたします。ご不明な点や、追加でご提出が必要な資料がございましたら、
+  ご遠慮なくお申し付けください。引き続き、適切な安全管理のもとで業務を遂行してまいります。</p>
+
+  <div class="sign">
+    <table>
+      <tr><th>事業者名</th><td class="corp">株式会社クルート</td></tr>
+      <tr><th>所在地</th><td class="fill">■ご記入ください</td></tr>
+      <tr><th>代表者</th><td class="fill">代表取締役　■ご記入ください　　　　　　　　　　　　　　（印）</td></tr>
+      <tr><th>回答年月日</th><td>令和８年９月１８日</td></tr>
+    </table>
+  </div>
+
+  <div class="end">以上</div>
+</section>
+
+</body>
+</html>
