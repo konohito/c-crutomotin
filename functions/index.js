@@ -13,9 +13,10 @@ const { FieldValue } = require('firebase-admin/firestore')
 const cfg = require('./src/config')
 const { processDocument } = require('./src/documentai')
 const { mapDocumentToSheet } = require('./src/mapping')
-const { parseStoragePath, buildRecognitionDoc } = require('./src/recognition')
+const { parseStoragePath, buildRecognitionDoc, buildRecognitionFromSheet } = require('./src/recognition')
 const { readKcl } = require('./src/kclread')
 const { readSheetVision, mergeKcl, kclFromVision } = require('./src/visionread')
+const { sheetFromVision } = require('./src/visionsheet')
 
 admin.initializeApp()
 
@@ -50,8 +51,17 @@ exports.recognizeSheet = onRequest(async (req, res) => {
         res.status(413).json({ ok: false, error: `画像サイズが上限(${Math.round(cfg.maxImageBytes / 1048576)}MB)を超えています` }); return
       }
     }
-    const document = await processDocument({ content, gcsUri, mimeType })
-    const sheet = mapDocumentToSheet(document)
+    /* エンジン 'vision' では Document AI を呼ばない(画像を国外へ出さない)。
+       gcsUri 渡しはビジョン AI では扱えないため、画像そのものを送ってもらう。 */
+    let sheet
+    if (cfg.engine === 'vision') {
+      if (!content) { res.status(400).json({ ok: false, error: 'ビジョン AI 読み取りでは imageBase64 が必要です' }); return }
+      const vis = await readSheetVision(content, mimeType)
+      if (!vis) { res.status(503).json({ ok: false, error: 'ビジョン AI 読み取りが無効(VISION_READ=0)です' }); return }
+      sheet = sheetFromVision(vis)
+    } else {
+      sheet = mapDocumentToSheet(await processDocument({ content, gcsUri, mimeType }))
+    }
     res.json({ ok: true, sheet })
   } catch (err) {
     console.error('recognizeSheet error:', err)
@@ -85,13 +95,40 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '1GiB', timeoutSeconds:
     // (gcsUri 渡しだと Document AI 側のサービスにバケット読み取り権限が必要になり、
     //  secure-by-default の組織では既定で拒否されて失敗するため)
     const [content] = await admin.storage().bucket(bucket).file(name).download()
-    const document = await processDocument({ content, mimeType: obj.contentType || 'image/jpeg' })
-    const rec = buildRecognitionDoc(document, {
-      no: parsed.no, storagePath: name, threshold: cfg.reviewThreshold,
-    })
+    const mimeType = obj.contentType || 'image/jpeg'
+    const meta = { no: parsed.no, storagePath: name, threshold: cfg.reviewThreshold }
+
+    /* エンジン 'vision': Vertex AI(東京)だけで読む。Document AI を呼ばないので
+       画像が国外へ出ない。信頼度が出ない読みなので、記録用紙は全件職員確認を通す。 */
+    if (cfg.engine === 'vision') {
+      const vis = await readSheetVision(content, mimeType, name)
+      if (!vis) throw new Error('ビジョン AI 読み取りが無効(VISION_READ=0)か、画像が大きすぎます')
+      const rec = buildRecognitionFromSheet(sheetFromVision(vis), meta)
+      // Gemini は信頼度を返さない。誤読を台帳に入れないため、必ず職員の確認を通す
+      rec.needsReview = true
+      if (vis.type === 'kcl') {
+        const kv = kclFromVision(vis)
+        if (kv) rec.kcl = { ...kv, debug: { ...(kv.debug || {}), visionModel: vis.model || null } }
+      }
+      await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: FieldValue.serverTimestamp() })
+      if (rec.walkIn) {
+        await db.collection('walkins').doc(ref.id).set({
+          ...rec, batchId: parsed.batchId, bucket,
+          walkinStatus: 'pending',
+          recognizedAt: FieldValue.serverTimestamp(),
+        })
+      }
+      await touchBatch()
+      return
+    }
+
+    /* エンジン 'docai': 従来経路(Document AI + 幾何ロジック + ビジョン AI の統合)。
+       Document AI に東京リージョンが無く、画像が国外へ出る点に注意(src/config.js 参照)。 */
+    const document = await processDocument({ content, mimeType })
+    const rec = buildRecognitionDoc(document, meta)
     // 問診票(様式 R7-03/R7-03W)はマークシート読み取りを付与し、必ず職員確認を通す
     try {
-      const kcl = readKcl(document, content, obj.contentType || 'image/jpeg')
+      const kcl = readKcl(document, content, mimeType)
       if (kcl.isKcl) {
         // debug は原因調査用(位置合わせの補正量・設問ごとの濃度)。画面には出さない
         rec.kcl = { side: kcl.side || null, answers: kcl.answers || {}, readable: !!kcl.readable, reason: kcl.reason || null, via: kcl.via || null, debug: kcl.debug || null }
@@ -109,7 +146,7 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '1GiB', timeoutSeconds:
        - 文字認識ごと失敗した問診票の写真: ビジョン AI 単独で読む
        呼び出しに失敗しても従来の結果のまま進む(ログにだけ残す)。 */
     try {
-      const vis = await readSheetVision(content, obj.contentType || 'image/jpeg')
+      const vis = await readSheetVision(content, mimeType, name)
       if (vis) {
         if (!rec.ocrId && vis.id) rec.ocrId = vis.id
         if (!rec.ocrName && vis.name) rec.ocrName = vis.name

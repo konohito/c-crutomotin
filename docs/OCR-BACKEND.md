@@ -150,6 +150,25 @@ cd functions && npm install
 | `VISION_READ` | `1` | ビジョン AI 読み取り。`0` で無効化 |
 | `GEMINI_MODEL` | `gemini-2.5-pro` | 先頭に試すモデル。見つからなければ候補を順に試す |
 | `VERTEX_LOCATION` | `asia-northeast1` | Vertex AI の呼び出しリージョン。既定は東京 |
+| `OCR_ENGINE` | `vision` | 読み取りエンジン。`vision`（既定）/ `docai` |
+| `VISION_MOCK` | （空） | `1` で実 Vertex AI を呼ばず合成結果。エミュレータでは既定で有効 |
+
+### 読み取りエンジン
+
+**既定は `vision`**（Vertex AI / Gemini・東京リージョン単独）。`docai` にすると
+従来の Document AI 経路に戻るが、**Document AI に東京リージョンは無く画像が国外へ出る**。
+
+| | `vision`（既定） | `docai` |
+|---|---|---|
+| 呼ぶサービス | Vertex AI のみ | Document AI → 幾何ロジック → Vertex AI で統合 |
+| 処理国 | 日本（東京） | **米国**（`DOCAI_LOCATION` 既定 `us`） |
+| 記録用紙の測定値 | Gemini がマスを読む（`src/visionsheet.js`） | OCR トークン座標 + 枠構成から復元（`src/mapping.js`） |
+| 問診票 | `kclFromVision`（Gemini 単独） | `kclread.js` の画素解析が主・Gemini が補完 |
+| 信頼度 | 返らない。**全件職員確認**（`needsReview` を常に立てる） | Document AI の confidence |
+
+`vision` では信頼度が得られないため、妥当範囲（`VALUE_RANGE`）を外れた値は
+**採用せず**生の読みだけ残して職員に回す。桁を取り違えた値（体重 `50.4` → `504`）を
+台帳に入れないための足切り。
 
 ### 保存・処理のリージョン
 
@@ -162,12 +181,13 @@ cd functions && npm install
 | Cloud Functions（画像の受け取り・変換） | `asia-northeast1`（東京） | `functions/index.js` の `setGlobalOptions` |
 | Cloud Firestore / Cloud Storage | `asia-northeast1`（東京） | GCP プロジェクトの設定 |
 | Vertex AI（ビジョン AI 読み取り） | `asia-northeast1`（東京） | `VERTEX_LOCATION`（既定値。`src/visionread.js`） |
-| Document AI（文字認識） | **`DOCAI_LOCATION` 次第。既定 `us`** | `DOCAI_LOCATION` |
+| Document AI（文字認識） | `OCR_ENGINE=docai` のときだけ使う。**東京は提供されていない** | `DOCAI_LOCATION` |
 
-**Document AI は既定のままだと米国のプロセッサに画像を送る。**
-日本国内に閉じるには、東京リージョンでプロセッサを作り直し、
-`DOCAI_LOCATION=asia-northeast1` と新しい `DOCAI_PROCESSOR_ID` を設定する
-（プロセッサ ID はリージョンごとに別物なので、ロケーションだけ変えると動かない）。
+**Document AI には東京リージョンが無い。** マルチリージョンは `us` と `eu` のみ、
+単一リージョンは Mumbai / Singapore / Sydney / London / Frankfurt / Montréal で、日本は選べない
+（[Document AI のリージョン](https://cloud.google.com/document-ai/docs/regions)）。
+Cloud Vision API も global / us / eu のみ。
+**東京で動く読み取り手段は Vertex AI だけ**なので、既定を `OCR_ENGINE=vision` にしている。
 
 Vertex AI は、指定したリージョンに最新世代のモデルが無ければ 404 になるが、
 `MODELS` の次の候補へ自動的に落ちる（東京では `gemini-2.5-pro` 系になる見込み）。

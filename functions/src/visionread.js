@@ -264,9 +264,22 @@ function kclFromVision(vis) {
 }
 
 // 写真 1 枚をビジョン AI で読む。失敗・無効時は null(呼び出し側は従来動作のまま)
-async function readSheetVision(imageBuffer, mimeType) {
+/* 実 Vertex AI を呼ばずに合成結果を返すか。
+   ・VISION_MOCK=1 を明示した場合
+   ・ローカルエミュレータ(FUNCTIONS_EMULATOR=true。VISION_MOCK=0 で無効化可)
+   実運用(FUNCTIONS_EMULATOR 未設定)では false。 */
+function useMock() {
+  if (process.env.VISION_MOCK === '1') return true
+  return process.env.FUNCTIONS_EMULATOR === 'true' && process.env.VISION_MOCK !== '0'
+}
+
+async function readSheetVision(imageBuffer, mimeType, seed) {
   if (!ENABLED) return null
   if (!imageBuffer || imageBuffer.length === 0 || imageBuffer.length > MAX_BYTES) return null
+  if (useMock()) {
+    const { mockVision } = require('./mockdoc')
+    return mockVision(seed || (imageBuffer && imageBuffer.length) || 'mock')
+  }
   const { model, text } = await callVertex(imageBuffer, mimeType)
   const vis = parseVisionJson(text)
   if (!vis) throw new Error('ビジョン AI の応答を解釈できませんでした: ' + String(text).slice(0, 200))
@@ -274,4 +287,4 @@ async function readSheetVision(imageBuffer, mimeType) {
   return vis
 }
 
-module.exports = { readSheetVision, parseVisionJson, mapVisionAnswers, mergeKcl, kclFromVision, vertexUrl }
+module.exports = { readSheetVision, parseVisionJson, mapVisionAnswers, mergeKcl, kclFromVision, vertexUrl, MODELS }

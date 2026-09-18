@@ -4,6 +4,11 @@
 module.exports = {
   project: process.env.DOCAI_PROJECT_ID || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '',
   location: process.env.DOCAI_LOCATION || 'us', // Document AI のロケーション: 'us' / 'eu' など
+  /* 読み取りエンジン。既定は 'vision'(Vertex AI / Gemini・東京リージョン)。
+     'docai' にすると Document AI を使うが、Document AI に東京リージョンは無く
+     画像(氏名・測定値が写る)が国外へ出る。委託元には国内限定と回答しているため
+     (docs/kashima/)、切り替えは影響を確認のうえ行うこと。 */
+  engine: process.env.OCR_ENGINE === 'docai' ? 'docai' : 'vision',
   processorId: process.env.DOCAI_PROCESSOR_ID || '',
   apiKey: process.env.OCR_API_KEY || '',        // 任意: フロントの X-Api-Key と一致させる簡易認証
   allowOrigin: process.env.OCR_ALLOW_ORIGIN || '*',

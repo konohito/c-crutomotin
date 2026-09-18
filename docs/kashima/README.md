@@ -50,16 +50,16 @@ EOF
 | 記録用紙画像は認証済み職員のみ | `storage.rules` |
 | 処理は東京リージョン | `functions/index.js` `setGlobalOptions({ region: 'asia-northeast1' })` |
 | AI 読み取りは東京リージョン | `functions/src/visionread.js` の `VERTEX_LOCATION`（既定 `asia-northeast1`）。テストで固定 |
+| 国外へ出る経路が無い | `functions/src/config.js` の `engine`（既定 `vision`）。Document AI を呼ばない |
 | 削除の控えは職員からも読めない | `firestore.rules` の `deletedRecords`（`allow read: if false`）、`docs/削除と復元.md` |
 | 消去対象のコレクション一覧 | `firestore.rules` の `match /<コレクション>/` 一覧 |
 | ISMAP 登録 | Google Cloud 公式ブログ（2021/3/18、2023/11/13）— GCP・Firebase とも登録済み |
 
 ## 未対応（送付前に確認が必要）
 
-- **Document AI が米国のまま**。`DOCAI_LOCATION` の既定は `us` で、記録用紙の画像（氏名・測定値が写る）を
-  米国のプロセッサへ送っている。回答書の「個人情報の処理は東京リージョン」と食い違うため、**送付前に**
-  東京リージョンでプロセッサを作り直し、`DOCAI_LOCATION=asia-northeast1` と新しい `DOCAI_PROCESSOR_ID` を
-  GitHub の Variables に設定すること（プロセッサ ID はリージョンごとに別物）。詳細は `docs/OCR-BACKEND.md`。
+- **実データでの精度検証が未実施**。Gemini 単独読みの誤読率は測れていない。
+  過去の測定会の写真（台帳に正解値がある分）を 50〜100 枚用意し、読み取り結果と台帳を
+  突き合わせて誤読 0 を確認してから本番運用に乗せること。それまでは全件職員確認で運用する。
 - **委託終了時の一括消去スクリプトが未整備**。現状、消去は手作業になる。
   `deletedRecords` を含む全コレクションを消す運用手順またはスクリプトを用意しておくこと。
 
@@ -67,4 +67,6 @@ EOF
 
 - **Vertex AI の呼び出しリージョンを東京に固定**（`VERTEX_LOCATION`、既定 `asia-northeast1`）。
   以前はグローバルエンドポイント（`locations/global`）で、処理国が定まっていなかった。
-  次回デプロイから東京で処理される。
+- **Document AI をやめ、読み取りを Vertex AI（東京）単独にした**（`OCR_ENGINE=vision`、既定）。
+  Document AI には東京リージョンが無く、画像が米国へ出ていたため。
+  これで個人情報が国外に出る経路は無くなり、回答書の記載と実装が一致する。

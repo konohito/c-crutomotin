@@ -57,4 +57,38 @@ function mockDocument(seedInput) {
   return { text: '', entities }
 }
 
-module.exports = { mockDocument }
+/* 合成ビジョン AI レスポンス(visionread の parseVisionJson が返す形)。
+   エンジンが vision のとき、エミュレータ / CI で実 Vertex AI を呼ばずに
+   パイプラインを通すために使う。値は妥当範囲(mapping.js の VALUE_RANGE)の内側に作る。 */
+function mockVision(seedInput) {
+  const r = rng(hashStr(seedInput))
+  const num = (lo, hi, dec = 1) => {
+    const p = Math.pow(10, dec)
+    return (Math.round((lo + (hi - lo) * r()) * p) / p).toFixed(dec)
+  }
+  const [name, kana] = NAMES[Math.floor(r() * NAMES.length)]
+  const id = String(10000 + Math.floor(r() * 400))
+  return {
+    type: 'record',
+    side: null,
+    form: 'R702',
+    id,
+    name,
+    kana,
+    answers: null,
+    values: {
+      height: num(150, 170),
+      weight: num(45, 70),
+      gripR: num(18, 34),
+      gripL: num(18, 34),
+      walk5: num(3, 7),
+      walk5max: num(2.5, 6),
+      tug: num(6, 14),
+      balR: num(5, 45),
+      balL: num(5, 45),
+    },
+    model: 'mock',
+  }
+}
+
+module.exports = { mockDocument, mockVision }

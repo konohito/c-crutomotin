@@ -63,6 +63,7 @@ jobs:
         working-directory: functions
         run: |
           {
+            echo "OCR_ENGINE=${{ vars.OCR_ENGINE || 'vision' }}"
             echo "DOCAI_LOCATION=${{ vars.DOCAI_LOCATION || 'us' }}"
             echo "DOCAI_PROCESSOR_ID=${{ vars.DOCAI_PROCESSOR_ID }}"
             echo "OCR_ALLOW_ORIGIN=${{ vars.OCR_ALLOW_ORIGIN || 'https://cruto-motion.web.app' }}"

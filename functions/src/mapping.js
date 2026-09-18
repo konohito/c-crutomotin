@@ -264,7 +264,7 @@ function mapDocumentToSheet(document) {
 }
 
 module.exports = {
-  SHEET_COLS, FIELD_ALIASES,
+  SHEET_COLS, FIELD_ALIASES, VALUE_RANGE, BOX_DIGITS,
   mapDocumentToSheet, collectPairs, parseNumber, matchFieldId, anchorText, norm, zenToHan,
   spatialFallback, digitsToValue,
 }

@@ -18,7 +18,12 @@ function parseStoragePath(name) {
 
 // document → Firestore recognition ドキュメント。信頼度しきい値未満の項目数も添える。
 function buildRecognitionDoc(document, meta = {}) {
-  const sheet = mapDocumentToSheet(document)
+  return buildRecognitionFromSheet(mapDocumentToSheet(document), meta)
+}
+
+/* 記録用紙スキーマ(sheet) → Firestore recognition ドキュメント。
+   sheet は Document AI 版(mapDocumentToSheet)でもビジョン AI 版(sheetFromVision)でもよい。 */
+function buildRecognitionFromSheet(sheet, meta = {}) {
   const threshold = meta.threshold || 80
   const lowConf = Object.keys(sheet.fields).filter(cid => {
     const f = sheet.fields[cid]
@@ -40,4 +45,4 @@ function buildRecognitionDoc(document, meta = {}) {
   }
 }
 
-module.exports = { parseStoragePath, buildRecognitionDoc }
+module.exports = { parseStoragePath, buildRecognitionDoc, buildRecognitionFromSheet }
