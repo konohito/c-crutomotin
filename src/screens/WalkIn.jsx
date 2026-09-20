@@ -150,10 +150,13 @@ export default function WalkIn() {
     setBusy(e.id)
     try {
       if (e.kcl) {
-        if (dbEnabled()) await commitKclRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, answers: ans, year: D.CUR })
+        // 問診票も測定日（撮影日）を渡す（渡さないと「今日」の文書に入り、測定と分かれる）
+        const kDate = batchDate(e.batchId)
+        const kYear = D.fiscalYearOfDate(kDate) ?? D.CUR
+        if (dbEnabled()) await commitKclRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, answers: ans, year: kYear, date: kDate })
         const clean = {}
         Object.entries(ans).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
-        u.kcl[D.CUR] = { raw: { ...((u.kcl[D.CUR] || {}).raw || {}), ...clean }, date: (u.kcl[D.CUR] || {}).date || batchDate(e.batchId) }
+        u.kcl[kYear] = { raw: { ...((u.kcl[kYear] || {}).raw || {}), ...clean }, date: (u.kcl[kYear] || {}).date || kDate }
       } else {
         const finalValues = finalValuesOf()
         /* 保存先の測定は measKey で名指しする（CSV取り込みと同じ渡し方）。
@@ -216,10 +219,13 @@ export default function WalkIn() {
       await createUserDoc(u)
       // 問診票(R7-03W)の読み取りは回答を保存して終了(測定値は記録用紙側で登録)
       if (e.kcl) {
-        if (dbEnabled()) await commitKclRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, answers: ans, year: D.CUR })
+        // 仮登録した方の問診票も測定日（撮影日）を渡す（上と同じ理由）
+        const kDate = batchDate(e.batchId)
+        const kYear = D.fiscalYearOfDate(kDate) ?? D.CUR
+        if (dbEnabled()) await commitKclRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, answers: ans, year: kYear, date: kDate })
         const clean = {}
         Object.entries(ans).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
-        u.kcl[D.CUR] = { raw: clean, date: batchDate(e.batchId) }
+        u.kcl[kYear] = { raw: clean, date: kDate }
         await updateWalkin(e.id, { walkinStatus: 'committed', userId: u.id, userName: u.name })
         deleteSheetImage(e.storagePath).catch(() => {})
         if (!dbEnabled()) setEntries(prev => prev.map(x => x.id === e.id ? { ...x, walkinStatus: 'committed', userId: u.id, userName: u.name } : x))

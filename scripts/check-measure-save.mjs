@@ -247,6 +247,22 @@ console.log('=== 画面の saveMeasurement 呼び出しが、測定日と保存�
   }
   if (calls >= 4) ok(`画面の呼び出しを ${calls} 件みました`)
   else fail(`★呼び出しが ${calls} 件しか見つかりません（検査が空振りしている可能性）`)
+
+  /* 問診票(commitKclRecognition)も同じ。date を渡さないと「今日」の文書に入り、
+     同じ測定会の測定（撮影日の文書）と別々に分かれて余分な記録になる
+     （2026-09-17 に実際に 18 件できた）。 */
+  let kcl = 0
+  for (const p of files) {
+    const src = readFileSync(new URL('../' + p, import.meta.url), 'utf8')
+    for (const line of src.split('\n')) {
+      if (!line.includes('commitKclRecognition(') || /export async function/.test(line)) continue
+      kcl++
+      if (/\bdate:/.test(line)) ok(`問診票の本登録が測定日を渡しています（${p}）`)
+      else fail(`★問診票の本登録が測定日を渡していません（${p}）`)
+    }
+  }
+  if (kcl >= 3) ok(`問診票の呼び出しを ${kcl} 件みました`)
+  else fail(`★問診票の呼び出しが ${kcl} 件しか見つかりません（検査が空振りしている可能性）`)
 }
 
 console.log('')

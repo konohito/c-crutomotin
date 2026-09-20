@@ -358,10 +358,13 @@ function ProdImport() {
   const doCommitKcl = async () => {
     if (!assignU) { showToast('利用者を選択してください'); return }
     try {
-      await commitKclRecognition({ batchId: assign.batchId, recognitionId: assign.id, user: assignU, answers: ansEdit, year: D.CUR })
+      // 問診票も測定日（撮影日）を渡す（渡さないと「今日」の文書に入り、測定と分かれる）
+      const kDate = batchDate(assign.batchId)
+      const kYear = D.fiscalYearOfDate(kDate) ?? D.CUR
+      await commitKclRecognition({ batchId: assign.batchId, recognitionId: assign.id, user: assignU, answers: ansEdit, year: kYear, date: kDate })
       const clean = {}
       Object.entries(ansEdit).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
-      assignU.kcl[D.CUR] = { raw: { ...((assignU.kcl[D.CUR] || {}).raw || {}), ...clean }, date: batchDate(assign.batchId) }
+      assignU.kcl[kYear] = { raw: { ...((assignU.kcl[kYear] || {}).raw || {}), ...clean }, date: kDate }
       deleteSheetImage(assign.storagePath).catch(() => {})
       setAssign(null); setAssignU(null)
       set(s2 => ({ rev: s2.rev + 1 }))
@@ -408,10 +411,14 @@ function ProdImport() {
   const commitOne = async ({ rec, u }) => {
     // 問診票(様式 R7-03)の読み取りは回答のみを保存し、測定値の記録には触れない
     if (rec.kcl) {
-      await commitKclRecognition({ batchId: rec.batchId, recognitionId: rec.id, user: u, answers: rec.kcl.answers, year: D.CUR })
+      /* 問診票も測定日（撮影日）を渡す。渡さないと「今日」の文書に入り、
+         同じ測定会の測定（撮影日の文書）と別々に分かれて余分な記録になる。 */
+      const kDate = batchDate(rec.batchId)
+      const kYear = D.fiscalYearOfDate(kDate) ?? D.CUR
+      await commitKclRecognition({ batchId: rec.batchId, recognitionId: rec.id, user: u, answers: rec.kcl.answers, year: kYear, date: kDate })
       const clean = {}
       Object.entries(rec.kcl.answers || {}).forEach(([k, v]) => { if (v === 'yes' || v === 'no') clean[k] = v })
-      u.kcl[D.CUR] = { raw: { ...((u.kcl[D.CUR] || {}).raw || {}), ...clean }, date: batchDate(rec.batchId) }
+      u.kcl[kYear] = { raw: { ...((u.kcl[kYear] || {}).raw || {}), ...clean }, date: kDate }
       deleteSheetImage(rec.storagePath).catch(() => {})
       return
     }
