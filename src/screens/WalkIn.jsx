@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { dbEnabled, wardLabel, watchWalkins, updateWalkin, deleteWalkin, clearWalkInFlag, commitRecognition, commitKclRecognition, deleteSheetImage, sheetImageUrl } from '../lib/db.js'
-import { createUserDoc, saveMeasurement } from '../lib/realdata.js'
+import { createUserDoc, saveMeasurement, measKey } from '../lib/realdata.js'
 import { wardIdCode, muniOfWard, batchDate } from '../lib/helpers.js'
 import { findExisting } from '../lib/merge.js'
 import { Card, Select } from '../ui/kit.jsx'
@@ -156,10 +156,15 @@ export default function WalkIn() {
         u.kcl[D.CUR] = { raw: { ...((u.kcl[D.CUR] || {}).raw || {}), ...clean }, date: (u.kcl[D.CUR] || {}).date || batchDate(e.batchId) }
       } else {
         const finalValues = finalValuesOf()
-        if (dbEnabled()) await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: D.fiscalYearOfDate(batchDate(e.batchId)) ?? D.CUR, date: batchDate(e.batchId) } })
+        /* 保存先の測定は measKey で名指しする（CSV取り込みと同じ渡し方）。
+           名指ししないと、その年度に既に測定がある方では前の測定を今回の日付へ
+           引っ越して無効化してしまう。 */
+        const mDate = batchDate(e.batchId)
+        const mYear = D.fiscalYearOfDate(mDate) ?? D.CUR
+        if (dbEnabled()) await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: mYear, date: mDate } })
         const nums = {}
         D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
-        await saveMeasurement(u.id, D.fiscalYearOfDate(batchDate(e.batchId)) ?? D.CUR, nums, batchDate(e.batchId), undefined, { force })
+        await saveMeasurement(u.id, mYear, nums, mDate, measKey(u.id, mDate, mYear), { force })
       }
       // 台帳登録済みの利用者に紐づけた場合は、このエントリの正式登録も済んだ扱いにする
       const st = u.walkIn ? 'committed' : 'registered'
@@ -225,12 +230,15 @@ export default function WalkIn() {
         return
       }
       const finalValues = finalValuesOf()
+      // 仮登録した方の測定も、保存先を measKey で名指しして渡す（上と同じ理由）
+      const mDate = batchDate(e.batchId)
+      const mYear = D.fiscalYearOfDate(mDate) ?? D.CUR
       if (dbEnabled()) {
-        await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: D.fiscalYearOfDate(batchDate(e.batchId)) ?? D.CUR, date: batchDate(e.batchId) } })
+        await commitRecognition({ batchId: e.batchId, recognitionId: e.recognitionId || e.id, user: u, finalValues, meta: { year: mYear, date: mDate } })
       }
       const nums = {}
       D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
-      await saveMeasurement(u.id, D.fiscalYearOfDate(batchDate(e.batchId)) ?? D.CUR, nums, batchDate(e.batchId), undefined, { force })
+      await saveMeasurement(u.id, mYear, nums, mDate, measKey(u.id, mDate, mYear), { force })
       await updateWalkin(e.id, { walkinStatus: 'committed', userId: u.id, userName: u.name })
       deleteSheetImage(e.storagePath).catch(() => {})
       if (!dbEnabled()) setEntries(prev => prev.map(x => x.id === e.id ? { ...x, walkinStatus: 'committed', userId: u.id, userName: u.name } : x))

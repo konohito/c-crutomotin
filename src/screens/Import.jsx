@@ -4,7 +4,7 @@ import { useStore, pendingSheets, sheetsAll, batchN, flagsFor, flaggedCols, need
 import { fmtD, batchDate } from '../lib/helpers.js'
 import { ocrEnabled, recognizeSheet, matchUser } from '../lib/ocr.js'
 import { dbEnabled, watchBatches, watchRecognitions, commitRecognition, commitKclRecognition, rejectRecognition, sheetImageUrl, deleteSheetImage, markBatchDone, sweepFinishedBatches, batchAllDone } from '../lib/db.js'
-import { saveMeasurement } from '../lib/realdata.js'
+import { saveMeasurement, measKey } from '../lib/realdata.js'
 import { Card, Pill, Modal, ModalHead, Select, ConfirmModal } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 import { kclSideList, ansKind, ANS_STYLE, kclStats, kclAutoOk } from '../ui/kclanswers.jsx'
@@ -144,11 +144,18 @@ function RecReviewModal({ rec, batchId, onClose, onDone }) {
     const finalValues = {}
     D.SHEET_COLS.forEach(cid => { const t = String(vals[cid] ?? '').trim(); finalValues[cid] = t === '' ? null : t })
     try {
-      await commitRecognition({ batchId, recognitionId: rec.id, user: sel, finalValues, meta: { year: D.CUR, date: batchDate(batchId) } })
+      /* 測定日は用紙を撮影した日（バッチID）。年度も測定日から決める。
+         CSV取り込み(store.jsx)と同じく、保存先の測定を measKey で名指しして渡す。
+         渡さないと saveMeasurement が「その年度の代表（＝前回の測定）」を書き換え先だと
+         解釈し、前の測定を今回の日付へ引っ越して無効化してしまう
+         （短期集中予防(C型)は開始時と終了時を同じ年度に測るため、開始時の記録が消える）。 */
+      const mDate = batchDate(batchId)
+      const mYear = D.fiscalYearOfDate(mDate) ?? D.CUR
+      await commitRecognition({ batchId, recognitionId: rec.id, user: sel, finalValues, meta: { year: mYear, date: mDate } })
       // メモリの台帳にも反映（個人詳細・台帳の表示を即時更新）
       const nums = {}
       D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] === null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
-      await saveMeasurement(sel.id, D.CUR, nums, undefined, undefined, { force })
+      await saveMeasurement(sel.id, mYear, nums, mDate, measKey(sel.id, mDate, mYear), { force })
       showToast(`${sel.name} さんを本登録しました`)
       onDone()
       onClose()
@@ -414,10 +421,14 @@ function ProdImport() {
     if (bad.length) throw new Error(bad[0].message)
     const finalValues = {}
     D.SHEET_COLS.forEach(cid => { finalValues[cid] = rec.fields && rec.fields[cid] ? rec.fields[cid].value : null })
-    await commitRecognition({ batchId: rec.batchId, recognitionId: rec.id, user: u, finalValues, meta: { year: D.CUR, date: batchDate(rec.batchId) } })
+    /* 一括本登録も 1 件ずつの本登録と同じ渡し方。測定日＝撮影日、年度は測定日から決め、
+       保存先の測定は measKey で名指しする（名指ししないと同じ年度の前の測定を消す）。 */
+    const mDate = batchDate(rec.batchId)
+    const mYear = D.fiscalYearOfDate(mDate) ?? D.CUR
+    await commitRecognition({ batchId: rec.batchId, recognitionId: rec.id, user: u, finalValues, meta: { year: mYear, date: mDate } })
     const nums = {}
     D.SHEET_COLS.forEach(cid => { nums[cid] = finalValues[cid] == null ? null : Math.round(parseFloat(finalValues[cid]) * 10) / 10 })
-    await saveMeasurement(u.id, D.CUR, nums)
+    await saveMeasurement(u.id, mYear, nums, mDate, measKey(u.id, mDate, mYear))
     deleteSheetImage(rec.storagePath).catch(() => {})
   }
 

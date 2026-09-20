@@ -10,8 +10,10 @@
    使い方: node scripts/check-measure-save.mjs
    （import.meta.env が無い素の node で動くため dbEnabled() は false になり、
      Firestore への書き込みは起きない） */
+import { readdirSync, readFileSync } from 'node:fs'
 import D, { setUsers, eraLabel, fiscalYearOfDate } from '../src/data/engine.js'
 import { toEngineUser, saveMeasurement, measKey } from '../src/lib/realdata.js'
+import { batchDate } from '../src/lib/helpers.js'
 
 let ng = 0
 const ok = (m) => console.log('  OK  ' + m)
@@ -139,6 +141,112 @@ for (const [d, wantY, wantEra] of [
   const y = fiscalYearOfDate(d)
   if (y === wantY && eraLabel(y) === wantEra) ok(`${d} → ${eraLabel(y)}年度`)
   else fail(`★${d} → ${eraLabel(y)}年度（${wantEra}年度 のはず）`)
+}
+
+/* ここから下は「読み取り結果の本登録（取込画面・当日受付）」の再発防止。
+   本登録は Firestore に 2 回書く（commitRecognition → saveMeasurement）。
+   2 回目に測定日と保存先キーを渡していなかったため、2 回目が
+   「その年度の代表（＝前回の測定）」を書き換え先だと解釈し、前の測定を
+   今回の日付へ引っ越して無効化していた。
+   画面と同じ引数の並びで saveMeasurement を呼んで、消えないことを確かめる。 */
+const commitLikeScreen = (u, batchId, values) => {
+  const date = batchDate(batchId)
+  const year = fiscalYearOfDate(date) ?? D.CUR
+  return saveMeasurement(u.id, year, values, date, measKey(u.id, date, year), { force: false })
+}
+
+console.log('')
+console.log('=== 本登録を 2 回しても、前の測定が消えないか（取込画面・当日受付）===')
+{
+  const u = freshUser()   // 2026/09/17 の測定を 1 件持っている
+  // 同じ年度の別の日に測った用紙を本登録する（C型の開始時・終了時はこの形になる）
+  await commitLikeScreen(u, '20261120-ab12x', V({ weight: 47 }))
+  const first = u.series.find(r => r.date === '2026/09/17')
+  const second = u.series.find(r => r.date === '2026/11/20')
+  if (u.series.length === 2) ok(`測定が 2 件そろっています（${u.series.map(r => r.date).join(' / ')}）`)
+  else fail(`★測定が ${u.series.length} 件（2 件のはず。前の測定が消えています）`)
+  if (first && first.values.weight === 50) ok('前の測定の値がそのまま残っています（体重50）')
+  else fail('★前の測定の値が書き換わりました')
+  if (second && second.values.weight === 47) ok('本登録した測定が入りました（体重47）')
+  else fail('★本登録した測定が入っていません')
+  if (second && second.year === 2026) ok(`年度は測定日から決まりました（2026/11/20 → ${second.year} 年度）`)
+  else fail(`★年度が測定日から決まっていません（${second && second.year}）`)
+
+  // さらにもう 1 枚（3 回目）本登録しても、前の 2 件は残る
+  await commitLikeScreen(u, '20270210-cd34y', V({ weight: 46 }))
+  if (u.series.length === 3) ok(`3 回目の本登録でも前の分が残ります（${u.series.length} 件）`)
+  else fail(`★3 回目で測定が ${u.series.length} 件になりました（3 件のはず）`)
+  const feb = u.series.find(r => r.date === '2027/02/10')
+  if (feb && feb.year === 2026) ok('2027/02/10 は令和8年度（年度またぎでも測定日基準）')
+  else fail(`★2027/02/10 の年度が ${feb && feb.year}（2026 のはず）`)
+}
+
+console.log('')
+console.log('=== 測定日が違えば別の文書になるか／同じ日なら同じ文書か ===')
+{
+  const u = freshUser()
+  await commitLikeScreen(u, '20261120-ab12x', V({ weight: 47 }))
+  const keys = u.series.map(r => r.key)
+  if (new Set(keys).size === keys.length) ok(`測定日ごとに別のキーです（${keys.join(' / ')}）`)
+  else fail(`★キーが重複しています（${keys.join(' / ')}）`)
+  if (keys.includes('99001_20261120')) ok('キーは {利用者ID}_{測定日} の形です（99001_20261120）')
+  else fail(`★キーの形が違います（${keys.join(' / ')}）`)
+
+  // 同じ日の 2 枚目（表・裏の撮り直し等）は、同じ測定として 1 件のまま更新される
+  const before = u.series.length
+  await commitLikeScreen(u, '20261120-zz99z', V({ weight: 48 }))
+  const same = u.series.find(r => r.date === '2026/11/20')
+  if (u.series.length === before) ok(`同じ測定日の再登録では増えません（${u.series.length} 件のまま）`)
+  else fail(`★同じ測定日なのに ${u.series.length} 件に増えました`)
+  if (same && same.values.weight === 48) ok('同じ測定日の再登録は、その測定の値を更新します（体重48）')
+  else fail('★同じ測定日の再登録が反映されていません')
+}
+
+/* 画面側の呼び出しが、また測定日・保存先キーを渡さない形に戻っていないかを見張る。
+   ここが抜けると上のテストが通っていても本番では測定が消える（呼ぶ側の不具合のため）。 */
+console.log('')
+console.log('=== 画面の saveMeasurement 呼び出しが、測定日と保存先キーを渡しているか ===')
+{
+  const roots = ['src/screens', 'src/modals', 'src']
+  const seen = new Set()
+  const files = []
+  for (const r of roots) {
+    for (const f of readdirSync(new URL('../' + r, import.meta.url), { withFileTypes: true })) {
+      if (!f.isFile() || !/\.(js|jsx)$/.test(f.name)) continue
+      const p = r + '/' + f.name
+      if (seen.has(p)) continue
+      seen.add(p); files.push(p)
+    }
+  }
+  let calls = 0
+  for (const p of files) {
+    const src = readFileSync(new URL('../' + p, import.meta.url), 'utf8')
+    for (const line of src.split('\n')) {
+      const i = line.indexOf('saveMeasurement(')
+      if (i < 0 || /function saveMeasurement/.test(line)) continue
+      // 1 行ぶんの引数を括弧の対応で切り出し、いちばん外側のカンマで割る
+      let depth = 0, args = [''], j = i + 'saveMeasurement('.length
+      for (; j < line.length; j++) {
+        const c = line[j]
+        if (c === '(' || c === '{' || c === '[') depth++
+        else if (c === ')' && depth === 0) break
+        else if (c === ')' || c === '}' || c === ']') depth--
+        if (c === ',' && depth === 0) { args.push(''); continue }
+        args[args.length - 1] += c
+      }
+      const a = args.map(s => s.trim())
+      const where = `${p}: ${a[0]}`
+      calls++
+      if (!a[3] || a[3] === 'undefined') fail(`★測定日を渡していない呼び出しがあります（${where}）`)
+      else if (!a[4] || a[4] === 'undefined') {
+        // opts.create=true（過去の測定を新しく足す）はキー無しが正しい
+        if (/create:\s*true/.test(a[5] || '')) ok(`過去の測定の追加なのでキー無しで正しい（${where}）`)
+        else fail(`★保存先の測定を名指ししていない呼び出しがあります（${where}）`)
+      } else ok(`測定日と保存先キーを渡しています（${where}）`)
+    }
+  }
+  if (calls >= 4) ok(`画面の呼び出しを ${calls} 件みました`)
+  else fail(`★呼び出しが ${calls} 件しか見つかりません（検査が空振りしている可能性）`)
 }
 
 console.log('')
