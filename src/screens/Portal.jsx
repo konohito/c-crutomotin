@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { loadTecho, saveTechoProfile, addTechoLog, sortLogs } from '../lib/techo.js'
 import TechoBook from '../ui/techobook.jsx'
 import { Icon } from '../ui/icons.jsx'
-
-const BASE = import.meta.env.BASE_URL
+import { horizontalOrange } from '../ui/logos'
 
 /* 利用者ポータル — 発行された「ログインID + パスワード」でログインした利用者本人の画面。
    自分の電子手帳(目標・体調/活動記録・からだの記録)だけが見える。スマホでの利用を想定した 1 カラム。 */
@@ -28,7 +27,7 @@ export default function Portal({ user: u, onSignOut }) {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-canvas)' }}>
       <header style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-default)', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-        <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 20, display: 'block' }} />
+        <img src={horizontalOrange} alt="Cruto" style={{ height: 20, display: 'block' }} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             <Icon name="techo" size={15} strokeWidth={2} style={{ verticalAlign: '-2px', marginRight: 5 }} />

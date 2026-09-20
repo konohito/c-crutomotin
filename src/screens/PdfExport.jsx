@@ -7,8 +7,8 @@ import { districtOf } from '../lib/merge.js'
 import { ctypeRows, CTYPE_ITEMS } from '../lib/ctype.js'
 import { RadioCard, CheckRow, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
+import { markOnly } from '../ui/logos'
 
-const BASE = import.meta.env.BASE_URL
 const distinctSort = (arr) => [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'))
 
 // PDF 専用のレーダー（ラベルを大きく描くため広めの viewBox を使う）
@@ -89,7 +89,7 @@ function PdfPage({ p, state, count }) {
       {/* ヘッダー */}
       <div style={{ borderTop: '4px solid var(--brand-500)', paddingTop: 3 }}>
         <div style={{ borderTop: '1px solid var(--slate-900)', paddingTop: 9, display: 'flex', alignItems: 'center', gap: 14 }}>
-          <img src={`${BASE}assets/logo-cruto-mark-only.png`} alt="" style={{ width: 42, height: 42, objectFit: 'contain' }} />
+          <img src={markOnly} alt="" style={{ width: 42, height: 42, objectFit: 'contain' }} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.1em', color: 'var(--brand-600)' }}>介護予防事業 · 体力測定</div>
             <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '0.02em' }}>{p.era}年度 個人結果票</div>

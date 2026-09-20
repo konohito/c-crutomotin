@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { signIn, authErrorMessage } from '../lib/auth.js'
 import { portalEmailOf } from '../lib/techo.js'
-
-const BASE = import.meta.env.BASE_URL
+import { horizontalOrange } from '../ui/logos'
 
 /* ログイン画面。Firebase Auth（メール＋パスワード）。
    - 職員: メールアドレスでログイン → 管理画面
@@ -32,7 +31,7 @@ export default function Login() {
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--bg-canvas)' }}>
       <div style={{ width: '100%', maxWidth: 380 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center', marginBottom: 22 }}>
-          <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 30, display: 'block' }} />
+          <img src={horizontalOrange} alt="Cruto" style={{ height: 30, display: 'block' }} />
           <span className="t-display" style={{ fontSize: 15, letterSpacing: '0.05em', color: 'var(--slate-800)', background: 'var(--slate-100)', borderRadius: 5, padding: '1px 8px 2px' }}>motion</span>
         </div>
         <div className="card" style={{ padding: '26px 26px 28px' }}>

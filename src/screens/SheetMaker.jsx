@@ -5,8 +5,8 @@ import { mdw } from '../lib/helpers.js'
 import { wardLabel } from '../lib/db.js'
 import { RadioCard, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
+import { horizontalOrange } from '../ui/logos'
 
-const BASE = import.meta.env.BASE_URL
 // 用紙の題に印字する年度。既定は今日の日付から(4月切替)。翌年度分の先刷りなどは側面パネルで変更できる
 const sheetEra = (state) => `令和${state.shEra || D.fiscalEraNum()}年度`
 // 会場＝行政区。利用者の基本情報 venueName に行政区を持たせているので、そこから選択肢を作る。
@@ -60,7 +60,7 @@ function SheetPage({ p, walkIn }) {
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 26, display: 'block' }} />
+            <img src={horizontalOrange} alt="Cruto" style={{ height: 26, display: 'block' }} />
             <span className="t-display" style={{ fontSize: 13, letterSpacing: '0.05em', color: 'var(--slate-800)' }}>motion</span>
             <div style={{ fontSize: 10.5, border: '1px solid var(--slate-800)', padding: '2px 8px', fontWeight: 600 }}>様式 {walkIn ? 'R7-02W' : 'R7-02'}</div>
             <div style={{ fontSize: 9.5, color: 'var(--slate-500)', lineHeight: 1.5 }}>スキャン読み取り対応様式</div>

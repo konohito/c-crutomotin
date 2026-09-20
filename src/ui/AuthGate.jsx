@@ -5,8 +5,7 @@ import { loadPortalData } from '../lib/techo.js'
 import { getStaffProfile } from '../lib/staffAdmin.js'
 import Login from '../screens/Login.jsx'
 import Portal from '../screens/Portal.jsx'
-
-const BASE = import.meta.env.BASE_URL
+import { horizontalOrange } from './logos'
 
 const AuthCtx = createContext({ user: null, enabled: false, profile: null, signOut: () => {}, refreshProfile: () => {} })
 export const useAuth = () => useContext(AuthCtx)
@@ -16,7 +15,7 @@ function AuthSplash({ label = '読み込んでいます…' }) {
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: 'var(--bg-canvas)' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: 'var(--fg-3)' }}>
-        <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 26, opacity: 0.9 }} />
+        <img src={horizontalOrange} alt="Cruto" style={{ height: 26, opacity: 0.9 }} />
         <div style={{ fontSize: 12.5 }}>{label}</div>
       </div>
     </div>
@@ -30,7 +29,7 @@ function LoadFailed({ message, onRetry }) {
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--bg-canvas)' }}>
       <div style={{ maxWidth: 420, textAlign: 'center' }}>
-        <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 26, marginBottom: 18 }} />
+        <img src={horizontalOrange} alt="Cruto" style={{ height: 26, marginBottom: 18 }} />
         <div className="card" style={{ padding: '24px 26px' }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>台帳を読み込めませんでした</div>
           <div style={{ fontSize: 12.5, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.7 }}>
@@ -55,7 +54,7 @@ function NoAccess() {
   return (
     <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--bg-canvas)' }}>
       <div style={{ maxWidth: 380, textAlign: 'center' }}>
-        <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 26, marginBottom: 18 }} />
+        <img src={horizontalOrange} alt="Cruto" style={{ height: 26, marginBottom: 18 }} />
         <div className="card" style={{ padding: '24px 26px' }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>閲覧権限がありません</div>
           <div style={{ fontSize: 12.5, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.7 }}>

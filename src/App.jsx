@@ -31,8 +31,7 @@ import { EditUserModal, EditMeasModal, EditKclModal } from './modals/EditModals.
 import PasswordModal from './modals/PasswordModal.jsx'
 import { staffAdminEnabled } from './lib/staffAdmin.js'
 import ScreenErrorBoundary from './ui/errorboundary.jsx'
-
-const BASE = import.meta.env.BASE_URL
+import { horizontalOrange } from './ui/logos'
 
 const TITLES = {
   dash: ['ダッシュボード', '介護予防・体力測定の状況'],
@@ -110,7 +109,7 @@ function Sidebar() {
   return (
     <aside className={`sidebar noprint${state.navOpen ? ' open' : ''}`}>
       <div className="sidebar-brand">
-        <img src={`${BASE}assets/logo-cruto-horizontal-orange.png`} alt="Cruto" style={{ height: 34, display: 'block' }} />
+        <img src={horizontalOrange} alt="Cruto" style={{ height: 34, display: 'block' }} />
         <div className="t-display" style={{ fontSize: 14, letterSpacing: '0.05em', color: 'var(--slate-800)', background: 'var(--slate-100)', borderRadius: 5, padding: '1px 7px 2px 6px' }}>motion</div>
       </div>
       <nav className="sidebar-nav">

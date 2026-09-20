@@ -25,7 +25,9 @@ await build({
   platform: 'node',
   format: 'cjs',           // react-dom/server は CommonJS のため cjs で出す
   outfile: out,
-  loader: { '.jsx': 'jsx' },
+  // 画像は src/ 配下に置いて import している（ファイル名にハッシュを付けるため）。
+  // 検査では中身を使わないので、パス文字列だけ返す file ローダーで足りる。
+  loader: { '.jsx': 'jsx', '.png': 'file', '.jpg': 'file', '.svg': 'file' },
   jsx: 'automatic',
   external: ['firebase/*'],
   logLevel: 'warning',

@@ -5,8 +5,7 @@ import { dbEnabled, uploadSheetImage, bumpBatchUpload } from '../lib/db.js'
 import { Card } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 import IOSDevice from '../ui/IOSDevice.jsx'
-
-const BASE = import.meta.env.BASE_URL
+import { horizontalWhite } from '../ui/logos'
 
 // 本番(実データ)は実際の一括アップロード画面、公開デモは従来のモックアップを表示する。
 export default function Mobile() {
@@ -70,7 +69,7 @@ function MobileDemo() {
               <>
                 <div style={{ background: 'linear-gradient(150deg, var(--brand-500), var(--brand-600))', padding: '54px 20px 20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <img src={`${BASE}assets/logo-cruto-horizontal-white.png`} alt="Cruto" style={{ height: 24 }} />
+                    <img src={horizontalWhite} alt="Cruto" style={{ height: 24 }} />
                     <span className="t-display" style={{ fontSize: 12, color: '#fff', letterSpacing: '0.05em' }}>motion</span>
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--brand-100)', marginTop: 12 }}>本日の測定会</div>
