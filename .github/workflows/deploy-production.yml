@@ -51,6 +51,12 @@ jobs:
           npm ci
           npm run build:hosting
 
+      # フロントエンドの検査（未定義参照・全画面描画・測定値の点検・測定の保存まわり）。
+      # 失敗したらここで止まり、デプロイには進まない。
+      - name: フロントエンドの検査
+        if: steps.guard.outputs.ready == 'true'
+        run: npm run check
+
       # バックエンドの依存＋単体テスト
       - if: steps.guard.outputs.ready == 'true'
         working-directory: functions

@@ -7,7 +7,31 @@
   "hosting": {
     "public": "dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "headers": [
+      {
+        "comment": "HTML はキャッシュさせない。既定の max-age=3600 だと、直しても最大1時間は古い画面が使われ続け、新旧の版が混在する。JS/CSS はファイル名にハッシュが付くので長期キャッシュのままでよい。",
+        "source": "/index.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+      },
+      {
+        "source": "/",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+      },
+      {
+        "comment": "画面のURLはすべて index.html に書き換えて返している。キャッシュの指定は書き換え前のURLで判定されるため、/index.html と / だけでは画面URLを直接開いたときに効かない。拡張子の付かないURLはすべて画面とみなしてキャッシュさせない。ハッシュ付きの JS/CSS や画像は拡張子があるのでここには当たらない。",
+        "source": "**/!(*.*)",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+      },
+      {
+        "source": "**/*.@(js|css)",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+      },
+      {
+        "source": "**/*.@(jpg|jpeg|gif|png|svg|webp|ico)",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=604800" }]
+      }
+    ]
   },
   "firestore": {
     "rules": "firestore.rules",
