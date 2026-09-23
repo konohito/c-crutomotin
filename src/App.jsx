@@ -20,6 +20,7 @@ import Techo from './screens/Techo.jsx'
 import TechoList from './screens/TechoList.jsx'
 import WalkIn from './screens/WalkIn.jsx'
 import MergeScreen from './screens/Merge.jsx'
+import IdLookup from './screens/IdLookup.jsx'
 import Billing from './screens/Billing.jsx'
 import Certificate from './screens/Certificate.jsx'
 import Mobile from './screens/Mobile.jsx'
@@ -38,6 +39,7 @@ const TITLES = {
   imp: ['取り込み', '記録用紙のスキャン読み取りと本登録'],
   walkin: ['当日受付 取り込み', '台帳未登録の当日参加者の受付・登録（様式 R7-02W）'],
   csv: ['利用者情報取り込み', '名簿・記録 CSV からの一括登録'],
+  idlookup: ['IDをまとめて調べる', '氏名と生年月日の CSV から、台帳の ID を一括で照合（台帳には書き込みません）'],
   ros: ['利用者台帳', () => `登録 ${D.users.length} 名 · ${D.MUNIS.length} 市町村`],
   merge: ['重複の確認・統合', '同じ方が複数登録されていないかを地区をまたいで点検'],
   billing: ['請求突き合わせ', '期間を指定して団体ごとの測定人数を数える'],
@@ -65,6 +67,7 @@ const NAV_MAIN = [
   ['techo', '手帳作成'],
   ['ros', '利用者台帳'],
   ['merge', '重複の確認・統合'],
+  ['idlookup', 'IDをまとめて調べる'],
   ['mob', '用紙アップロード'],
 ]
 const NAV_ANA = [
@@ -225,7 +228,7 @@ function Header() {
 const SCREENS = {
   dash: Dashboard, imp: ImportScreen, csv: CsvImport, ros: Roster, det: Detail,
   ana: Analytics, cal: Calendar, pdf: PdfExport, sheet: SheetMaker, techo: Techo, techolist: TechoList, mob: Mobile, exp: CsvExport, staff: Staff, walkin: WalkIn,
-  merge: MergeScreen, billing: Billing, cert: Certificate,
+  merge: MergeScreen, billing: Billing, cert: Certificate, idlookup: IdLookup,
 }
 
 /* カレンダーの予定を Firestore から読み込む。
