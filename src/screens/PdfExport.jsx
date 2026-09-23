@@ -1,9 +1,11 @@
+import React from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, linePts, pathOf, dotsOf, muniBmiAvg, frailtyOf, FRAIL_LEVELS, commentFor, seriesOf } from '../lib/helpers.js'
 import { kclScore, kclLevel, KCL_LEVELS, KCL_DOMAIN_BY_ID, KCL_SHORT } from '../data/kihon.js'
 import { wardLabel } from '../lib/db.js'
 import { districtOf } from '../lib/merge.js'
+import { compactDate } from '../lib/realdata.js'   // 測定日の書き方の揺れを吸収（2026-09-23）
 import { ctypeRows, CTYPE_ITEMS } from '../lib/ctype.js'
 import { RadioCard, CheckRow, Select, Overline } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
@@ -27,8 +29,11 @@ function pdfRadarGeo() {
 }
 const PG = pdfRadarGeo()
 
-function buildPage(state, u, y, i) {
-  const m = u.meas[y]
+function buildPage(state, u, y, i, mPick) {
+  /* mPick: 「この測定で出す」と外から指定するとき（測定日での一括出力）。
+     指定が無ければ従来どおり年度の代表（その年度の最新1件）を使う。
+     ★これが無いと、同じ年度に2回測った方（C型の前後）は年度代表に負けて出ない。 */
+  const m = mPick || u.meas[y]
   /* 「前回」は 1 つ前の"測定"（前年度ではない）。短期集中予防（C型）は同じ年度に
      開始時・終了時の 2 回測るため、前年度と比べると介入前後の比較にならない。
      個人詳細（Detail）は測定日ごと方式に直したが、この結果票だけ年度のままだった。 */
@@ -418,11 +423,47 @@ export default function PdfExport() {
   const areaAt = (u) => districtOf(u, u.meas[y] || null)
   const pdfWardOpts = distinctSort(D.users.filter(u => areaAt(u).muni === pdfMuniId).map(u => areaAt(u).ward))
   const pdfWard = state.pdfWard || 'all'
-  let scope
+  /* ── 測定日での一括出力（2026-09-23 ユーザー依頼「測定日を入れたらその測定日に
+        評価した人たちの結果が一括で印刷結果として出てくるように」）────────────────
+     ・年度ではなく「その日に測った測定そのもの」を出す。だから同じ年度に2回測った方
+       （C型の開始時・終了時）も、その日のぶんが正しく出る。
+     ・日付の書き方の揺れ（2026/09/7 と 2026/09/07）は compactDate で吸収する。
+     ・選べる日付は「実際に測定がある日」だけを新しい順で出す（打ち間違いを防ぐ）。 */
+  const measDates = React.useMemo(() => {
+    const m = new Map()
+    D.users.forEach(u => (u.series || []).forEach(r => {
+      if (!r.date) return
+      const k = compactDate(r.date)
+      if (!k) return
+      const e = m.get(k) || { date: r.date, n: 0 }
+      e.n += 1; m.set(k, e)
+    }))
+    return [...m.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1)).map(([k, v]) => ({ key: k, date: v.date, n: v.n }))
+  }, [])
+  const pdfDateKey = compactDate(state.pdfDate || '')
+  /* その日の測定を「利用者＋その日の測定」の組で集める。1人が同じ日に2件あることは
+     docID の作りから起こらない（利用者ID_測定日）が、念のため最初の1件を使う。 */
+  const dateHits = React.useMemo(() => {
+    if (!pdfDateKey) return []
+    const out = []
+    D.users.forEach(u => {
+      const r = (u.series || []).find(x => x.date && compactDate(x.date) === pdfDateKey)
+      if (r) out.push({ u, m: r })
+    })
+    return out.sort((a, b) => String(a.u.id).localeCompare(String(b.u.id)))
+  }, [pdfDateKey])
+
+  let scope, picks = null
   if (state.pdfMode === 'single') { const u = D.users.find(x => x.id === pdfUser && x.meas[y]); scope = u ? [u] : [] }
   else if (state.pdfMode === 'muni') scope = D.users.filter(u => areaAt(u).muni === pdfMuniId && (pdfWard === 'all' || areaAt(u).ward === pdfWard) && u.meas[y])
+  else if (state.pdfMode === 'date') { scope = dateHits.map(h => h.u); picks = dateHits.map(h => h.m) }
   else scope = D.users.filter(u => u.meas[y])
-  const pages = scope.slice(0, 30).map((u, i) => buildPage(state, u, y, i))
+  /* ★上限を30名から150名へ（2026-09-23）。実データで1日90名の測定会があり、
+     26日ぶんが30名を超えていた＝31名以降が黙って印刷されていなかった。
+     上限に当たったときは下の帯で件数を明示する（黙って切らない）。 */
+  const PAGE_CAP = 150
+  const overCap = Math.max(0, scope.length - PAGE_CAP)
+  const pages = scope.slice(0, PAGE_CAP).map((u, i) => buildPage(state, u, y, i, picks ? picks[i] : null))
   const q = state.pdfQ.trim().toLowerCase()
   const cands = D.users.filter(u => u.meas[y] && (!q || u.name.toLowerCase().includes(q) || u.kana.toLowerCase().includes(q) || u.id.includes(q))).slice(0, 7)
   const opt = (v, l) => ({ v, l })
@@ -431,6 +472,7 @@ export default function PdfExport() {
     { id: 'single', label: '1 名を選んで出力', desc: '個人結果票 1 ページ' },
     { id: 'muni', label: '市町村ごとに一括出力', desc: '対象者全員分をまとめて' },
     { id: 'all', label: '全員を一括出力', desc: '年度の測定済 全員分' },
+    { id: 'date', label: '測定日で一括出力', desc: 'その日に測った方をまとめて' },
     { id: 'ctype', label: 'C型 経過報告（前後比較）', desc: '短期集中予防の対象者を一覧で' },
   ]
   const incs = [
@@ -480,13 +522,35 @@ export default function PdfExport() {
               </>
             )}
             <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>
-              {eraOf(y)}年度 測定済 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{scope.length}</span> 名が対象です（プレビューは先頭 30 名）
+              {eraOf(y)}年度 測定済 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{scope.length}</span> 名が対象です（プレビューは先頭 150 名）
             </div>
+          </div>
+        )}
+        {state.pdfMode === 'date' && (
+          <div>
+            <Overline style={{ marginBottom: 8 }}>測定日</Overline>
+            <Select value={compactDate(state.pdfDate || '') || ''} onChange={(e) => set({ pdfDate: e.target.value })}
+              options={[opt('', '測定日を選んでください')].concat(measDates.map(d => opt(d.key, d.date + '（' + d.n + ' 名）')))}
+              style={{ width: '100%' }} />
+            <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.7 }}>
+              {!pdfDateKey ? '測定のあった日だけを新しい順に並べています。'
+                : scope.length === 0 ? 'この日の測定は見つかりませんでした。'
+                : <>この日に測定した <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{scope.length}</span> 名が対象です。
+                  <br/>その日に測った結果をそのまま出します（同じ年度に2回測った方も、この日のぶんが出ます）。</>}
+            </div>
+          </div>
+        )}
+        {overCap > 0 && (
+          <div style={{ fontSize: 12, lineHeight: 1.7, padding: '10px 12px', borderRadius: 8,
+            background: 'var(--warning-50, #FCF3E3)', border: '1px solid var(--warning-300, #E0CB99)', color: 'var(--warning-800, #7A5A12)' }}>
+            対象が <span className="t-num" style={{ fontWeight: 700 }}>{scope.length}</span> 名あり、
+            <span className="t-num" style={{ fontWeight: 700 }}>{overCap}</span> 名は印刷されません。
+            <br/>市町村や測定日で分けて出してください。
           </div>
         )}
         {state.pdfMode === 'all' && (
           <div style={{ fontSize: 12, color: 'var(--fg-3)', lineHeight: 1.7 }}>
-            {eraOf(y)}年度 測定済の全 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{scope.length}</span> 名が対象です（プレビューは先頭 30 名。実運用では市町村ごとの分割出力を推奨します）
+            {eraOf(y)}年度 測定済の全 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{scope.length}</span> 名が対象です（プレビューは先頭 150 名。実運用では市町村ごとの分割出力を推奨します）
           </div>
         )}
         <div>

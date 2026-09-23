@@ -26,6 +26,7 @@ const initialState = {
   dashItem: 'gripR', exItem: 'gripR', exSex: 'all', exAge: 'all', exCohort: 'all', exFrom: D.YEARS[0],
   // PDF
   pdfMode: 'single', pdfUser: null, pdfMuni: 'sakuragawa', pdfWard: 'all', pdfYear: D.CUR, pdfQ: '',
+  pdfDate: '',   // 測定日で一括出力するときの日付（2026-09-23 ユーザー依頼）
   incRadar: true, incTrend: true, incPrev: true, incAvg: true, incComment: true, incFrail: true, incInbody: true, incKcl: true,
   // 用紙作成（本番は測定会イベントが無いので市町村＋行政区で選ぶ）
   shMode: dbEnabled() ? 'muni' : 'event', shEvent: '', shMuni: 'sakuragawa', shWard: 'all', shBlank: 0, shKind: 'meas', shEra: 0,
