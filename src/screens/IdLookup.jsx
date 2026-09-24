@@ -11,7 +11,7 @@
 import React from 'react'
 import D from '../data/engine.js'
 import { useStore } from '../store.jsx'
-import Icon from '../ui/icons.jsx'
+import { Icon } from '../ui/icons.jsx'
 import { lookupIdsFromCsv, resultCsv, yearOnlyCount } from '../lib/idLookup.js'
 
 const STATUS = {
@@ -22,7 +22,7 @@ const STATUS = {
 }
 
 export default function IdLookup() {
-  const { state, set, showToast } = useStore()
+  const { showToast } = useStore()
   const fileRef = React.useRef(null)
   const [res, setRes] = React.useState(null)
   const [fname, setFname] = React.useState('')
