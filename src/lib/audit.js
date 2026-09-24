@@ -55,6 +55,19 @@ export function auditUsers(users) {
   for (const u of live) {
     const series = (u.series || []).slice()
 
+    /* (0) 生年月日が入っていない（2026-09-24 ユーザー要望）。
+       生年月日が無いと、同じ氏名の別の方と見分けられず、
+       あとから同じ人が二重に登録されても機械では気づけない。
+       ※年齢の計算にも要るので、測定があるのに空のままの方を出す。 */
+    if (!String(u.birthDate || '').trim()) {
+      push({
+        kind: 'noBirth', level: 'warn', userId: u.id, name: u.name, ward: u.venueName,
+        date: series.length ? dateOf(series[series.length - 1]) : '',
+        message: '生年月日が入っていません。同じ氏名の別の方と見分けられず、'
+          + '二重登録に気づけなくなります。台帳から入れてください',
+      })
+    }
+
     // (1) 人体としてあり得ない値・通常の範囲から外れた値
     for (const r of series) {
       for (const x of checkValues(r.values)) {
@@ -173,4 +186,5 @@ export const KIND_LABEL = {
   inbodyWeight: '記録用紙と体組成計の体重が合わない',
   sameValues: '同じ日に測定値が完全に一致している',
   unassigned: '所属者未確定の測定（持ち主の確認が必要）',
+  noBirth: '生年月日が入っていない',
 }
