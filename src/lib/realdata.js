@@ -40,7 +40,13 @@ function scoreOf(sex, v) {
    評価日が未記入のものだけ、従来どおり年度キーにフォールバックする。 */
 // 評価日 → YYYYMMDD。「2026/09/7」のように 0 詰めされていない表記も揃える
 export const compactDate = (date) => {
-  const m = String(date || '').match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
+  const s = String(date || '')
+  /* 区切りの無い 8 桁（20260907）もそのまま受ける（2026-09-24）。
+     PDF一括印刷の測定日のプルダウンは、選んだ値をこの 8 桁で持っている。
+     ここで受けないと、選んだ直後に空に戻り「測定日を選んでください」のままになる。 */
+  const m8 = s.match(/^\s*(\d{4})(\d{2})(\d{2})\s*$/)
+  if (m8) return m8[1] + m8[2] + m8[3]
+  const m = s.match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})/)
   return m ? m[1] + m[2].padStart(2, '0') + m[3].padStart(2, '0') : ''
 }
 /* 保存する評価日は必ず 0 詰めの YYYY/MM/DD に揃える。

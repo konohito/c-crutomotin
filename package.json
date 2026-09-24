@@ -12,10 +12,11 @@
     "check:undefined": "node scripts/check-undefined.mjs",
     "check:screens": "node scripts/run-check.mjs scripts/check-screens.mjs",
     "check:values": "node scripts/run-check.mjs scripts/check-values.mjs",
-    "check": "npm run check:undefined && npm run check:imports && npm run check:screens && npm run check:values && npm run check:measure && npm run check:idlookup",
+    "check": "npm run check:undefined && npm run check:imports && npm run check:screens && npm run check:values && npm run check:measure && npm run check:idlookup && npm run check:dates",
     "check:measure": "node scripts/check-measure-save.mjs",
     "check:idlookup": "node --test src/lib/idLookup.test.mjs",
-    "check:imports": "node scripts/check-imports.mjs"
+    "check:imports": "node scripts/check-imports.mjs",
+    "check:dates": "node --test src/lib/compactDate.test.mjs"
   },
   "dependencies": {
     "firebase": "^12.16.0",
