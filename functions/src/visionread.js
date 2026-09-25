@@ -9,19 +9,34 @@
    - ID・氏名が OCR から取れなかったとき … ビジョン AI の読みで補完
    - 用紙の判別(問診票かどうか)が文字認識ごと失敗した写真 … ビジョン AI 単独で読む
 
-   モデルは GEMINI_MODEL で切替可能(既定 gemini-2.5-pro)。見つからない場合は
-   候補リストを順に試す。呼び出しは Cloud Functions のサービスアカウント(ADC)で行い、
-   API キー等の秘密情報は不要(プロジェクトで aiplatform API の有効化が必要)。 */
+   モデルは GEMINI_MODEL で切替可能。見つからない場合は候補リストを順に試す。
+   呼び出しは Cloud Functions のサービスアカウント(ADC)で行い、
+   API キー等の秘密情報は不要(プロジェクトで aiplatform API の有効化が必要)。
+
+   ── 国内リージョン(2026-09-25 ユーザー指示「motion で使用している AI はすべて国内リージョンに」)──
+   ・呼び先は **asia-northeast1(東京)のリージョンエンドポイント**を URL に直書きする。
+     それまで locations/global を使っており、Google 自身が「global はどのリージョンで
+     処理されるか制御も把握もできない」と明記している状態だった。
+     ここへ送っているのは**利用者の氏名が入った用紙の写真**なので、看過できない。
+   ・2026-10-15 から 3.x 系は Durable Caching(最大24時間の保存)が既定で有効になる。
+     東京に寄せておけば、その保存先も東京になる。
+   ・モデルは **gemini-3.5-flash** を先頭にする。東京で呼べて、公式のデータレジデンシー表で
+     国内処理が明記されているモデル(c-circuit の nursingdoc.js が同じ理由で本番稼働中)。
+   ★ 候補は東京で呼べるものだけを並べること。東京に無いモデルを足すと 404 で落ちて
+     次の候補に流れ、静かに読み取り精度だけが下がる。 */
 const { GoogleAuth } = require('google-auth-library')
 const { QS } = require('./kclread')
 
 const ENABLED = process.env.VISION_READ !== '0'
 /* モデル候補(先頭から順に試し、無い/混雑なら次へ)。GEMINI_MODEL で先頭を差し替え可能。
    新しい世代ほど読み取り精度が高い想定で、最新 → 安定版の順に並べる。 */
+const REGION = 'asia-northeast1'                     // ★東京。global にしない
 const MODELS = [...new Set([
-  process.env.GEMINI_MODEL || 'gemini-3.1-pro-preview',
-  'gemini-3.1-pro-preview', 'gemini-3-pro-preview',
-  'gemini-2.5-pro', 'gemini-2.5-flash',
+  process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+  'gemini-3.5-flash',
+  /* 2.5 系は 2027-03-31 に完全廃止(Agent Platform)。それまでの保険として後ろに置く。
+     先に 3.5 が通るので通常は使われない。 */
+  'gemini-2.5-flash',
 ])]
 const MAX_BYTES = 15 * 1024 * 1024   // Vertex のインライン上限(20MB)手前で足切り
 const TIMEOUT_MS = 90 * 1000
@@ -85,7 +100,9 @@ async function callVertex(imageBuffer, mimeType) {
   const models = _model ? [_model] : MODELS
   let lastErr = null
   for (const model of models) {
-    const url = `https://aiplatform.googleapis.com/v1/projects/${project}/locations/global/publishers/google/models/${model}:generateContent`
+    /* ★リージョンエンドポイントを URL に直書き(global を使わない)。
+       ホスト名にも locations にも東京を入れる。片方だけだと global へ流れる。 */
+    const url = `https://${REGION}-aiplatform.googleapis.com/v1/projects/${project}/locations/${REGION}/publishers/google/models/${model}:generateContent`
     const ctl = new AbortController()
     const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS)
     try {
