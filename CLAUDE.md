@@ -12,8 +12,40 @@
 
 以下は**ユーザーが明示的に承諾済みの設定**であり、絶対に変更しないこと（調査・記述の対象であって、変更対象ではない）。
 
-- `functions/src/config.js` の `DOCAI_LOCATION`（既定 `us`）— Document AI のロケーション
-- `functions/src/visionread.js` の Vertex AI エンドポイント（`.../locations/global/publishers/google/models/...`）— Gemini によるビジョン読み取りの呼び出し先
+- `functions/src/config.js` の `DOCAI_LOCATION`（既定 `us`）— Document AI のロケーション。
+  **Document AI には日本リージョンが無い**（公式: マルチリージョンは us / eu のみ、単一リージョンにも東京は無い）。
+  どこを選んでも国外になるため us のままにしている。使うのは `processDocument`（オンライン処理）だけで、
+  ディスクに保存されず学習にも使われない。理由の全文は `functions/src/config.js` のコメントにある。
+- `functions/src/visionread.js` の Vertex AI エンドポイント — Gemini によるビジョン読み取りの呼び出し先。
+  **`asia-northeast1`（東京）のリージョンエンドポイント**。ホスト名と `locations/` の両方に東京を入れること
+  （片方だけだと global へ流れる）。`src/lib/ai-region.test.mjs` が機械的に固定しており、
+  `locations/global` を書き戻すと CI が落ちる。
+
+---
+
+## データがどこで処理・保存されるか（2026-09-26 実測）
+
+3省2ガイドラインで必ず聞かれるところ。**推測ではなく、GCP に問い合わせて確認した値**。
+
+| 機能 | リージョン | 確認方法 |
+| :-- | :-- | :-- |
+| Firestore（測定データ・利用者台帳） | **asia-northeast1（東京）** | `gcloud firestore databases list` |
+| Cloud Storage（用紙の画像） | **asia-northeast1（東京）** | `gcloud storage buckets list` |
+| Cloud Functions（OCR処理・gen2） | **asia-northeast1（東京）** | `gcloud run services list`（実体の Cloud Run 2本とも東京） |
+| Vertex AI / Gemini（ビジョン読み取り） | **asia-northeast1（東京）** | `visionread.js` ＋ `ai-region.test.mjs` で固定 |
+| Document AI（文字と座標の認識） | **us（米国）** | `config.js` の `DOCAI_LOCATION` |
+| Hosting | CDN配信 | — |
+
+**保存されるデータはすべて東京。国外へ出るのは Document AI に送る処理の瞬間だけ。**
+
+監査で問われたときに言えること:
+> 保存データはすべて東京リージョン。文字認識の処理のみ米国で行われるが、
+> オンライン処理のためディスクに保存されず、学習にも使われない。
+> Document AI には日本リージョンが提供されていないため、他リージョンへ移しても国内処理にはならない。
+
+★この表を直すときは、必ず上のコマンドで実測してから直すこと
+（以前この文書が Vertex AI を `locations/global` と書いたまま古くなっており、
+　実際のコードは東京だった。2026-09-26 に実態へ合わせた）。
 
 ---
 
@@ -168,7 +200,7 @@ npx firebase deploy --only functions,firestore:rules,firestore:indexes,storage -
 - **`DOCAI_LOCATION` 等の環境変数を誤って変更しないための注意点**：
   - プレビュー用ワークフローは `firebase deploy --only hosting:<channelId>` のように **Hosting のみ**をデプロイ対象にすること。`--only functions` や `--only functions,firestore:rules,...` を含めると、`deploy-production.yml`/`deploy-functions.yml` と同様に `functions/.env` を Repository Variables から生成するステップが必要になり、そこで `DOCAI_LOCATION`（既定 `us`）を上書きしてしまうリスクが生まれる
   - **プレビュー用ワークフローには Functions のデプロイ・`.env` 生成ステップを含めないことを原則とする**（Functions は既存の `deploy-production.yml`/`deploy-functions.yml` にのみ委ねる）
-  - `DOCAI_LOCATION` と Vertex AI エンドポイント（`visionread.js` の `locations/global`）は本ファイル冒頭の「絶対に変更してはいけない設定」に該当する。プレビュー環境整備の作業であっても、この2点には一切手を触れないこと
+  - `DOCAI_LOCATION` と Vertex AI エンドポイント（`visionread.js` の `asia-northeast1`）は本ファイル冒頭の「絶対に変更してはいけない設定」に該当する。プレビュー環境整備の作業であっても、この2点には一切手を触れないこと
 
 ---
 
