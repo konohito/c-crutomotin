@@ -170,12 +170,14 @@ export default function Certificate() {
               発行できる方がいません。短期集中予防サービスの開始時と終了時の測定が両方そろうと、ここに出ます
             </div>
           )}
+          {/* 一覧は氏名だけ。称号（「すたすた歩き名人」等）を並べると幅に収まらず
+              一人ぶんが2行に折り返して読みにくかった。称号は証書の本体に出る。 */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {ready.map(x => {
               const k = x.row.user.id + '-' + x.row.year
               return (
                 <CheckRow key={k} on={!!picked[k]} onClick={() => toggle(k)}
-                  label={`${x.row.user.name}（${x.cert.badge.title}）`} />
+                  label={x.row.user.name} />
               )
             })}
           </div>
