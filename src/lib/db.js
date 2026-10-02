@@ -319,7 +319,22 @@ export async function commitRecognition({ batchId, recognitionId, user, finalVal
      提出・請求・前後比較がすべてずれる）。両方を同じキーに揃えて 1 通にする。 */
   const mid = measKeyOf(user.id, measurement.date, measurement.year)
   const batch = firestore.writeBatch(db)
-  batch.set(firestore.doc(db, 'measurements', mid), { ...measurement, committedAt: firestore.serverTimestamp() })
+  /* ★2026-10-02 現場報告「問診票の内容が反映されていない」の原因はここ。
+     問診票(commitKclRecognition)と測定記録用紙(ここ)は **同じ文書**に入る
+     （どちらも measKeyOf = `{利用者ID}_{評価日}`。同じ測定会で同じ方なら必ず同じキー）。
+     ところが問診票は { merge: true } で書くのに、ここは merge 無しの set だった。
+     そのため「問診票を先に登録 → 同じ方の測定記録用紙を登録」の順になると、
+     **測定の保存が問診回答(kclAnswers)を丸ごと消していた**。
+     どちらを先に取り込むかは受付キューの並び次第なので、消える人と残る人が混ざる
+     （「自分が登録したのは出てます」という現場の見え方と一致する）。
+
+     merge: true にして問題ないことの確認:
+       buildMeasurementDoc は SHEET_COLS を全部まわして values に**必ず全列**を入れる
+       （無い値は null）。axes・total・date 等も毎回すべて書く。
+       つまり測定側の項目は毎回すべて上書きされ、古い値が残ることはない。
+       merge にして守られるのは kclAnswers のような**別機能の項目だけ**。 */
+  batch.set(firestore.doc(db, 'measurements', mid),
+    { ...measurement, committedAt: firestore.serverTimestamp() }, { merge: true })
   batch.update(firestore.doc(db, 'batches', batchId, 'recognitions', recognitionId), {
     status: 'committed', matchedUserId: user.id, reviewedAt: firestore.serverTimestamp(),
   })
