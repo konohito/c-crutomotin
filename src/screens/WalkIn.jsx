@@ -369,6 +369,17 @@ export default function WalkIn() {
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 300 }}>
+                {/* ★2026-10-02 現場報告（村崎）:
+                     「登録押し漏れ」「登録ボタンが見切れてスクロールで押せない」
+                     問診票は質問が多く、この開いたフォームが縦に長くなるため、
+                     いちばん下の「この内容で仮登録」が画面の外に出ていた。
+                     ① ここで「まだ保存されていない」ことを先に伝える
+                     ② 下のボタンを画面下に貼り付く形（sticky）にして、スクロール中も必ず押せるようにする */}
+                <div style={{ border: '1px solid var(--warn-300, #E7C66B)', background: 'var(--warn-50, #FDF6E3)',
+                  borderRadius: 10, padding: '9px 12px', marginBottom: 10, fontSize: 12.5, lineHeight: 1.7, color: 'var(--fg-1)' }}>
+                  <b>まだ登録されていません。</b>内容を確かめたら、下の「<b>この内容で仮登録</b>」を押してください。
+                  押すまでは保存されず、結果用紙も出せません。
+                </div>
                 {/* ① 読み取り内容の確認・修正。修正後の内容は下の紐づけ・新規仮登録のどちらでも使われる
                     (読み取りミスのまま登録して後から直す手間をなくす) */}
                 <div style={{ border: '1px solid var(--border-subtle)', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
@@ -517,9 +528,16 @@ export default function WalkIn() {
                   <div className="form-label">{wardLabel()}</div>
                   <Select value={f.ward} onChange={(ev) => setF({ ...f, ward: ev.target.value })} options={wards.map(w => ({ v: w, l: w }))} style={{ width: '100%' }} />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                {/* ★画面下に貼り付く（sticky）。フォームが長くてもスクロール中ずっと押せる。
+                     grid の 1 列に収めると幅が足りないので、列いっぱいに広げる。 */}
+                <div style={{ gridColumn: '1 / -1', position: 'sticky', bottom: 0, zIndex: 3,
+                  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                  margin: '4px -12px -10px', padding: '10px 12px',
+                  background: 'var(--bg-surface)', borderTop: '1px solid var(--border-default)',
+                  boxShadow: '0 -6px 14px -10px rgba(0,0,0,.25)' }}>
                   <button className="btn btn-primary" disabled={busy === e.id} onClick={() => commitEntry(e)}>この内容で仮登録</button>
                   <button className="btn" onClick={() => setOpenId('')}>閉じる</button>
+                  <span style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>押すまで保存されません</span>
                 </div>
                 </div>
                 </div>
