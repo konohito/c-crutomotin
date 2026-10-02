@@ -264,7 +264,14 @@ export async function saveMeasurement(id, year, values, date, key, opts = {}) {
       const snap = await fs.getDoc(fs.doc(db, 'measurements', oldKey))
       const base = snap.exists() ? snap.data() : {}
       delete base.voided
-      await fs.setDoc(fs.doc(db, 'measurements', newKey), { ...base, ...doc })
+      /* ★2026-10-02: ここは merge 無しの setDoc だった。
+         引っ越し先（newKey）に問診票の回答(kclAnswers)が既に入っていると、
+         日付を直しただけで**その回答が丸ごと消えて**いた。
+         現場は読み取りの修正で評価日を直すので、実際に踏む経路。
+         merge: true にして、引っ越し先にしか無い項目（問診回答など）を残す。
+         voided は merge だと引っ越し先の古い true が残ってしまうため、
+         ここで必ず false を書いて有効に戻す（上の delete base.voided と同じ意図）。 */
+      await fs.setDoc(fs.doc(db, 'measurements', newKey), { ...base, ...doc, voided: false }, { merge: true })
       await fs.setDoc(fs.doc(db, 'measurements', oldKey), { userId: id, year: Number(year), voided: true }, { merge: true })
     } else {
       await fs.setDoc(fs.doc(db, 'measurements', newKey), doc, { merge: true })

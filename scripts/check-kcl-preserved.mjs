@@ -19,6 +19,10 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+/* ★measurements へ書くファイルは db.js だけではない。
+   realdata.js の saveMeasurement（引っ越し経路）でも同じ消え方をしていた。
+   新しく書く場所が増えたときに見落とさないよう、src/lib の全ファイルを見る。 */
+const FILES = ['src/lib/db.js', 'src/lib/realdata.js']
 const SRC = readFileSync(join(root, 'src/lib/db.js'), 'utf8')
 let pass = 0, fail = 0
 const ok = (c, m) => { c ? pass++ : (fail++, console.log('  FAIL ' + m)) }
@@ -26,18 +30,28 @@ const ok = (c, m) => { c ? pass++ : (fail++, console.log('  FAIL ' + m)) }
 /* コメントを外した本文で判定する（経緯の説明に当たる誤判定を避ける） */
 const code = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
 
-console.log('== measurements への書き込みは必ず merge ==')
-const lines = code.split('\n')
+console.log('== measurements への書き込みは必ず merge（src/lib 全体） ==')
 let writes = 0
-lines.forEach((ln, i) => {
-  if (!/(set|setDoc)\s*\(\s*(firestore\.|fs\.)?doc\(\s*db\s*,\s*['"]measurements['"]/.test(ln)) return
-  writes++
-  /* set(...) が複数行にまたがるので、その行から 6 行ぶんを見る */
-  const blk = lines.slice(i, i + 6).join(' ')
-  ok(/\{\s*merge:\s*true\s*\}/.test(blk),
-    `${i + 1}行目の measurements への書き込みに merge: true が無い（別機能の項目を消す）`)
-})
-ok(writes >= 2, `measurements への書き込みを見つけた（${writes}か所）`)
+for (const f of FILES) {
+  const body = readFileSync(join(root, f), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+  const lines = body.split('\n')
+  lines.forEach((ln, i) => {
+    if (!/(set|setDoc)\s*\(\s*(firestore\.|fs\.)?doc\(\s*db\s*,\s*['"]measurements['"]/.test(ln)) return
+    writes++
+    /* set(...) が複数行にまたがるので、その行から 6 行ぶんを見る */
+    const blk = lines.slice(i, i + 6).join(' ')
+    ok(/\{\s*merge:\s*true\s*\}/.test(blk),
+      `${f}:${i + 1} の measurements への書き込みに merge: true が無い（別機能の項目を消す）`)
+  })
+}
+ok(writes >= 4, `measurements への書き込みを見つけた（${writes}か所）`)
+
+console.log('== 引っ越し経路で無効化の印が残らないこと ==')
+const RD = readFileSync(join(root, 'src/lib/realdata.js'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1')
+ok(/voided: false \}, \{ merge: true \}/.test(RD),
+  '引っ越し先に voided: false を明示していない（merge だと古い無効化の印が残る）')
 
 console.log('== 測定側は毎回すべての列を書く（merge でも古い値が残らない） ==')
 ok(/SHEET_COLS\.forEach\(/.test(code), 'buildMeasurementDoc が SHEET_COLS を全部まわしている')
