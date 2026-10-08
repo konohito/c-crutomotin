@@ -452,11 +452,27 @@ export default function PdfExport() {
     })
     return out.sort((a, b) => String(a.u.id).localeCompare(String(b.u.id)))
   }, [pdfDateKey])
+  /* ★2026-10-08 現場報告「同日に2グループ測定した時の、PDF出力→印刷がダブって出てくる」。
+       測定日で出すモードには団体の絞り込みが1つも無く、その日に測った全団体が1束で
+       出ていた（市町村モードには元から絞り込みがある）。1日1団体の運用では気づけなかった。
+     ★団体は「その測定日のときの団体」で引く（districtOf）。
+       結果票のヘッダに刷る団体名も同じ関数で出しているので、絞り込みと刷られる名前が必ず揃う。
+     ★絞り込みは **dateHits の段階でかける**。
+       scope と picks を別々に絞ると添字がずれ、別人の測定値が刷られる。 */
+  const dateWard = state.pdfDateWard || 'all'
+  const dateWardOpts = React.useMemo(() => {
+    const m = new Map()
+    dateHits.forEach(h => { const w = districtOf(h.u, h.m).ward || ''; m.set(w, (m.get(w) || 0) + 1) })
+    return [...m.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'ja'))
+  }, [dateHits])
+  const dateHitsShown = React.useMemo(() => (
+    dateWard === 'all' ? dateHits : dateHits.filter(h => districtOf(h.u, h.m).ward === dateWard)
+  ), [dateHits, dateWard])
 
   let scope, picks = null
   if (state.pdfMode === 'single') { const u = D.users.find(x => x.id === pdfUser && x.meas[y]); scope = u ? [u] : [] }
   else if (state.pdfMode === 'muni') scope = D.users.filter(u => areaAt(u).muni === pdfMuniId && (pdfWard === 'all' || areaAt(u).ward === pdfWard) && u.meas[y])
-  else if (state.pdfMode === 'date') { scope = dateHits.map(h => h.u); picks = dateHits.map(h => h.m) }
+  else if (state.pdfMode === 'date') { scope = dateHitsShown.map(h => h.u); picks = dateHitsShown.map(h => h.m) }
   else scope = D.users.filter(u => u.meas[y])
   /* ★上限を30名から150名へ（2026-09-23）。実データで1日90名の測定会があり、
      26日ぶんが30名を超えていた＝31名以降が黙って印刷されていなかった。
@@ -532,11 +548,25 @@ export default function PdfExport() {
             <Select value={compactDate(state.pdfDate || '') || ''} onChange={(e) => set({ pdfDate: e.target.value })}
               options={[opt('', '測定日を選んでください')].concat(measDates.map(d => opt(d.key, d.date + '（' + d.n + ' 名）')))}
               style={{ width: '100%' }} />
+            {/* ★2026-10-08 団体を選べるようにした。その日に2つ以上の団体を測ったときだけ出す
+                （1団体しか測らなかった日は今までと同じ見え方のまま）。 */}
+            {dateWardOpts.length > 1 && (
+              <div style={{ marginTop: 12 }}>
+                <Overline style={{ marginBottom: 8 }}>団体</Overline>
+                <Select value={dateWard} onChange={(e) => set({ pdfDateWard: e.target.value })}
+                  options={[opt('all', 'この日の全員（' + dateHits.length + ' 名）')]
+                    .concat(dateWardOpts.map(([w, n]) => opt(w, (w || '（団体なし）') + '（' + n + ' 名）')))}
+                  style={{ width: '100%' }} />
+              </div>
+            )}
             <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.7 }}>
               {!pdfDateKey ? '測定のあった日だけを新しい順に並べています。'
                 : scope.length === 0 ? 'この日の測定は見つかりませんでした。'
                 : <>この日に測定した <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{scope.length}</span> 名が対象です。
-                  <br/>その日に測った結果をそのまま出します（同じ年度に2回測った方も、この日のぶんが出ます）。</>}
+                  <br/>その日に測った結果をそのまま出します（同じ年度に2回測った方も、この日のぶんが出ます）。
+                  {dateWardOpts.length > 1 && (dateWard === 'all'
+                    ? <><br/>この日は {dateWardOpts.length} つの団体が測定しています。上の「団体」で分けて出せます。</>
+                    : <><br/>「{dateWard}」のぶんだけを出します。</>)}</>}
             </div>
           </div>
         )}
@@ -545,7 +575,7 @@ export default function PdfExport() {
             background: 'var(--warning-50, #FCF3E3)', border: '1px solid var(--warning-300, #E0CB99)', color: 'var(--warning-800, #7A5A12)' }}>
             対象が <span className="t-num" style={{ fontWeight: 700 }}>{scope.length}</span> 名あり、
             <span className="t-num" style={{ fontWeight: 700 }}>{overCap}</span> 名は印刷されません。
-            <br/>市町村や測定日で分けて出してください。
+            <br/>市町村・測定日・団体で分けて出してください。
           </div>
         )}
         {state.pdfMode === 'all' && (
