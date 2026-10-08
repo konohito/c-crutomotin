@@ -39,8 +39,10 @@ export default function Staff() {
     if (!form.email || !form.password || busy) return
     setBusy(true); setErr('')
     try {
-      await addStaff(form)
-      showToast('職員を追加しました')
+      /* ★2026-10-08 既にアカウントがある人は「承認し直した」と伝える。
+         「追加しました」と出すと、新しく作られたのか戻したのか分からない。 */
+      const r = await addStaff(form)
+      showToast(r && r.reused ? '既にあるアカウントを承認しました' : '職員を追加しました')
       setForm({ email: '', password: '', name: '' })
       await reload()
     } catch (ex) { setErr(ex.message || '追加に失敗しました') }
@@ -131,7 +133,7 @@ export default function Staff() {
           })}
         </div>
         <div style={{ fontSize: 11, color: 'var(--fg-4)', marginTop: 12, lineHeight: 1.6 }}>
-          「解除」するとログインはできてもデータが見られなくなります（アカウント自体は Firebase に残ります）。パスワードのリセットは Firebase コンソール → Authentication から行えます。
+          「解除」するとログインはできてもデータが見られなくなります（アカウント自体は Firebase に残ります）。もう一度使っていただくときは、上の「職員を追加」に<b>同じメールアドレスと、その方のいまのパスワード</b>を入れてください。パスワードが分からないときは Firebase コンソール → Authentication からリセットできます。
         </div>
       </Card>
 
