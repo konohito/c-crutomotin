@@ -510,7 +510,21 @@ export default function SheetMaker() {
     muniVenue: (muni || '') + (venue ? ' · ' + venue : ''), dateLabel: dateLabel || '　　　/　　/　　',
     rows: sheetRowsFor(),
   })
-  const withBlanks = parts.slice(0, Math.max(0, 30 - state.shBlank))
+  /* ★2026-10-13 現場報告（村崎さん）
+       「motionの用紙印刷ですが、最大30枚までしか出力できないようです。
+         10/16測定が36名予定で、6名が出力できてない状態です。
+         他に30以上の場所が3箇所あります。今後他の自治体に持っていく際、
+         30以上出力するケースは出てくる可能性もありそうです！」
+
+     これまで `parts.slice(0, Math.max(0, 30 - state.shBlank))` と書いてあり、
+     **31人目から黙って切り捨てて**いた（警告も出さない）。
+     左の欄には「対象 36 名」と出るのに、下は「30 枚」。
+     用紙が足りないことは、刷ってから数えないと分からなかった。
+
+     → 人数の上限を外す。全員ぶん出す。
+     ★代わりに「何枚になるか」を下に出している（total）。
+       誤って何百枚も刷る事故は、黙って切るのではなく枚数を見せて防ぐ。 */
+  const withBlanks = parts
   const total = withBlanks.length + state.shBlank
   const pages = withBlanks.map((u, i) => mk(u, i, total)).concat(Array.from({ length: state.shBlank }, (_, j) => mk(null, withBlanks.length + j, total)))
 
