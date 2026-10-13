@@ -40,8 +40,11 @@ console.log('== 1. 人数で切り捨てない ==')
     '人数の上限が残っている（31人目から黙って切り捨てられる）')
   ok(!/const withBlanks = parts\.slice\(/.test(src),
     'withBlanks で頭だけ取っている（人数が切られる）')
-  ok(/const withBlanks = parts\s*$/m.test(src) || /const withBlanks = parts\n/.test(src),
-    '対象をそのまま使っていない')
+  /* ★2026-10-13 ユーザー確定「印刷枚数は選択できるようにしておいてください」。
+       既定（全員）では全員ぶん、枚数を選んだときだけ先頭からその人数。 */
+  ok(/const withBlanks = limitN > 0 \? parts\.slice\(0, limitN\) : parts/.test(src),
+    '刷る人数の選択が効いていない／全員が既定になっていない')
+  ok(/const limitN = Number\(state\.shLimit\) \|\| 0/.test(src), '刷る人数の設定が無い')
   /* 並べ替えの slice() は別物（配列の複製）なので残っていてよい */
   ok(/parts\.slice\(\)\.sort\(/.test(src), '五十音順の並べ替えが消えている')
 }
@@ -60,6 +63,25 @@ console.log('== 2. 枚数 ＝ 人数 ＋ 予備 ==')
   const old = (n, blank) => Math.min(n, Math.max(0, 30 - blank)) + blank
   eq(old(36, 0), 30, '（記録）直す前は36名が30枚になっていた')
   eq(old(36, 5), 30, '（記録）直す前は予備を足しても30枚で頭打ちだった')
+}
+
+console.log('== 2-b. 刷る人数を選べる（既定は全員）==')
+{
+  /* 実際に動かす（実物の式をそのまま再現） */
+  const pick = (n, limit) => (limit > 0 ? Math.min(n, limit) : n)
+  eq(pick(36, 0), 36, '既定（全員）で全員ぶんにならない')
+  eq(pick(36, 20), 20, '先頭20名を選べない')
+  eq(pick(36, 100), 36, '人数より大きい数を選んだとき全員で止まらない')
+  eq(pick(0, 20), 0, '対象0名で落ちる')
+  /* 選択肢は対象より少ない数だけ出す（36名のときに「先頭から40名」は出さない） */
+  ok(/\.filter\(n => n < parts\.length\)/.test(src), '対象より多い枚数が選択肢に出る')
+  ok(/l: '全員（' \+ parts\.length \+ ' 名）'/.test(src), '「全員（◯名）」の選択肢が無い')
+  /* 残りが刷られないことを画面で伝える（黙って切らない） */
+  ok(/残り \{parts\.length - limitN\} 名は刷られません/.test(src.replace(/\s+/g, ' ')),
+    '刷られない人数を伝えていない（黙って切り捨てに戻っている）')
+  /* 設定の置き場所 */
+  const store = readFileSync(join(root, 'src/store.jsx'), 'utf8')
+  ok(/shLimit: 0/.test(store), '刷る人数の既定（全員＝0）が無い')
 }
 
 console.log('== 3. 画面に人数と枚数の両方を出す ==')
