@@ -510,7 +510,26 @@ export default function SheetMaker() {
     muniVenue: (muni || '') + (venue ? ' · ' + venue : ''), dateLabel: dateLabel || '　　　/　　/　　',
     rows: sheetRowsFor(),
   })
-  const withBlanks = parts.slice(0, Math.max(0, 30 - state.shBlank))
+  /* ★2026-10-13 現場報告（村崎さん）
+       「motionの用紙印刷ですが、最大30枚までしか出力できないようです。
+         10/16測定が36名予定で、6名が出力できてない状態です。
+         他に30以上の場所が3箇所あります。今後他の自治体に持っていく際、
+         30以上出力するケースは出てくる可能性もありそうです！」
+
+     これまで `parts.slice(0, Math.max(0, 30 - state.shBlank))` と書いてあり、
+     **31人目から黙って切り捨てて**いた（警告も出さない）。
+     左の欄には「対象 36 名」と出るのに、下は「30 枚」。
+     用紙が足りないことは、刷ってから数えないと分からなかった。
+
+     → 人数の上限を外す。全員ぶん出す。
+     ★代わりに「何枚になるか」を下に出している（total）。
+       誤って何百枚も刷る事故は、黙って切るのではなく枚数を見せて防ぐ。 */
+  /* ★2026-10-13 ユーザー確定「印刷枚数は選択できるようにしておいてください」。
+       既定は「全員」。上限は無い。
+       枚数を選ぶと、五十音順の先頭からその人数だけ刷る（続きは次回に回せる）。
+       ★shLimit = 0 が「全員」。人数より大きい数を選んでも全員で止まる。 */
+  const limitN = Number(state.shLimit) || 0
+  const withBlanks = limitN > 0 ? parts.slice(0, limitN) : parts
   const total = withBlanks.length + state.shBlank
   const pages = withBlanks.map((u, i) => mk(u, i, total)).concat(Array.from({ length: state.shBlank }, (_, j) => mk(null, withBlanks.length + j, total)))
 
@@ -606,6 +625,25 @@ export default function SheetMaker() {
               options={[{ v: 'all', l: 'すべての' + wardLabel() }].concat(wardOpts.map(w => ({ v: w, l: w })))} style={{ width: '100%' }} />
             <div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 8 }}>{ward === 'all' ? '全' + wardLabel() : ward} · 対象 <span className="t-num" style={{ fontWeight: 600, color: 'var(--fg-1)' }}>{parts.length}</span> 名（五十音順）</div>
           </div>
+        )}
+        {perUser && (
+        <div>
+          {/* ★2026-10-13 ユーザー確定「印刷枚数は選択できるようにしておいてください」。
+                既定は全員。30枚で切り捨てていたのをやめた代わりに、
+                刷る人数を自分で決められるようにする。 */}
+          <Overline style={{ marginBottom: 8 }}>刷る人数</Overline>
+          <Select value={String(state.shLimit || 0)} onChange={(e) => set({ shLimit: +e.target.value })}
+            options={[{ v: '0', l: '全員（' + parts.length + ' 名）' }]
+              .concat([10, 20, 30, 40, 50, 60, 80, 100]
+                .filter(n => n < parts.length)
+                .map(n => ({ v: String(n), l: '先頭から ' + n + ' 名' })))}
+            style={{ width: '100%' }} />
+          <div style={{ fontSize: 11.5, color: 'var(--fg-3)', marginTop: 8, lineHeight: 1.6 }}>
+            五十音順の先頭から刷ります。{limitN > 0 && parts.length > limitN
+              ? <b>残り {parts.length - limitN} 名は刷られません</b>
+              : '全員ぶん刷ります'}
+          </div>
+        </div>
         )}
         {perUser && (
         <div>
