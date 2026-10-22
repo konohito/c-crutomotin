@@ -211,3 +211,44 @@ npx firebase deploy --only functions,firestore:rules,firestore:indexes,storage -
 - `docs/削除と復元.md` — 削除の流れと控えからの復元手順、**職員の権限区分が無い点の明記**
 - `docs/運用者チェックリスト.md` — 運用者（GCP/Firebase 契約者）側の残タスク
 - `docs/ロードマップ.md` — 将来構想メモ
+
+---
+
+## 承認済み職員だけがデータに触れる（★2026-10-22・嘉島町役場からの照会を機に修正）
+
+**職員の承認（`staff/{uid}` の有無）は3か所で見る。1か所だけ直すと穴が開く。**
+
+| | 場所 | 条件 |
+| :-- | :-- | :-- |
+| ① データベース | `firestore.rules` の `isStaff()` | `exists(.../staff/$(request.auth.uid))` |
+| ② 用紙の画像 | `storage.rules` の `isStaff()` | `firestore.exists(/databases/(default)/documents/staff/...)`（クロスサービス参照） |
+| ③ 文字読み取りの入口 | `functions/index.js` の `requireStaff()` | ID トークン検証 ＋ `staff/{uid}` の存在 |
+
+**修正前に何が起きていたか。** ①だけが職員を要求し、②③は「ログインしていれば誰でも」だった。
+Firebase Auth の self-signup が開いているため、第三者が作ったアカウントや
+電子手帳の利用者アカウント（`portalUsers`）からでも、
+**氏名が写った記録用紙の画像を読めて、しかも削除できた**。
+③は `cfg.apiKey` が空のとき検査ごと飛ばす実装で、CI が作る `.env` に `OCR_API_KEY` が
+入っていないため常に空＝実質無認証の公開エンドポイントだった（Document AI を誰でも回せた）。
+
+**守り方。** `scripts/check-rules-staff.mjs`（25件・`npm run check` に登録）が3か所をまとめて検査する。
+「ログインしていれば通す」書き方に戻すと落ちる。
+
+**★エミュレータでは検証できない。**
+この端末の Java は x86 専用で Firebase エミュレータが起動しない（`Bad CPU type in executable`）。
+加えて **Storage エミュレータはクロスサービス参照に対応していない**ので、動いても②は検証できない。
+→ **本番に出したら、職員アカウントで「取込」「当日参加」の画面を開き、
+用紙の画像が表示されることを実機で必ず確かめること。** 表示されなければ②を戻して報告する。
+
+**影響範囲の確認（2026-10-22 実コードで確認）。**
+`sheets/` に触るのは `src/lib/db.js:50`（アップロード）と
+`sheetImageUrl` / `deleteSheetImage`（`src/screens/Import.jsx` / `WalkIn.jsx` / `Mobile.jsx`）だけ。
+いずれも `AuthGate` の職員側の分岐にしか無いので、**職員の操作は何も変わらない**。
+電子手帳の利用者は `sheets/` を一度も読まない。
+`onSheetImageUpload`（取り込みパイプライン）は Admin SDK なのでルールの対象外＝影響なし。
+
+**まだ残っているもの（コードでは直せない）。**
+Firestore の時点復旧（PITR）が未設定。これは GCP 側の設定なので、運用者が次の1行を実行する。
+```bash
+gcloud firestore databases update --database='(default)' --enable-pitr --project cruto-motion
+```
