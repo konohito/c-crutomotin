@@ -158,5 +158,15 @@ service cloud.firestore {
       allow create: if isStaff();
       allow update, delete: if false;
     }
+
+    /* ★2026-10-22 追記（嘉島町役場からのセキュリティ照会を機に）
+       Firestore は書いていないパスを既定で拒否するので、これが無くても閉じている。
+       ただし「明示的に全部断っている」ことが読んで分かるほうが、
+       点検・監査のときに説明しやすい（他のアプリも同じ書き方にしてある）。
+       ★注意: ルールは上の match と OR で評価される。ここを書いても
+         上で許可したものが閉じるわけではない（締める効果は無い）。 */
+    match /{document=**} {
+      allow read, write: if false;
+    }
   }
 }

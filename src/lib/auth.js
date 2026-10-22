@@ -70,3 +70,15 @@ export async function changePassword(currentPassword, newPassword) {
     throw new Error(authErrorMessage(e))
   }
 }
+
+/* いまログインしている人の ID トークン。
+   ★2026-10-22 新設。記録用紙の文字読み取り（recognizeSheet）を職員限定にしたため、
+     呼ぶ側がこれを Authorization: Bearer で送る必要がある。
+     ログインしていなければ null（呼ぶ側が「ログインが必要です」と出す）。 */
+export async function currentIdToken() {
+  if (!authEnabled()) return null
+  const { auth } = await getAuth()
+  const user = auth.currentUser
+  if (!user) return null
+  return await user.getIdToken()
+}

@@ -25,8 +25,60 @@ setGlobalOptions({ region: 'asia-northeast1', memory: '512MiB', timeoutSeconds: 
 function setCors(res) {
   res.set('Access-Control-Allow-Origin', cfg.allowOrigin)
   res.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  res.set('Access-Control-Allow-Headers', 'Content-Type, X-Api-Key')
+  res.set('Access-Control-Allow-Headers', 'Content-Type, X-Api-Key, Authorization')
   res.set('Access-Control-Max-Age', '3600')
+}
+
+/* ★2026-10-22 新設（嘉島町役場からのセキュリティ照会を機に点検して見つけた穴）
+   それまで recognizeSheet は実質「認証なしで公開された入口」だった。
+     ・`cfg.apiKey` が空のときは検査そのものを飛ばす実装で、
+       CI が作る .env に OCR_API_KEY が入っていないため常に空＝検査なし
+     ・CORS（OCR_ALLOW_ORIGIN）はブラウザ側の約束でしかなく、curl には効かない
+   つまり第三者が任意の画像を投げて Document AI を回せた（課金が発生する。
+   Firestore のデータは読めないので情報漏えいではないが、濫用はできた）。
+
+   ここで firestore.rules / storage.rules と**同じ条件**に揃える。
+     1) Firebase のログイン（ID トークン）が本物であること
+     2) そのうえで staff/{uid} がある（＝管理者が承認した職員）こと
+   ログインできるだけでは通らない。self-signup のアカウントも電子手帳の
+   利用者アカウントも、staff 文書が無いので弾かれる。
+   ★片方だけ直さないこと。職員の承認の仕組みを変えるときは3か所
+     （firestore.rules / storage.rules / ここ）を直す。
+
+   返り値: 通れば decoded token、弾いたら null（その場で応答済み）。 */
+async function requireStaff(req, res) {
+  const raw = String(req.get('Authorization') || '').trim()
+  const m = /^Bearer\s+(.+)$/i.exec(raw)
+  if (!m) {
+    res.status(401).json({ ok: false, error: 'ログインが必要です' })
+    return null
+  }
+  let decoded
+  try {
+    decoded = await admin.auth().verifyIdToken(m[1])
+  } catch (e) {
+    res.status(401).json({ ok: false, error: 'ログインの確認ができませんでした' })
+    return null
+  }
+  /* 匿名ログインは職員になれない（staff 文書が無いので下で弾かれるが、明示しておく） */
+  if (decoded.firebase && decoded.firebase.sign_in_provider === 'anonymous') {
+    res.status(403).json({ ok: false, error: '閲覧権限がありません' })
+    return null
+  }
+  let snap
+  try {
+    snap = await admin.firestore().doc('staff/' + decoded.uid).get()
+  } catch (e) {
+    /* ★ここで通してはいけない。確認できないときは断る。 */
+    console.error('requireStaff: staff の確認に失敗', e)
+    res.status(503).json({ ok: false, error: '権限を確認できませんでした。時間をおいてお試しください' })
+    return null
+  }
+  if (!snap.exists) {
+    res.status(403).json({ ok: false, error: '閲覧権限がありません' })
+    return null
+  }
+  return decoded
 }
 
 exports.recognizeSheet = onRequest(async (req, res) => {
@@ -36,6 +88,8 @@ exports.recognizeSheet = onRequest(async (req, res) => {
   if (cfg.apiKey && req.get('X-Api-Key') !== cfg.apiKey) {
     res.status(401).json({ ok: false, error: '認証に失敗しました' }); return
   }
+  /* ★職員であることの確認。ここを飛ばす分岐を作らないこと。 */
+  if (!(await requireStaff(req, res))) return
   try {
     const { imageBase64, gcsUri, mimeType } = req.body || {}
     if (!imageBase64 && !gcsUri) {

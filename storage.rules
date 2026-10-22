@@ -1,16 +1,38 @@
 rules_version = '2';
 // Cloud Storage セキュリティルール。
-// 記録用紙画像は認証済み職員のみアップロード可。画像/PDF・サイズ上限を検証する。
+// 記録用紙の画像には利用者の氏名・参加者ID・測定値が写っている。
+//
+// ★2026-10-22 修正（嘉島町役場からのセキュリティ照会を機に点検して見つけた穴）
+//   それまでは read / create / update / delete すべてが `request.auth != null` だけだった。
+//   つまり「ログインできれば誰でも読める・消せる」状態で、具体的には
+//     ・電子手帳の利用者アカウント（portalUsers・u+ID@techo.cruto-motion.app）
+//     ・第三者が自分で作ったアカウント（Firebase Auth の self-signup が開いている）
+//   からも、氏名が写った用紙の画像を読めて、しかも削除までできた。
+//   firestore.rules は同じ事情を踏まえて `isStaff()`（管理者が staff/{uid} を作った職員だけ）を
+//   要求しているのに、Storage だけが要求していない**非対称**になっていた。
+//
+//   ここを firestore.rules と同じ条件にそろえる。
+//   Storage のルールから Firestore を参照できる（クロスサービスルール）ので、
+//   firestore.rules の isStaff() と**同じ文書**（staff/{uid}）を見る。
+//   ★片方だけ直さないこと。職員の承認の仕組みを変えるときは両方を直す。
 service firebase.storage {
   match /b/{bucket}/o {
+
+    // 承認済み職員か。firestore.rules の isStaff() と同じ判定。
+    // ログインしているだけでは通らない（管理者が staff/{uid} を作った職員だけ）。
+    function isStaff() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/staff/$(request.auth.uid));
+    }
+
     match /sheets/{batchId}/{fileName} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null
+      allow read: if isStaff();
+      allow create, update: if isStaff()
         && request.resource.size < 15 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*')
             || request.resource.contentType == 'application/pdf');
       // 本登録/却下の済んだ画像はストレージ費用を抑えるため職員が削除できる
-      allow delete: if request.auth != null;
+      allow delete: if isStaff();
     }
     match /{allPaths=**} {
       allow read, write: if false;
