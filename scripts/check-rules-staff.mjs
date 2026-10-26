@@ -29,6 +29,25 @@ const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8')
 let pass = 0, fail = 0
 const ok = (c, m) => { if (c) pass++; else { fail++; console.log('  ✗ ' + m) } }
 
+console.log('== ⓪ クロスサービスに必要な権限が書き残されているか（★2026-10-26）==')
+{
+  /* ★ここで4日間、写真アップロードが全部止まった。
+       storage.rules の firestore.exists(...) は、Google 側で
+       roles/firebaserules.firestoreServiceAgent を付けないと参照が失敗し、
+       承認済みの職員でも全部断られる。
+       静的検査では権限そのものを確かめられないので、
+       **ルールを触る人が必ず目にする場所に書いてあること**を守る。 */
+  const S = read('storage.rules')
+  if (/firestore\.(exists|get)\(/.test(S)) {
+    ok(/roles\/firebaserules\.firestoreServiceAgent/.test(S),
+      '★クロスサービスを使っているのに、必要な権限の名前が storage.rules に書かれていない')
+    ok(/gcp-sa-firebasestorage\.iam\.gserviceaccount\.com/.test(S),
+      '★権限を付ける相手（Storage の仕組み用アカウント）が書かれていない')
+    ok(/実際に1枚上げて/.test(S),
+      '★配信後に実機で確かめる、という注意が書かれていない')
+  }
+}
+
 console.log('== ① firestore.rules ==')
 {
   const S = read('firestore.rules')

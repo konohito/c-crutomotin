@@ -20,6 +20,19 @@ service firebase.storage {
 
     // 承認済み職員か。firestore.rules の isStaff() と同じ判定。
     // ログインしているだけでは通らない（管理者が staff/{uid} を作った職員だけ）。
+    //
+    // ★★2026-10-26 ここで4日間、写真アップロードが全部止まった（必ず読むこと）
+    //   firestore.exists(...) は「Storage のルールから Firestore を見る」書き方
+    //   （クロスサービス）で、**Google 側で権限を1つ付けないと参照そのものが失敗する**。
+    //   失敗すると条件が false になり、承認済みの職員でも**全部断られる**。
+    //   実測: 10/21 まで毎日20件前後上がっていた用紙の画像が、10/22 の配信以降 0件。
+    //   必要な権限（1回付ければよい。付いていることを確かめてから配信する）:
+    //     roles/firebaserules.firestoreServiceAgent
+    //     → serviceAccount:service-<プロジェクト番号>@gcp-sa-firebasestorage.iam.gserviceaccount.com
+    //   Firebase の画面でルールを書くと付けるよう促されるが、
+    //   **コマンドラインや CI から配信すると何も言われずに壊れる**。
+    //   ★配信したら必ず、職員のアカウントで**実際に1枚上げて**確かめること。
+    //     ルールの文面を読むだけでは止められない（今回それで見落とした）。
     function isStaff() {
       return request.auth != null
         && firestore.exists(/databases/(default)/documents/staff/$(request.auth.uid));
