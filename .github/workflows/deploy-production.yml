@@ -67,14 +67,19 @@ jobs:
       # functions/.env は gitignore のため Variables から生成
       - if: steps.guard.outputs.ready == 'true'
         working-directory: functions
+        env:
+          MODEL_VAR: ${{ vars.GEMINI_MODEL }}
         run: |
           {
             echo "DOCAI_LOCATION=${{ vars.DOCAI_LOCATION || 'us' }}"
             echo "DOCAI_PROCESSOR_ID=${{ vars.DOCAI_PROCESSOR_ID }}"
             echo "OCR_ALLOW_ORIGIN=${{ vars.OCR_ALLOW_ORIGIN || 'https://cruto-motion.web.app' }}"
-            echo "GEMINI_MODEL=${{ vars.GEMINI_MODEL || '' }}"
             echo "VISION_READ=${{ vars.VISION_READ || '1' }}"
           } > .env
+          # 使うモデルは設定されているときだけ書く。空のまま GEMINI_MODEL= と書くと
+          # functions/src/ai-model.js が「空の値」として弾き、読み取りのたびにログが出る。
+          # 行ごと書かなければ既定(gemini-3.5-flash)がそのまま使われる。
+          if [ -n "$MODEL_VAR" ]; then echo "GEMINI_MODEL=$MODEL_VAR" >> .env; fi
 
       - if: steps.guard.outputs.ready == 'true'
         uses: google-github-actions/auth@v2
