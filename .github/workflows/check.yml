@@ -1,0 +1,50 @@
+name: 検査（フロント + バックエンド）
+
+# なぜ要るか（2026-11-05 実測）:
+#   検査（`npm run check`。src/lib/ai-region.test.mjs を含む）が走る場所は
+#   deploy-production.yml の中だけだった。そのワークフローは
+#     - トリガが push: [main, production] のみ＝**PR では一度も走らない**
+#     - 検査のステップに `if: steps.guard.outputs.ready == 'true'` が付いていて、
+#       GCP の Variables が未設定なら検査ごと飛ばされる
+#   という2点があり、「落ちるはずの変更が PR では黙って通る」状態だった。
+#   ここは配信に一切関わらないので、guard も paths も付けずに必ず走らせる。
+#   （paths を付けないのは、functions/.env.example やワークフロー自身の変更でも
+#     検査対象になるため。絞ると検査すべき変更を取りこぼす。）
+
+on:
+  pull_request:
+  push:
+    branches: [main, production]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # フロントエンドの検査（未定義参照・全画面描画・測定値の点検・保存まわり・
+      # AI のリージョンと使ってよいモデル・ルールの3か所 ほか）
+      - run: npm ci
+      - name: フロントエンドの検査
+        run: npm run check
+
+      # バックエンドの単体テスト（E2E はエミュレータが要るので CI では走らせない）
+      - name: バックエンドの依存
+        working-directory: functions
+        run: npm ci
+      - name: バックエンドの単体テスト
+        working-directory: functions
+        run: npm test

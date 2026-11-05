@@ -121,6 +121,8 @@ npm run check:measure   # 測定の保存まわりの回帰テスト（Firestore
 
 - 本番デプロイの認証は **Workload Identity Federation（鍵レス）**。必要な Repository Variables: `GCP_WIF_PROVIDER` / `GCP_DEPLOY_SA` / `FIREBASE_PROJECT_ID` / `DOCAI_PROCESSOR_ID`（Secrets/Variables 未設定の間は自動でスキップし、ジョブは失敗しない設計）
 - `functions/.env`（`DOCAI_LOCATION` / `DOCAI_PROCESSOR_ID` / `OCR_ALLOW_ORIGIN` / `GEMINI_MODEL` / `VISION_READ`）は CI 上で Repository Variables から都度生成される（gitignore 済みでリポジトリには置かない）
+  - `GEMINI_MODEL` は **Repository Variable が空なら行そのものを書かない**（2026-11-05）。空文字は「設定したが間違えた」として弾かれ、読み取りのたびにエラーが記録に残るため。未設定なら既定の `gemini-3.5-flash` で動く
+- 使うモデルを決めているのは `functions/src/ai-model.js` の1か所だけ。**既定は `gemini-3.5-flash`** で、環境変数 `GEMINI_MODEL` を設定しなければ動きは変わらない。許可の表（`ALLOWED_MODELS`）に無い名前を入れると、使わずに既定へ倒して理由つきで記録に残す。表は7リポジトリ共通で `FINGERPRINT` で固定してあり、片方だけ直すと検査が落ちる
 
 ### 手動デプロイ
 

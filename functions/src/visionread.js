@@ -9,7 +9,7 @@
    - ID・氏名が OCR から取れなかったとき … ビジョン AI の読みで補完
    - 用紙の判別(問診票かどうか)が文字認識ごと失敗した写真 … ビジョン AI 単独で読む
 
-   モデルは GEMINI_MODEL で切替可能。見つからない場合は候補リストを順に試す。
+   モデルは環境変数 GEMINI_MODEL で切替可能(決めるのは src/ai-model.js の 1 か所)。
    呼び出しは Cloud Functions のサービスアカウント(ADC)で行い、
    API キー等の秘密情報は不要(プロジェクトで aiplatform API の有効化が必要)。
 
@@ -20,24 +20,22 @@
      ここへ送っているのは**利用者の氏名が入った用紙の写真**なので、看過できない。
    ・2026-10-15 から 3.x 系は Durable Caching(最大24時間の保存)が既定で有効になる。
      東京に寄せておけば、その保存先も東京になる。
-   ・モデルは **gemini-3.5-flash** を先頭にする。東京で呼べて、公式のデータレジデンシー表で
-     国内処理が明記されているモデル(c-circuit の nursingdoc.js が同じ理由で本番稼働中)。
-   ★ 候補は東京で呼べるものだけを並べること。東京に無いモデルを足すと 404 で落ちて
-     次の候補に流れ、静かに読み取り精度だけが下がる。 */
+   ・使うモデルは **東京で呼べて、公式のデータレジデンシー表で機械学習の処理が日本国内に
+     限定されると書かれているもの**だけ。どれを使ってよいかの表は src/ai-model.js が持つ。
+   ★ ここにモデル名を直書きしないこと。環境変数で切り替えられるということは、事故で
+     国外処理のモデルを入れられるということでもある。ai-model.js の resolveModel() が
+     許可した名前以外を弾き、既定へ倒したうえで記録に残す。
+   ★ 2.5 系(2.5-flash / 2.5-pro)は **2026-10-16 に提供終了済み**。もう 404 しか返さないので
+     予備としての意味が無く、候補から外した(以前はここに 2.5-flash を並べていた)。 */
 const { GoogleAuth } = require('google-auth-library')
 const { QS } = require('./kclread')
+const { DEFAULT_MODEL, resolveModel } = require('./ai-model')
 
 const ENABLED = process.env.VISION_READ !== '0'
-/* モデル候補(先頭から順に試し、無い/混雑なら次へ)。GEMINI_MODEL で先頭を差し替え可能。
-   新しい世代ほど読み取り精度が高い想定で、最新 → 安定版の順に並べる。 */
+/* モデル候補(先頭から順に試し、無い/混雑なら次へ)。
+   いまは許可された名前が既定の 1 つだけなので、実質 1 件になる。 */
 const REGION = 'asia-northeast1'                     // ★東京。global にしない
-const MODELS = [...new Set([
-  process.env.GEMINI_MODEL || 'gemini-3.5-flash',
-  'gemini-3.5-flash',
-  /* 2.5 系は 2027-03-31 に完全廃止(Agent Platform)。それまでの保険として後ろに置く。
-     先に 3.5 が通るので通常は使われない。 */
-  'gemini-2.5-flash',
-])]
+const MODELS = [...new Set([resolveModel(), DEFAULT_MODEL])]
 const MAX_BYTES = 15 * 1024 * 1024   // Vertex のインライン上限(20MB)手前で足切り
 const TIMEOUT_MS = 90 * 1000
 
