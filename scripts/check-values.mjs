@@ -28,14 +28,15 @@ const pass = (msg) => console.log('  OK  ' + msg)
 
 // ---- 1) あり得ない値を必ず拾えること（実際に本番にあった値）--------------------
 console.log('=== あり得ない値を拾えるか（本番で見つかった実例）===')
+/* 値だけを残してある（誰の記録かは書かない）。しきい値を緩めると落ちる。 */
 const MUST_CATCH = [
-  ['友田尚子さんの体重', { height: 145, weight: 591 }, 'weight'],
-  ['野口幸市さんの体重', { height: 170, weight: 530 }, 'weight'],
-  ['西﨑悦子さんの身長', { height: 51.6, weight: 145.5 }, 'height'],
-  ['西俊子さんの身長', { height: 66.2, weight: 66.2 }, 'height'],
-  ['小林君子さんの握力', { gripR: 222, gripL: 222 }, 'gripR'],
-  ['野口京子さんの５ｍ歩行', { walk5: 0, walk5max: 0, tug: 0 }, 'walk5'],
-  ['春口末子さんの TUG', { tug: 0 }, 'tug'],
+  ['体重の桁違い（591kg）', { height: 145, weight: 591 }, 'weight'],
+  ['体重の桁違い（530kg）', { height: 170, weight: 530 }, 'weight'],
+  ['身長と体重の入れ違い（身長 51.6cm）', { height: 51.6, weight: 145.5 }, 'height'],
+  ['身長に体重が入った（身長 66.2cm）', { height: 66.2, weight: 66.2 }, 'height'],
+  ['握力の桁違い（222kg）', { gripR: 222, gripL: 222 }, 'gripR'],
+  ['５ｍ歩行が 0 秒（未測定を 0 で入れた）', { walk5: 0, walk5max: 0, tug: 0 }, 'walk5'],
+  ['TUG が 0 秒（未測定を 0 で入れた）', { tug: 0 }, 'tug'],
 ]
 for (const [label, values, field] of MUST_CATCH) {
   const errs = checkValues(values).filter(x => x.level === 'error')
@@ -77,14 +78,14 @@ console.log('=== 取り違えの手がかりを拾えるか ===')
   const dup2 = auditUsers([mk('90001', 'あ', { ...V }, '2025/10/28', 2025), mk('90002', 'い', { ...V }, '2024/10/28', 2024)])
   if (dup2.filter(x => x.kind === 'sameValues').length === 0) pass('日が違う同じ値 … 誤って拾いませんでした')
   else fail('日が違う同じ値 … 誤って拾っています')
-  // (b) 身長が前回から大きく変わる（杉本哲治さんの 144.2 → 165 と同じ形）
+  // (b) 身長が前回から大きく変わる（本番にあった 144.2 → 165 と同じ形）
   const tall = auditUsers([{
     id: '90003', name: 'う', kana: '', venueName: '鯰', archived: false, inbody: {},
     series: [{ date: '2024/10/02', year: 2024, values: { ...V, height: 144.2 } }, { date: '2025/11/05', year: 2025, values: { ...V, height: 165 } }],
   }])
   if (tall.some(x => x.kind === 'heightJump')) pass('身長が 1 年で 20.8cm 変わる記録 … 拾えました')
   else fail('身長が 1 年で 20.8cm 変わる記録 … 拾えませんでした')
-  // (c) 記録用紙と InBody の体重の食い違い（田中好美さんの 45.6 と 60.3 と同じ形）
+  // (c) 記録用紙と InBody の体重の食い違い（本番にあった 45.6 と 60.3 と同じ形）
   const ibw = auditUsers([mk('90004', 'え', { ...V, weight: 45.6 }, '2025/09/19', 2025, 60.3)])
   if (ibw.some(x => x.kind === 'inbodyWeight')) pass('記録用紙 45.6kg と InBody 60.3kg の食い違い … 拾えました')
   else fail('記録用紙と InBody の体重の食い違い … 拾えませんでした')
@@ -95,17 +96,31 @@ console.log('=== 取り違えの手がかりを拾えるか ===')
 }
 
 // ---- 3b) 所属者未確定の測定が点検結果に出ること --------------------------------
+/* ★ここで確かめるのは「どんな値を渡しても、持ち主を探すための手がかりが
+     そのまま点検結果に出てくる」こと。特定の氏名が入っているかは見ない
+     （氏名を書き写すと、検査ファイルがそのまま名簿になってしまう）。 */
 {
-  const un = auditUnassigned([{
-    _id: 'unassigned_20250916_1', date: '2025/09/16', year: 2025, examiner: '村崎',
+  const SRC = {
+    _id: 'unassigned_20250916_1', date: '2025/09/16', year: 2025, examiner: '検査 花子',
     values: { height: 151, weight: 52, gripR: 25.5, tug: 7, walk5: 3 },
-    unassigned: true, detachedFrom: '24104', detachedFromName: '桝田幸穂',
-    unassignedReason: '台帳の取り違えにより桝田様に付いていた測定。持ち主を確認中',
-  }])
-  if (un.length === 1 && un[0].kind === 'unassigned' && un[0].userId === null
-    && un[0].message.includes('151') && un[0].message.includes('桝田幸穂')) {
-    pass('所属者未確定の測定 … 点検結果に出ました（' + un[0].message.slice(0, 40) + '…）')
-  } else fail('所属者未確定の測定 … 点検結果に出ませんでした')
+    unassigned: true, detachedFrom: '90104', detachedFromName: '検査 太郎',
+    unassignedReason: '台帳の取り違えで別の方に付いていた測定。持ち主を確認中',
+  }
+  const un = auditUnassigned([SRC])
+  const m = un.length === 1 ? un[0].message : ''
+  const need = [
+    ['測定値', String(SRC.values.height)],
+    ['測定者', SRC.examiner],
+    ['もと付いていた方', SRC.detachedFromName],
+    ['もと付いていた方のID', SRC.detachedFrom],
+    ['確認中の理由', SRC.unassignedReason],
+  ]
+  const miss = need.filter(([, v]) => !m.includes(v)).map(([l]) => l)
+  if (un.length === 1 && un[0].kind === 'unassigned' && un[0].userId === null && !miss.length) {
+    pass('所属者未確定の測定 … 手がかり一式が点検結果に出ました（測定値・測定者・もとの持ち主・理由）')
+  } else if (un.length !== 1 || un[0].kind !== 'unassigned' || un[0].userId !== null) {
+    fail('所属者未確定の測定 … 点検結果に出ませんでした')
+  } else fail('所属者未確定の測定 … 手がかりが欠けています: ' + miss.join('・'))
 }
 
 // ---- 4) 台帳の走査 -------------------------------------------------------------
