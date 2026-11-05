@@ -510,7 +510,7 @@ export default function SheetMaker() {
     muniVenue: (muni || '') + (venue ? ' · ' + venue : ''), dateLabel: dateLabel || '　　　/　　/　　',
     rows: sheetRowsFor(),
   })
-  /* ★2026-10-13 現場報告（村崎さん）
+  /* ★2026-10-13 現場報告
        「motionの用紙印刷ですが、最大30枚までしか出力できないようです。
          10/16測定が36名予定で、6名が出力できてない状態です。
          他に30以上の場所が3箇所あります。今後他の自治体に持っていく際、
