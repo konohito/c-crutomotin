@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       # フロントエンドの検査（未定義参照・全画面描画・測定値の点検・保存まわり・
