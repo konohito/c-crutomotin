@@ -243,6 +243,20 @@ export async function createEvent(ev) {
   return { ...ev, id: ref.id }
 }
 
+/* 測定者の古いID（st01〜st10）と氏名の対応表。
+   ★氏名はコードに置かない（GitHub に個人情報を載せない）。ここから読む。
+     形: config/legacyExaminers = { map: { st01: { name, staffUid } , ... } }
+   未登録なら空を返す（画面は「以前の担当者」と出す）。 */
+export async function loadLegacyExaminers() {
+  if (!dbEnabled()) return {}
+  try {
+    const { fs, db } = await getFs()
+    const snap = await fs.getDoc(fs.doc(db, 'config', 'legacyExaminers'))
+    const m = snap.exists() ? (snap.data() || {}).map : null
+    return m && typeof m === 'object' ? m : {}
+  } catch { return {} }
+}
+
 /* 卒業証書などに刷る発行者（法人名・事業所名・肩書・氏名）。
    画面に直接書かず config/certificate から読む（事業所が増えても直せるように）。 */
 export const CERT_DEFAULT = { corpName: '', officeName: '', issuers: [] }

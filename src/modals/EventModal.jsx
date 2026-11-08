@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import D from '../data/engine.js'
 import { useStore, allMunis, EV_KINDS } from '../store.jsx'
 import { mdw } from '../lib/helpers.js'
 import { createEvent } from '../lib/db.js'
@@ -95,28 +94,36 @@ export default function EventModal() {
             <input className="field t-num" value={state.evTime} onChange={(e) => set({ evTime: e.target.value })} placeholder="9:30〜11:30" />
           </Field>
         </div>
-        <Field label="測定者" hint={<>スタッフマスタから選択 · <span className="t-num">{state.evStaff.length}</span> 名</>}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {D.STAFF.map(st => {
-              const sel = state.evStaff.includes(st.id)
-              return (
-                <button key={st.id}
-                  onClick={() => set(s => ({ evStaff: sel ? s.evStaff.filter(x => x !== st.id) : s.evStaff.concat([st.id]) }))}
-                  style={{
-                    height: 30, padding: '0 11px', borderRadius: 999,
-                    border: `1px solid ${sel ? 'var(--brand-500)' : 'var(--border-default)'}`,
-                    background: sel ? 'var(--brand-50)' : 'var(--bg-surface)',
-                    color: sel ? 'var(--brand-700)' : 'var(--fg-2)',
-                    fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                    display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
-                    transition: 'all var(--dur-fast)',
-                  }}>
-                  {st.name}
-                  <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.65 }}>{st.role}</span>
-                </button>
-              )
-            })}
-          </div>
+        {/* ★2026-11-08 ここは固定で書かれた10名しか選べず、**実際に測定した人を記録できなかった**。
+              選択肢は職員の追加・解除の画面で増やせる人（承認済み職員）から出す。 */}
+        <Field label="測定者" hint={<><span className="t-num">{state.evStaff.length}</span> 名</>}>
+          {state.staffList.length === 0 ? (
+            <div className="opt-hint" style={{ fontSize: 12, lineHeight: 1.6 }}>
+              選べる人がまだいません。「職員」の画面で追加してください。
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {state.staffList.map(st => {
+                const sel = state.evStaff.includes(st.uid)
+                const nm = String(st.name || '').trim() || String(st.email || '').split('@')[0]
+                return (
+                  <button key={st.uid}
+                    onClick={() => set(s => ({ evStaff: sel ? s.evStaff.filter(x => x !== st.uid) : s.evStaff.concat([st.uid]) }))}
+                    style={{
+                      height: 30, padding: '0 11px', borderRadius: 999,
+                      border: `1px solid ${sel ? 'var(--brand-500)' : 'var(--border-default)'}`,
+                      background: sel ? 'var(--brand-50)' : 'var(--bg-surface)',
+                      color: sel ? 'var(--brand-700)' : 'var(--fg-2)',
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap',
+                      transition: 'all var(--dur-fast)',
+                    }}>
+                    {nm}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </Field>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 4 }}>
           <button className="btn btn-outline" onClick={close} disabled={busy}>キャンセル</button>
