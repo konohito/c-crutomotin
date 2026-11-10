@@ -132,19 +132,19 @@ const SEI = [['佐藤','サトウ'],['鈴木','スズキ'],['高橋','タカハ�
 const MEI_M = [['茂','シゲル'],['勇','イサム'],['清','キヨシ'],['博','ヒロシ'],['勝','マサル'],['実','ミノル'],['弘','ヒロム'],['武','タケシ'],['正','タダシ'],['豊','ユタカ'],['昇','ノボル'],['進','ススム'],['隆','タカシ'],['明','アキラ'],['健一','ケンイチ'],['幸雄','ユキオ'],['正雄','マサオ'],['和夫','カズオ'],['信夫','ノブオ'],['秀夫','ヒデオ'],['光男','ミツオ'],['義雄','ヨシオ'],['辰雄','タツオ'],['英治','エイジ'],['文夫','フミオ'],['守雄','モリオ']];
 const MEI_F = [['花子','ハナコ'],['幸子','サチコ'],['和子','カズコ'],['節子','セツコ'],['文子','フミコ'],['美代子','ミヨコ'],['春子','ハルコ'],['静子','シズコ'],['久子','ヒサコ'],['悦子','エツコ'],['君子','キミコ'],['千代子','チヨコ'],['澄子','スミコ'],['登美子','トミコ'],['芳子','ヨシコ'],['貞子','サダコ'],['敏子','トシコ'],['栄子','エイコ'],['照子','テルコ'],['トミ子','トミコ'],['キヨ','キヨ'],['ハル','ハル'],['ヨシ子','ヨシコ'],['フサコ','フサコ'],['まり子','マリコ'],['るい子','ルイコ'],['小百合','サユリ'],['千鶴','チヅル'],['律子','リツコ'],['洋子','ヨウコ'],['典子','ノリコ'],['孝子','タカコ'],['廣子','ヒロコ'],['マツ子','マツコ'],['テルミ','テルミ'],['ミチヨ','ミチヨ']];
 
-// ---- スタッフマスタ ------------------------------------------------------------
-export const STAFF = [
-  { id: 'st01', name: '相馬 直樹', role: '事務局' },
-  { id: 'st02', name: '村田 千夏', role: '保健師' },
-  { id: 'st03', name: '小野寺 学', role: '理学療法士' },
-  { id: 'st04', name: '木下 陽菜', role: '看護師' },
-  { id: 'st05', name: '古賀 誠一', role: '作業療法士' },
-  { id: 'st06', name: '平田 美咲', role: '看護師' },
-  { id: 'st07', name: '荒木 大輔', role: '健康運動指導士' },
-  { id: 'st08', name: '内村 玲子', role: '保健師' },
-  { id: 'st09', name: '柴田 康平', role: '理学療法士' },
-  { id: 'st10', name: '五十嵐 桃', role: '管理栄養士' },
-];
+/* ---- 測定者 ------------------------------------------------------------------
+   ★2026-11-08 ここに実在の職員10名が固定で書かれていた。
+     ① 本番のバンドルと**公開デモの両方**に実在の氏名が載っていた
+     ② 測定者の選択肢がこの10名に固定され、**実際に測定した人を記録できなかった**
+        （職員の追加・解除の仕組み＝承認済み職員は、ここでは使われていなかった）
+   → 固定の一覧は削除した。測定者は承認済み職員（Firestore の staff）から選ぶ。
+     保存済みの予定が持つ古いID（st01〜st10）は、氏名の対応表を**コードに置かない**。
+     対応表は Firestore の config/legacyExaminers に置く（GitHub には個人情報を載せない）。
+     対応が無いあいだは「以前の担当者」と出す（人数は分かるので消さない）。 */
+export const LEGACY_EXAMINER_PREFIX = 'st';
+export function isLegacyExaminerId(id) {
+  return /^st\d{2}$/.test(String(id || ''));
+}
 
 // ---- 測定会日程(9〜11月) -------------------------------------------------------
 export const DATES = {}; // DATES[venueCode][year] = 'YYYY/MM/DD'
@@ -421,5 +421,5 @@ export function replaceMunis(list) {
   regions.forEach(r => REGIONS.push(r));
 }
 
-const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, setYears, fiscalYearOf, fiscalYearOfDate, eraLabel, jstNow, COLS, AXES, SHEET_COLS, STAFF, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf, ensureKcl, newUserId, setUsers, replaceMunis, fiscalEra, fiscalEraNum };
+const D = { REGIONS, MUNIS, YEARS, CUR, ERA, TODAY, setYears, fiscalYearOf, fiscalYearOfDate, eraLabel, jstNow, COLS, AXES, SHEET_COLS, isLegacyExaminerId, users, sheets, batchMeta, DATES, fmt, agg, commitSheet, axesOf, ensureKcl, newUserId, setUsers, replaceMunis, fiscalEra, fiscalEraNum };
 export default D;

@@ -70,7 +70,7 @@ export default function Dashboard() {
   ;[[D.TODAY, '本日'], [addDays(D.TODAY, 1), '明日']].forEach(([ds, when]) => {
     evsAll.filter(e => e.date === ds && e.kind === 'meas').forEach(e => {
       const parts = e.code ? D.users.filter(u => u.venueCode === e.code) : []
-      const sn = staffNames(e.staff)
+      const sn = staffNames(e.staff, state.staffList, state.legacyExaminers)
       dashEvCards.push({
         when, md: mdw(ds).replace(/（.）/, ''),
         title: '測定会 — ' + e.venue,
@@ -111,8 +111,10 @@ export default function Dashboard() {
   const eraTop = `${D.eraLabel(D.fiscalYearOf(D.jstNow(now)))}年度`
   const greet = loginGreeting()
   // 本番はログイン職員の氏名（姓）を使い、未設定なら掛け声のみにする
+  /* ★見本（公開デモ）では氏名を出さない。掛け声だけにする。
+       以前はコードに書かれた実在の職員の姓を出していた。 */
   const staffFamily = demo
-    ? ((D.STAFF[0].name.split(' ')[0]) || '担当')
+    ? ''
     : ((profile && profile.name) ? profile.name.trim().split(/\s+/)[0] : '')
 
   return (

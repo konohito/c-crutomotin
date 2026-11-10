@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import D from './data/engine.js'
 import { useStore, pendingSheets, allEvents, StoreProvider } from './store.jsx'
 import { mdw } from './lib/helpers.js'
-import { dbEnabled, watchPendingCount, loadEvents } from './lib/db.js'
+import { dbEnabled, watchPendingCount, loadEvents, loadLegacyExaminers } from './lib/db.js'
 import { Icon } from './ui/icons.jsx'
 import { Toast } from './ui/kit.jsx'
 import AuthGate, { useAuth } from './ui/AuthGate.jsx'
@@ -30,7 +30,7 @@ import RegisterModal from './modals/RegisterModal.jsx'
 import EventModal from './modals/EventModal.jsx'
 import { EditUserModal, EditMeasModal, EditKclModal } from './modals/EditModals.jsx'
 import PasswordModal from './modals/PasswordModal.jsx'
-import { staffAdminEnabled } from './lib/staffAdmin.js'
+import { staffAdminEnabled, listStaff } from './lib/staffAdmin.js'
 import ScreenErrorBoundary from './ui/errorboundary.jsx'
 import { horizontalOrange } from './ui/logos'
 
@@ -151,7 +151,9 @@ function SidebarUser() {
   const { set } = useStore()
   const { user, enabled, profile, signOut } = useAuth()
   const email = user && (user.email || '')
-  const name = enabled ? ((profile && profile.name) || (user && user.displayName) || (email ? email.split('@')[0] : '職員')) : '相馬 直樹'
+  /* ★2026-11-08 ここに実在の職員の氏名が書かれていて、公開デモのヘッダーに出ていた。
+       見本では氏名を出さない。 */
+  const name = enabled ? ((profile && profile.name) || (user && user.displayName) || (email ? email.split('@')[0] : '職員')) : '職員'
   const sub = enabled ? email : '事務局 · 管理者権限'
   const initial = (name || '職').trim().charAt(0)
   return (
@@ -256,9 +258,27 @@ function useEventsBoot() {
   }, [setState])
 }
 
+/* 測定者の選択肢（承認済み職員）と、古いIDの氏名の対応表を読む。
+   ★氏名はコードに持たない。選択肢は「職員」の画面で増やした人がそのまま出る。 */
+function useStaffBoot() {
+  const { setState } = useStore()
+  useEffect(() => {
+    if (!dbEnabled()) return
+    let alive = true
+    listStaff()
+      .then((list) => { if (alive) setState(s => ({ ...s, staffList: Array.isArray(list) ? list : [] })) })
+      .catch((e) => console.warn('listStaff failed:', e && e.message))
+    loadLegacyExaminers()
+      .then((map) => { if (alive && map && Object.keys(map).length) setState(s => ({ ...s, legacyExaminers: map })) })
+      .catch((e) => console.warn('loadLegacyExaminers failed:', e && e.message))
+    return () => { alive = false }
+  }, [setState])
+}
+
 function AppInner() {
   const { state, set } = useStore()
   useEventsBoot()
+  useStaffBoot()
   const Screen = SCREENS[state.screen] || Dashboard
   return (
     <div className="app-root">

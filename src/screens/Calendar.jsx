@@ -105,7 +105,7 @@ export default function Calendar() {
             {upcoming.map((e, i) => {
               const mu = e.muni ? muniByName(state, e.muni) : null
               const rg = (mu && mu.region) || e.region || ''
-              const sn = staffNames(e.staff)
+              const sn = staffNames(e.staff, state.staffList, state.legacyExaminers)
               return (
                 <div key={i} style={{ display: 'flex', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--border-subtle)', alignItems: 'flex-start' }}>
                   <div className="t-num" style={{ minWidth: 62, fontSize: 12, fontWeight: 600, color: 'var(--fg-2)', paddingTop: 1 }}>{mdw(e.date)}</div>

@@ -42,6 +42,8 @@ const initialState = {
   calY: D.jstNow().getFullYear(), calM: D.jstNow().getMonth() + 1,
   evOpen: false, evDate: '', evKind: 'meas', evTitle: '', evVenue: '', evMuni: 'sakuragawa', evTime: '',
   customMunis: [], evNewMuni: '', evNewRegion: '', evStaff: [],
+  // 承認済み職員（測定者の選択肢）と、古いIDの対応表。どちらも Firestore から読む
+  staffList: [], legacyExaminers: {},
   // 本番(実データ)ではダミーのサンプル予定は出さない
   customEvents: dbEnabled() ? [] : [
     { date: '2025/09/26', kind: 'class', title: 'いきいき百歳体操 教室', venue: '第一地区公民館', time: '10:00〜11:30' },
@@ -77,8 +79,9 @@ const VENUE_EVENTS = (() => {
   const evs = []
   D.MUNIS.forEach(mu => mu.venues.forEach(v => {
     const code = v[0]
-    const staff = [D.STAFF[(code * 2) % 10].id, D.STAFF[(code * 2 + 3) % 10].id, D.STAFF[(code + 7) % 10].id].slice(0, 2 + (code % 2))
-    Object.keys(D.DATES[code]).forEach(yy => evs.push({ date: D.DATES[code][yy], kind: 'meas', venue: v[1], muni: mu.name, code, time: '受付 9:30〜', staff }))
+    /* ★見本の予定に測定者は入れない（実在の氏名をコードに置かないため）。
+         本番の予定（Firestore）は承認済み職員のIDを持つ。 */
+    Object.keys(D.DATES[code]).forEach(yy => evs.push({ date: D.DATES[code][yy], kind: 'meas', venue: v[1], muni: mu.name, code, time: '受付 9:30〜', staff: [] }))
   }))
   return evs
 })()
@@ -141,7 +144,17 @@ export const allMunis = (state) => D.MUNIS.concat(state.customMunis)
 export const muniByName = (state, name) => allMunis(state).find(x => x.name === name)
 // 本番(実データ)では会場マスタ由来のダミー測定会イベントは出さない（イベントは未移行のため）
 export const allEvents = (state) => (dbEnabled() ? [] : VENUE_EVENTS).concat(state.customEvents)
-export const staffNames = (ids) => (ids || []).map(id => { const st = D.STAFF.find(x => x.id === id); return st ? st.name : null }).filter(Boolean)
+/* 測定者のIDから氏名へ。**氏名はコードに持たない**（承認済み職員＝Firestore の staff から引く）。
+   ★古いID（st01〜st10）は、氏名の対応表が Firestore の config/legacyExaminers にあれば使う。
+     無いあいだは「以前の担当者」と出す。人数は分かるので黙って消さない。 */
+export const staffNames = (ids, staffList, legacy) => (ids || []).map(id => {
+  const hit = (staffList || []).find(x => x.uid === id)
+  if (hit) return String(hit.name || '').trim() || null
+  const old = (legacy || {})[id]
+  if (old && String(old.name || '').trim()) return String(old.name).trim()
+  if (D.isLegacyExaminerId(id)) return '以前の担当者'
+  return null
+}).filter(Boolean)
 
 // ============ メモ ============
 
