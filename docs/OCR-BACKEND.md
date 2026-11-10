@@ -1,10 +1,40 @@
-# 記録用紙 OCR バックエンド（Firebase Functions + Google Document AI）
+# 記録用紙 OCR バックエンド（Firebase Functions）
 
-測定会の記録用紙（手書き）を撮影 → Document AI で認識 → 記録用紙スキーマに変換して
+測定会の記録用紙（手書き）を撮影 → 文字を読み取り → 記録用紙スキーマに変換して
 「取り込み」画面の要確認フローに流し込むためのバックエンドです。
 
 現状フロントの認識部分はモック（決定論的なダミー）で、業務フロー（キュー → 信頼度フラグ →
 修正 → 本登録）は完成済み。このバックエンドは **その「認識」の一手だけ** を実データに差し替えます。
+
+---
+
+## 読み取りの engine は 2 つある（`OCR_ENGINE`）
+
+**2026-11-10 ユーザー確定**「文字認識そのものを Gemini（東京）に寄せて Document AI を使わない」。
+切り替えは **`functions/src/ocrengine.js` の 1 か所**。他のファイルに分岐を書かないこと。
+
+| `OCR_ENGINE` | 読み方 | 国外へ出るか | 既定 |
+| :-- | :-- | :-- | :-- |
+| `docai` | Document AI（文字と**座標**）＋ Gemini を補助に統合 | **出る**（米国。Document AI に日本リージョンが無い） | ★これ |
+| `gemini` | Gemini（Vertex AI・**東京**）だけ | 出ない | |
+
+- 未設定なら `docai`。知らない値を入れても使われず、既定へ倒してログに残る
+- 精度の実測（移行前/移行後を同じ尺度で並べたもの）と、既定を `docai` にしている理由は
+  **`CLAUDE.md` の「読み取りの engine を切り替えるときに知っておくこと」** にある
+- `gemini` のときは `DOCAI_LOCATION` / `DOCAI_PROCESSOR_ID` を一度も使わない
+  （`@google-cloud/documentai` も読み込まれない。切り戻せるよう依存は残してある）
+
+### `gemini` のときに守っていること
+
+- **読めなかったことを 0 や空と取り違えない。** 数字として解釈できない項目・
+  `mapping.js` の `VALUE_RANGE` の外にある値は `null`（欠測）にして人へ回す
+- **Gemini は項目ごとの確信度を返さない。** 返さないものを「高い」と見なさないため、
+  信頼度は要確認しきい値より必ず低い値（`visionread.js` の `VISION_CONF`）を入れ、
+  さらに `ocrengine.js` で `needsReview` を必ず立てる（しきい値をどう動かしても外れない）
+- **呼び出しが失敗したら空の結果を作らず例外を投げる。** `onSheetImageUpload` が
+  `status:'error'` で記録し、職員が撮り直せるようにする
+- 既知の弱点: モデルがまれに「文字の間に空白が入った壊れた JSON」を返すことがある。
+  推測で直さず読取不可として扱う（＝撮り直し）
 
 ---
 
@@ -142,9 +172,10 @@ cd functions && npm install
 
 | 変数 | 例 | 説明 |
 |---|---|---|
+| `OCR_ENGINE` | `docai` / `gemini` | どちらで読むか（未設定なら `docai`）。上の「読み取りの engine は 2 つある」参照 |
 | `DOCAI_PROJECT_ID` | `my-proj` | ローカルのみ必要（本番は自動設定） |
-| `DOCAI_LOCATION` | `us` | プロセッサのロケーション |
-| `DOCAI_PROCESSOR_ID` | `abcdef012345` | 作成したプロセッサ ID |
+| `DOCAI_LOCATION` | `us` | プロセッサのロケーション（`OCR_ENGINE=docai` のときだけ使う） |
+| `DOCAI_PROCESSOR_ID` | `abcdef012345` | 作成したプロセッサ ID（同上） |
 | `OCR_API_KEY` | （任意） | フロントの `VITE_OCR_API_KEY` と一致させる簡易認証 |
 | `OCR_ALLOW_ORIGIN` | `https://konohito.github.io` | CORS 許可オリジン |
 
@@ -257,12 +288,16 @@ firebase deploy --only functions   # predeploy で npm test が走る
 functions/
   index.js                 # HTTPS 関数 recognizeSheet + Storage トリガ onSheetImageUpload
   src/config.js            # 環境変数
+  src/ocrengine.js         # ★どちらの engine で読むかを決める1か所（docai / gemini）
   src/documentai.js        # Document AI クライアント（エミュレータ/CI ではモックに自動切替）
   src/mockdoc.js           # 合成 Document AI レスポンス（GCP 不要の検証・デモ用）
   src/mapping.js           # レスポンス → 記録用紙スキーマ（純粋関数・テスト対象）
+  src/visionread.js        # Gemini（東京）での読み取り。gemini 経路の本体
+  src/kclread.js           # 問診票のマーク読み取り（座標を使う幾何ロジック。docai 経路のみ）
   src/recognition.js       # Storage パス解析・recognition ドキュメント組み立て
   test/mapping.test.cjs    # 単体テスト（マッピング）
   test/recognition.test.cjs# 単体テスト（recognition 組み立て）
+  test/ocrengine.test.cjs  # 単体テスト（engine の切り替え・gemini 経路の安全側の振る舞い）
   test/mockdoc.test.cjs    # 単体テスト（モック認識）
   test/e2e-pipeline.cjs    # E2E（エミュレータで Storage→トリガ→OCR→Firestore を通し検証）
   .env.example

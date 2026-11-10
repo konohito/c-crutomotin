@@ -69,6 +69,7 @@ jobs:
         working-directory: functions
         env:
           MODEL_VAR: ${{ vars.GEMINI_MODEL }}
+          ENGINE_VAR: ${{ vars.OCR_ENGINE }}
         run: |
           {
             echo "DOCAI_LOCATION=${{ vars.DOCAI_LOCATION || 'us' }}"
@@ -80,6 +81,9 @@ jobs:
           # functions/src/ai-model.js が「空の値」として弾き、読み取りのたびにログが出る。
           # 行ごと書かなければ既定(gemini-3.5-flash)がそのまま使われる。
           if [ -n "$MODEL_VAR" ]; then echo "GEMINI_MODEL=$MODEL_VAR" >> .env; fi
+          # 読み取りの engine も同じ扱い。未設定なら既定(docai)。
+          # 空のまま書くと functions/src/ocrengine.js が弾いてログが溢れる。
+          if [ -n "$ENGINE_VAR" ]; then echo "OCR_ENGINE=$ENGINE_VAR" >> .env; fi
 
       - if: steps.guard.outputs.ready == 'true'
         uses: google-github-actions/auth@v2

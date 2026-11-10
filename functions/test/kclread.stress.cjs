@@ -10,12 +10,39 @@
 
    実行: node test/kclread.stress.cjs
      STRESS_N=400 で件数変更(既定 60。CI では既定のまま流す)
-     STRESS_SEED=... でシード変更 */
+     STRESS_SEED=... でシード変更
+
+   ★STRESS_ENGINE=gemini で、**まったく同じ 60 枚**を Gemini だけの経路で読み直せる
+     (Document AI を使わない経路に移すときの比較用。移行前後を同じ尺度で並べるために
+      条件・乱数列・採点をすべて共有している)。
+     ただし実際に Vertex AI を呼ぶので ADC と課金が必要。CI では既定(幾何ロジック)のまま。
+       cd functions && STRESS_ENGINE=gemini GCLOUD_PROJECT=<プロジェクト> node test/kclread.stress.cjs */
 const { readKcl } = require('../src/kclread')
 const H = require('./kclharness.cjs')
 
 const N = parseInt(process.env.STRESS_N || '60', 10)
 const SEED = parseInt(process.env.STRESS_SEED || '20260831', 10)
+const ENGINE = process.env.STRESS_ENGINE === 'gemini' ? 'gemini' : 'docai'
+/* 読み取りの 1 枚ぶん。engine が違っても**返す形は揃える**(採点を共有するため)。
+   gemini は Document AI の document を一切受け取らない点がこの経路の要。 */
+const readOne = ENGINE === 'gemini'
+  ? (async () => {
+    const { recognizeSheetImage } = require('../src/ocrengine')
+    return async (doc, buf, mime) => {
+      /* 読み取りが失敗した写真は、本番では status:'error' で記録されて職員が撮り直す。
+         ここでも「読取不可」として数える(数えずに止めると実力を測れない)。 */
+      let rec
+      try {
+        ({ rec } = await recognizeSheetImage({ content: buf, mimeType: mime }, { engine: 'gemini' }))
+      } catch (e) {
+        return { isKcl: true, answers: {}, readable: false, reason: `読み取り失敗: ${String(e.message || e).slice(0, 120)}` }
+      }
+      return rec.kcl
+        ? { isKcl: true, side: rec.kcl.side, answers: rec.kcl.answers || {}, readable: !!rec.kcl.readable, reason: rec.kcl.reason, debug: rec.kcl.debug }
+        : { isKcl: false, answers: {}, readable: false, reason: '問診票と判断されませんでした' }
+    }
+  })()
+  : Promise.resolve((doc, buf, mime) => readKcl(doc, buf, mime))
 
 // シード付き乱数(mulberry32)。同じシードなら毎回同じ条件列になる
 function mulberry32(a) {
@@ -34,6 +61,10 @@ let wrongN = 0, goodFailN = 0
 let readQ = 0, totalQ = 0, readableN = 0, goodN = 0
 const t0 = Date.now()
 
+/* engine によって読み取りが非同期になるので全体を async で回す。
+   ★乱数の呼び出し順は変えていない(条件の列と合成写真が engine 間で完全に同じになる)。 */
+;(async () => {
+const readSheet = await readOne
 for (let i = 0; i < N; i++) {
   const p = {
     side: pick(['front', 'back']),
@@ -77,7 +108,7 @@ for (let i = 0; i < N; i++) {
   const xf = H.makeXf((p.tiltDeg * Math.PI) / 180, p.persp, p.paperW / H.PAGE_W)
   const display = H.makeImage(xf, cfg, lay, { ...p, rng: rnd })
   const buf = H.encodeShot(display, p)
-  const res = readKcl(H.makeDoc(xf, cfg, lay, p), buf, p.fmt === 'png' ? 'image/png' : 'image/jpeg')
+  const res = await readSheet(H.makeDoc(xf, cfg, lay, p), buf, p.fmt === 'png' ? 'image/png' : 'image/jpeg')
   // STRESS_ONLY=n: その 1 枚だけ全設問の診断を出す(乱数列は全体を回して合わせる)
   if (process.env.STRESS_ONLY) {
     if (i === +process.env.STRESS_ONLY) {
@@ -112,7 +143,8 @@ for (let i = 0; i < N; i++) {
     wrongN++
     const dbg = res.debug ? ` 診断 src=${res.debug.src} δ=${res.debug.delta} mad=${res.debug.mad}` : ''
     console.error(`✗ #${i} 誤読 ${wrong.length} 問${dbg} [${JSON.stringify({ ...p, dropKeys: p.dropKeys && [...p.dropKeys] })}]\n   ${wrong.join(' / ')}`)
-    if (res.debug) {
+    // perQ(設問ごとの濃度)は幾何ロジックだけが持つ。gemini 経路には無いので有無を見る
+    if (res.debug && res.debug.perQ) {
       for (const w of wrong) console.error(`   perQ ${w.split(':')[0]}: ${JSON.stringify(res.debug.perQ[w.split(':')[0]])}`)
     }
   }
@@ -131,10 +163,11 @@ for (let i = 0; i < N; i++) {
 }
 
 const sec = ((Date.now() - t0) / 1000).toFixed(1)
-console.log(`\nkclread stress: ${N} 枚 (seed=${SEED}, ${sec}s)`)
+console.log(`\nkclread stress: ${N} 枚 (seed=${SEED}, engine=${ENGINE}, ${sec}s)`)
 console.log(`  読取不可にせず読めた写真: ${readableN}/${N}`)
 console.log(`  設問の読取: ${readQ}/${totalQ} (${Math.round((readQ / Math.max(1, totalQ)) * 100)}%)`)
 console.log(`  良条件の写真: ${goodN} 枚(読取率 85% 未満: ${goodFailN})`)
 console.log(`  誤読: ${wrongN} 枚`)
 if (wrongN || goodFailN) { console.error('\nストレステスト失敗'); process.exit(1) }
 console.log('すべて基準内')
+})().catch((e) => { console.error('\nストレステストが例外で止まりました:', e); process.exit(1) })

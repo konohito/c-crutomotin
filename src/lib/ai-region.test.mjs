@@ -197,3 +197,93 @@ test('Document AI のリージョン設定がどこにあるか分かる', () =>
   assert.match(cfg, /DOCAI_LOCATION/)
   assert.match(cfg, /Document AI のロケーション/)
 })
+
+// ---- 読み取りの engine（2026-11-10 ユーザー確定） ----------------------------
+/* Document AI を使わない経路（東京の Gemini だけで読む）を足した。
+   ★3省2ガイドラインの説明が engine で変わる（docai は読み取りの瞬間だけ米国へ出る／
+     gemini は国外へ出る経路が無い）ので、**判定が 1 か所であること**を機械で固定する。
+     2 か所に書くと「どちらで読んでいるか」を誰も答えられなくなる。 */
+const enginePath = path.join(root, 'functions/src/ocrengine.js')
+assert.ok(fs.existsSync(enginePath), `検査の対象が無い: ${enginePath}`)
+const engineSrc = fs.readFileSync(enginePath, 'utf8')
+/* ★ここは read するだけで require しない。
+   ocrengine.js は画像ライブラリ(jpeg-js / pngjs)まで辿るので、
+   functions/node_modules を入れていないフロント側の検査からは読み込めない
+   （CI は `npm run check` → そのあと functions の npm ci の順で走る）。
+   振る舞いの検証は functions/test/ocrengine.test.cjs が受け持つ。 */
+const engineCode = stripComments(engineSrc)
+
+test('engine の既定は docai（設定しなければ今までと同じ）', () => {
+  assert.match(engineCode, /const DEFAULT_ENGINE = 'docai'/, '既定が docai でない')
+  assert.match(engineCode, /const ENGINE_ENV = 'OCR_ENGINE'/, '環境変数の名前が変わっている')
+})
+
+test('使える engine は docai / gemini だけ', () => {
+  const m = /const ENGINES = Object\.freeze\(\[([^\]]*)\]\)/.exec(engineCode)
+  assert.ok(m, 'ENGINES を読み取れない')
+  const names = m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean)
+  assert.deepEqual(names, ['docai', 'gemini'], `使える engine が変わっている: ${names.join(' / ')}`)
+})
+
+test('知らない engine は使わずに既定へ倒し、記録に残す作りになっている', () => {
+  // 表に無い名前をそのまま使う道が無いこと（pickEngine が ENGINES を通す）
+  assert.match(engineCode, /ENGINES\.includes\(name\)/, 'ENGINES で絞っていない')
+  assert.match(engineCode, /engine: DEFAULT_ENGINE/, '弾いたときに既定へ倒していない')
+  /* 弾いたら必ず記録に残ること。
+     ★`if (picked.rejected)` があるだけでは不十分（中身を void にされても通ってしまう。
+       わざと壊す検査で実際に見逃した）。**ログを呼ぶ式そのもの**を固定する。 */
+  assert.match(engineCode, /if \(picked\.rejected\)\s*\(log \|\| console\.error\)\(rejectionMessage\(picked\.rejected\)\)/,
+    '弾いたときにログを呼んでいない（判定だけ残して中身を消していないか）')
+  assert.match(engineSrc, /rejectionMessage/, '弾いた理由の文が無い')
+})
+
+test('engine の判定は 1 か所だけ（他のファイルに分岐を書かない）', () => {
+  /* OCR_ENGINE を読むのは ocrengine.js だけであること。
+     index.js など呼び出し側に分岐が増えると、判定が二重になって必ず食い違う。 */
+  const files = ['functions/index.js', 'functions/src/config.js', 'functions/src/visionread.js',
+    'functions/src/documentai.js', 'functions/src/mapping.js', 'functions/src/kclread.js',
+    'functions/src/recognition.js']
+  for (const f of files) {
+    const code = stripComments(fs.readFileSync(path.join(root, f), 'utf8'))
+    assert.ok(!/OCR_ENGINE/.test(code), `${f} が OCR_ENGINE を読んでいる（判定は ocrengine.js の1か所に）`)
+  }
+  // ocrengine.js 自身も process.env を見るのは resolveEngine の 1 本だけ
+  const hits = (stripComments(engineSrc).match(/process\.env/g) || []).length
+  assert.equal(hits, 1, `ocrengine.js が process.env を ${hits} か所で読んでいる（1 か所にすること）`)
+})
+
+test('gemini 経路は確信度を名乗らず、必ず職員の確認を通す', () => {
+  /* Gemini は項目ごとの確信度を返さない。返さないものを「高い」と見なすと
+     測定値が自動判定で通ってしまう。要確認しきい値より必ず低い値を入れること。 */
+  const visionSrc = fs.readFileSync(visionPath, 'utf8')
+  const m = /const VISION_CONF = (\d+)/.exec(stripComments(visionSrc))
+  assert.ok(m, 'visionread.js に VISION_CONF が無い')
+  const conf = Number(m[1])
+  assert.ok(conf > 0, 'VISION_CONF が 0（読めなかったのと区別できない）')
+  assert.ok(conf < 80, `VISION_CONF が要確認しきい値(80)以上: ${conf}`)
+  /* しきい値をどう動かしても要確認が外れないよう、gemini 経路で必ず立てていること。
+     ★ファイル全体に `rec.needsReview = true` があるかを見るだけでは不十分
+       （docai 経路にも同じ行があるので、gemini 側だけ消されても通ってしまう。
+         わざと壊す検査で実際に見逃した）。**gemini の関数の中**を見る。 */
+  const body = /async function recognizeByGemini\([\s\S]*?\n\}/.exec(engineCode)
+  assert.ok(body, 'recognizeByGemini が見つからない')
+  assert.match(body[0], /rec\.needsReview = true/,
+    'gemini 経路で needsReview を立てていない（確信度を返さないモデルの読みが自動判定で通る）')
+})
+
+test('配信で空の OCR_ENGINE を書き込む道が無い', () => {
+  /* GEMINI_MODEL と同じ事故（空文字を書くと毎回弾かれてログが溢れる）を防ぐ。 */
+  const files = fs.readdirSync(workflowsDir).filter((f) => /\.ya?ml$/.test(f))
+  let wrote = 0
+  for (const f of files) {
+    const y = fs.readFileSync(path.join(workflowsDir, f), 'utf8')
+    assert.ok(!/OCR_ENGINE=\$\{\{/.test(y),
+      `${f}: OCR_ENGINE を .env へ直に展開している（未設定だと空行になる）`)
+    if (/OCR_ENGINE=/.test(y)) {
+      wrote++
+      assert.match(y, /if \[ -n "\$ENGINE_VAR" \]/,
+        `${f}: OCR_ENGINE を書くのに、設定されているかの判定が無い`)
+    }
+  }
+  assert.ok(wrote >= 1, 'OCR_ENGINE を .env に書くワークフローが無い（設定しても効かない）')
+})
