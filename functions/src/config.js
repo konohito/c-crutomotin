@@ -4,7 +4,13 @@
 module.exports = {
   project: process.env.DOCAI_PROJECT_ID || process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || '',
   /* Document AI のロケーション。
-     ★2026-09-25 ユーザーと確認のうえ 'us' のままにした。理由を残す。
+     ★2026-11-10 ユーザーが「文字認識を Gemini（東京）に寄せて Document AI を使わない」
+       方向に舵を切った。どちらで読むかは **OCR_ENGINE**（functions/src/ocrengine.js）で
+       切り替える。OCR_ENGINE=gemini のときこの値は一度も使われない。
+       以前ここに書いていた「Document AI をやめて Gemini だけにするのはやらないこと」は
+       この決定で**取り消し**。経緯として下に理由を残す。
+
+     ★2026-09-25 時点の判断（'us' のままにした理由）。OCR_ENGINE=docai のときはこれが効く。
 
      ・**Document AI には日本リージョンが無い**（公式: マルチリージョンは us / eu のみ。
        単一リージョンはムンバイ・シンガポール・シドニー・ロンドン・フランクフルト・
@@ -24,12 +30,20 @@ module.exports = {
        「国外で処理されるが、オンライン処理のためディスクに保存されず、学習にも使われない」。
        ※ HIPAA 準拠とも書かれているが、これは米国法であり日本の要件を満たす根拠にはならない。
 
-     ★Document AI をやめて Gemini だけにするのは**精度が落ちるのでやらないこと**。
-       チェック欄の判定（kclread）は Document AI が返す文字の**座標**に依存しており、
-       外すと幾何ロジックごと死ぬ。ビジョンAIはそれを補う3つ目の目であって、代わりではない。
+     ★この経路で何が座標に依存しているか（Gemini へ寄せるときに失うもの）。
+       チェック欄の判定（kclread.js）は Document AI が返す文字の**座標**を使う。
+       四隅マーカーから用紙座標に引き直し、設問の文字行の位置と突き合わせて検算し、
+       「はい・いいえ」の列を文言で確かめてから塗りの濃さを測る。
+       測定値（mapping.js の spatialFallback）も「ラベルと同じ行の帯で最も右にある
+       数字クラスタ＝記入枠」を座標から拾っている。
+       Gemini は座標を返さず、どのマスの数字かをモデル自身が判断して値を返すので、
+       この検算の仕組みは使えない。代わりに**全件を職員の確認に回す**ことで守る
+       （functions/src/ocrengine.js の needsReview と visionread.js の VISION_CONF）。
 
-     監査等で国外処理が問題になった場合は、この1行をシンガポール等へ変えれば切り替わる
-     （事前にそのリージョンで Form Parser のプロセッサを作成しておくこと）。 */
+     監査等で国外処理が問題になった場合の選択肢は 2 つ。
+       1) OCR_ENGINE=gemini にする（東京のみ。国外へ出る経路が無くなる）
+       2) この1行をシンガポール等へ変える（国内にはならない。事前にそのリージョンで
+          Form Parser のプロセッサを作成しておくこと） */
   location: process.env.DOCAI_LOCATION || 'us',
   processorId: process.env.DOCAI_PROCESSOR_ID || '',
   apiKey: process.env.OCR_API_KEY || '',        // 任意: フロントの X-Api-Key と一致させる簡易認証

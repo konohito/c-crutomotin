@@ -1,8 +1,10 @@
 'use strict'
 /* Cruto motion — 記録用紙 OCR バックエンド
    HTTPS 関数 recognizeSheet: 画像(base64) または Cloud Storage の gs:// URI を受け取り、
-   Document AI で認識 → 記録用紙スキーマにマッピングして返す。
-   フロントの src/lib/ocr.js から呼ばれる。 */
+   文字を読み取って記録用紙スキーマにマッピングして返す。
+   フロントの src/lib/ocr.js から呼ばれる。
+   ★どちらの読み取り方(Document AI / Gemini)を使うかの判定は src/ocrengine.js の 1 か所。
+     ここには分岐を書かないこと。 */
 const { onRequest } = require('firebase-functions/v2/https')
 const { onObjectFinalized } = require('firebase-functions/v2/storage')
 const { setGlobalOptions } = require('firebase-functions/v2')
@@ -11,11 +13,8 @@ const admin = require('firebase-admin')
 // 未定義になることがあるため。firebase-functions v2 の推奨形)。
 const { FieldValue } = require('firebase-admin/firestore')
 const cfg = require('./src/config')
-const { processDocument } = require('./src/documentai')
-const { mapDocumentToSheet } = require('./src/mapping')
-const { parseStoragePath, buildRecognitionDoc } = require('./src/recognition')
-const { readKcl } = require('./src/kclread')
-const { readSheetVision, mergeKcl, kclFromVision } = require('./src/visionread')
+const { parseStoragePath } = require('./src/recognition')
+const { recognizeSheetImage } = require('./src/ocrengine')
 
 admin.initializeApp()
 
@@ -104,9 +103,11 @@ exports.recognizeSheet = onRequest(async (req, res) => {
         res.status(413).json({ ok: false, error: `画像サイズが上限(${Math.round(cfg.maxImageBytes / 1048576)}MB)を超えています` }); return
       }
     }
-    const document = await processDocument({ content, gcsUri, mimeType })
-    const sheet = mapDocumentToSheet(document)
-    res.json({ ok: true, sheet })
+    /* 単票読み取りは測定値の表だけを返す（従来どおり）。
+       ★sheetOnly を外すと、問診票の画素展開(400MB)と Gemini の呼び出しが
+         ここにも付く。この関数は 512MiB / 60 秒しか無いので落ちる。 */
+    const { sheet, engine } = await recognizeSheetImage({ content, gcsUri, mimeType }, { sheetOnly: true })
+    res.json({ ok: true, sheet, engine })
   } catch (err) {
     console.error('recognizeSheet error:', err)
     res.status(500).json({ ok: false, error: err.message || '内部エラーが発生しました' })
@@ -139,53 +140,14 @@ exports.onSheetImageUpload = onObjectFinalized({ memory: '1GiB', timeoutSeconds:
     // (gcsUri 渡しだと Document AI 側のサービスにバケット読み取り権限が必要になり、
     //  secure-by-default の組織では既定で拒否されて失敗するため)
     const [content] = await admin.storage().bucket(bucket).file(name).download()
-    const document = await processDocument({ content, mimeType: obj.contentType || 'image/jpeg' })
-    const rec = buildRecognitionDoc(document, {
-      no: parsed.no, storagePath: name, threshold: cfg.reviewThreshold,
+    /* 読み取りの中身は src/ocrengine.js。どちらの engine を使うかもそこで決まる。
+       失敗したら例外が上がり、下の catch が status:'error' で記録する
+       （空の結果・0 を作らない）。 */
+    const { rec } = await recognizeSheetImage({
+      content,
+      mimeType: obj.contentType || 'image/jpeg',
+      meta: { no: parsed.no, storagePath: name, threshold: cfg.reviewThreshold },
     })
-    // 問診票(様式 R7-03/R7-03W)はマークシート読み取りを付与し、必ず職員確認を通す
-    try {
-      const kcl = readKcl(document, content, obj.contentType || 'image/jpeg')
-      if (kcl.isKcl) {
-        // debug は原因調査用(位置合わせの補正量・設問ごとの濃度)。画面には出さない
-        rec.kcl = { side: kcl.side || null, answers: kcl.answers || {}, readable: !!kcl.readable, reason: kcl.reason || null, via: kcl.via || null, debug: kcl.debug || null }
-        rec.needsReview = true
-        // シール/手書きの ID にはラベル語が無いことがある → 単独の 5 桁数字を ID として拾う
-        if (!rec.ocrId) {
-          const m5 = String(document.text || '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).match(/(?:^|[^0-9])(\d{5})(?![0-9])/)
-        if (m5) rec.ocrId = m5[1]
-        }
-      }
-    } catch (err2) { console.error('kclread error:', name, err2) }
-    /* ビジョン AI(Gemini)でも写真を読み、結果を統合する。
-       - 問診票: 幾何ロジックの読みと統合(読めなかった設問の補完 + 正反対の主張は要確認へ)
-       - ID・氏名: OCR で取れなかったときの補完(照合で名前が出ないケースの救済)
-       - 文字認識ごと失敗した問診票の写真: ビジョン AI 単独で読む
-       呼び出しに失敗しても従来の結果のまま進む(ログにだけ残す)。 */
-    try {
-      const vis = await readSheetVision(content, obj.contentType || 'image/jpeg')
-      if (vis) {
-        if (!rec.ocrId && vis.id) rec.ocrId = vis.id
-        if (!rec.ocrName && vis.name) rec.ocrName = vis.name
-        if (!rec.ocrKana && vis.kana) rec.ocrKana = vis.kana
-        if (rec.kcl && vis.type === 'kcl') {
-          rec.kcl = mergeKcl(rec.kcl, vis)
-        } else if (!rec.kcl && vis.type === 'kcl') {
-          const kv = kclFromVision(vis)
-          if (kv) {
-            rec.kcl = kv
-            rec.needsReview = true
-          }
-        }
-        if (rec.kcl && rec.kcl.debug) rec.kcl.debug.visionModel = vis.model || null
-      }
-    } catch (err3) {
-      console.error('visionread error:', name, err3.message || err3)
-      // 失敗理由を読み取り診断に表示し、現地で原因(権限・API 無効など)を切り分けられるようにする
-      if (rec.kcl) {
-        rec.kcl.debug = { ...(rec.kcl.debug || {}), visionError: String(err3.message || err3).slice(0, 300) }
-      }
-    }
     await ref.set({ ...rec, batchId: parsed.batchId, bucket, recognizedAt: FieldValue.serverTimestamp() })
     // 飛び込み用紙(様式 R7-02W)はトップレベルの walkins にも複製し、
     // 「飛び込み読み込み」画面が索引なしの単純クエリで購読できるようにする

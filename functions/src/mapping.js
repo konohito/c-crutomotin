@@ -265,6 +265,9 @@ function mapDocumentToSheet(document) {
 
 module.exports = {
   SHEET_COLS, FIELD_ALIASES,
+  /* 測定値の妥当範囲。読み取りの engine が増えても判定は 1 つの表で行う
+     （Gemini 経路の visionread.js も同じ表を使う）。しきい値を緩めないこと。 */
+  VALUE_RANGE,
   mapDocumentToSheet, collectPairs, parseNumber, matchFieldId, anchorText, norm, zenToHan,
   spatialFallback, digitsToValue,
 }

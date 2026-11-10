@@ -16,9 +16,10 @@ function parseStoragePath(name) {
   return { batchId, filename, no: m ? parseInt(m[1], 10) : null }
 }
 
-// document → Firestore recognition ドキュメント。信頼度しきい値未満の項目数も添える。
-function buildRecognitionDoc(document, meta = {}) {
-  const sheet = mapDocumentToSheet(document)
+/* 記録用紙スキーマ(sheet) → Firestore recognition ドキュメント。
+   sheet の作り方は読み取りの engine で違う(Document AI なら mapping.js、
+   Gemini なら visionread.js の sheetFromVision)。ここから先は同じ形にする。 */
+function buildRecognitionFromSheet(sheet, meta = {}) {
   const threshold = meta.threshold || 80
   const lowConf = Object.keys(sheet.fields).filter(cid => {
     const f = sheet.fields[cid]
@@ -40,4 +41,9 @@ function buildRecognitionDoc(document, meta = {}) {
   }
 }
 
-module.exports = { parseStoragePath, buildRecognitionDoc }
+// Document AI の document → recognition ドキュメント(従来の入口。動きは変えない)
+function buildRecognitionDoc(document, meta = {}) {
+  return buildRecognitionFromSheet(mapDocumentToSheet(document), meta)
+}
+
+module.exports = { parseStoragePath, buildRecognitionDoc, buildRecognitionFromSheet }

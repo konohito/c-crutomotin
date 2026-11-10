@@ -62,12 +62,20 @@ jobs:
       # (DOCAI_PROCESSOR_ID はリポジトリ Variables に設定。未設定なら OCR はエラーを返すだけで安全)
       - if: steps.guard.outputs.ready == 'true'
         working-directory: functions
+        env:
+          ENGINE_VAR: ${{ vars.OCR_ENGINE }}
         run: |
           {
             echo "DOCAI_LOCATION=${{ vars.DOCAI_LOCATION || 'us' }}"
             echo "DOCAI_PROCESSOR_ID=${{ vars.DOCAI_PROCESSOR_ID }}"
             echo "OCR_ALLOW_ORIGIN=${{ vars.OCR_ALLOW_ORIGIN || 'https://cruto-motion.web.app' }}"
+            echo "VISION_READ=${{ vars.VISION_READ || '1' }}"
           } > .env
+          # 設定されているときだけ書く(空の値は ocrengine.js が弾いてログが溢れる)。
+          # 未設定なら既定の docai。
+          # ★使うモデル(GEMINI_MODEL)はこの予備窓口では書かない。既定で動く。
+          #   通常の配信は deploy-production.yml（そちらが書く）。
+          if [ -n "$ENGINE_VAR" ]; then echo "OCR_ENGINE=$ENGINE_VAR" >> .env; fi
 
       # GCP 認証: WIF(鍵レス・推奨) または SA 鍵(後方互換)
       - if: steps.guard.outputs.ready == 'true' && steps.guard.outputs.mode == 'wif'
