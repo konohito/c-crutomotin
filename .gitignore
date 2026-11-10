@@ -19,3 +19,10 @@ __pycache__/
 *.pyc
 dist-smoke
 firebase-debug.log
+
+# ★AI の作業アシスタントが「今後は確認しない」を押したときに作る許可の控え。
+#   コマンドを丸ごと保存することがあり、そこにパスワードやトークンが
+#   平文で残りうる（2026-11 に公開リポジトリ1,122件で実例が報告された）。
+#   PC ごとの git 設定に頼らず、**このリポジトリ側で**上げないようにする。
+.claude/settings.local.json
+.claude/settings.*.local.json
