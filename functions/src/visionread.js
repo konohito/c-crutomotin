@@ -153,7 +153,9 @@ const zen2han = (s) => String(s == null ? '' : s)
 
 /* 測定値 1 項目の読み。**読めなかったことを 0 や空と取り違えないこと**が肝で、
    数字として解釈できないもの・用紙としてあり得ない値は すべて null(欠測＝要確認)にする。
-   妥当範囲の表は mapping.js の 1 つだけ(VALUE_RANGE)。ここで緩めない。 */
+   妥当範囲の表は mapping.js の 1 つだけ(VALUE_RANGE)。ここで緩めない。
+   ★測定項目(SHEET_COLS)を増やすときは VALUE_RANGE にも同時に足すこと。
+     範囲が無い項目は「あり得ない値」の検査を素通りする(負の数も通ってしまう)。 */
 function parseVisionValue(cid, raw) {
   if (raw === null || raw === undefined || raw === '') return null
   if (typeof raw === 'boolean') return null

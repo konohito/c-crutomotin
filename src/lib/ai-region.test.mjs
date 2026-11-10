@@ -252,6 +252,22 @@ test('engine の判定は 1 か所だけ（他のファイルに分岐を書か�
   assert.equal(hits, 1, `ocrengine.js が process.env を ${hits} か所で読んでいる（1 か所にすること）`)
 })
 
+test('単票読み取り(HTTPS)は測定値の表だけを取る', () => {
+  /* ★HTTPS の recognizeSheet は 512MiB / 60 秒。Storage トリガ（1GiB / 300 秒）と違う。
+     sheetOnly を外すと、問診票の画素展開（jpeg.decode の 400MB）と Gemini の呼び出しが
+     ここにも付く。OOM はインスタンスごと落ちるので try/catch では拾えない。
+     しかも組み立てた rec は使われずに捨てられる＝課金と事故が増えるだけ。
+     （この PR で共通化したときに実際に付いてしまい、レビューで見つかった） */
+  const idx = stripComments(fs.readFileSync(path.join(root, 'functions/index.js'), 'utf8'))
+  const call = /recognizeSheetImage\(\{ content, gcsUri, mimeType \}[^)]*\)/.exec(idx)
+  assert.ok(call, 'HTTPS の recognizeSheet が recognizeSheetImage を呼んでいない')
+  assert.match(call[0], /sheetOnly: true/,
+    'HTTPS の単票読み取りで sheetOnly を渡していない（問診票の画素展開と Gemini 呼び出しが付く）')
+  // 取り込みパイプライン側は rec が必要なので sheetOnly を付けないこと
+  assert.ok(!/meta: \{ no: parsed\.no[\s\S]{0,200}sheetOnly/.test(idx),
+    '取り込みパイプラインに sheetOnly が付いている（recognition が作られなくなる）')
+})
+
 test('gemini 経路は確信度を名乗らず、必ず職員の確認を通す', () => {
   /* Gemini は項目ごとの確信度を返さない。返さないものを「高い」と見なすと
      測定値が自動判定で通ってしまう。要確認しきい値より必ず低い値を入れること。 */

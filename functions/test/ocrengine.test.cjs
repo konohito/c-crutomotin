@@ -256,6 +256,27 @@ tests.push(['gemini 経路: VISION_READ=0 のときは黙って通さず理由�
     delete require.cache[require.resolve('../src/ocrengine')]
   }
 }])
+tests.push(['単票読み取り(sheetOnly): Gemini を呼ばず・問診票の読み取りもしない', async () => {
+  /* ★HTTPS の recognizeSheet は 512MiB / 60 秒。以前は Document AI だけを呼んでいた。
+     共通化で readKcl(画素展開 400MB) と Gemini の呼び出しが付くと落ちるので、
+     sheetOnly では一切呼ばないことを固定する。 */
+  process.env.DOCAI_MOCK = '1'
+  delete require.cache[require.resolve('../src/visionread')]
+  delete require.cache[require.resolve('../src/ocrengine')]
+  const e5 = require('../src/ocrengine')
+  try {
+    let vertexCalls = 0
+    const { sheet, rec } = await withFetch(async () => { vertexCalls++; return vertexReply({})() },
+      () => e5.recognizeSheetImage({ content: img, mimeType: 'image/jpeg' }, { engine: 'docai', sheetOnly: true }))
+    assert.strictEqual(vertexCalls, 0, `sheetOnly なのに Vertex AI を ${vertexCalls} 回呼んでいる`)
+    assert.strictEqual(rec, null, 'sheetOnly なのに recognition を組み立てている')
+    assert.ok(sheet && sheet.fields, '測定値の表が返っていない')
+    assert.deepStrictEqual(Object.keys(sheet.fields).sort(), [...SHEET_COLS].sort())
+  } finally { delete process.env.DOCAI_MOCK }
+}])
+tests.push(['知らない engine をテストから渡したら黙って倒さず断る', async () => {
+  await assert.rejects(() => engine2.recognizeSheetImage({ content: img }, { engine: 'openai' }), /OCR_ENGINE/)
+}])
 tests.push(['docai 経路: モックの Document AI で従来どおり動く（engine を跨いで壊れていない）', async () => {
   process.env.DOCAI_MOCK = '1'
   delete require.cache[require.resolve('../src/visionread')]

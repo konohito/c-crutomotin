@@ -103,7 +103,10 @@ exports.recognizeSheet = onRequest(async (req, res) => {
         res.status(413).json({ ok: false, error: `画像サイズが上限(${Math.round(cfg.maxImageBytes / 1048576)}MB)を超えています` }); return
       }
     }
-    const { sheet, engine } = await recognizeSheetImage({ content, gcsUri, mimeType })
+    /* 単票読み取りは測定値の表だけを返す（従来どおり）。
+       ★sheetOnly を外すと、問診票の画素展開(400MB)と Gemini の呼び出しが
+         ここにも付く。この関数は 512MiB / 60 秒しか無いので落ちる。 */
+    const { sheet, engine } = await recognizeSheetImage({ content, gcsUri, mimeType }, { sheetOnly: true })
     res.json({ ok: true, sheet, engine })
   } catch (err) {
     console.error('recognizeSheet error:', err)

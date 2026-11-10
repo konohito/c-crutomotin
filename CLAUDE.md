@@ -80,7 +80,37 @@ Document AI の返す座標に依存しているので外すと幾何ロジッ�
 | 項目ごとの確信度 | ある（Document AI の confidence） | **無い** → 全件を職員の確認に回す（`VISION_CONF`＜しきい値 ＋ `needsReview` を必ず立てる） |
 | 国外へ出るか | **出る**（米国） | 出ない |
 
+### ★一括本登録（職員が1枚も開かずに登録される道）の塞ぎ方
+
+取り込み画面の「自動判定 N 件を一括本登録」を通った用紙は **1 枚も人が開かずに**
+`measurements` へ書かれる（`Import.jsx` の `commitReady`）。ここの入口は用紙の種類で違う。
+
+- **記録用紙**… `!rec.needsReview && rangeOk(rec)`。gemini では `needsReview` が必ず立つので通らない
+- **問診票**… **`needsReview` を見ていない**。ゲートは `src/ui/kclanswers.jsx` の `kclAutoOk` だけ
+
+★だから問診票は `ocrengine.js` の `needsReview = true` では塞げない。
+`kclAutoOk` が **`via === 'vision'`（幾何ロジックの検算を一度も通っていない読み）を
+必ず false にする**ことで塞いでいる。`scripts/check-kcl-autook.mjs`（13件）が固定する。
+
+> **2026-11-10 に塞いだ穴。** これは gemini 対応で**新しく開いた穴ではなく、前から開いていた**。
+> docai でも「文字認識ごと失敗して Gemini 単独で救われた用紙」は `via: 'vision'` になり、
+> 検算を一度も通らないまま自動で登録されていた（本番 716 枚中 **211 枚＝29.5%** がこの道）。
+> しかも職員が答えを直した率はこの経路がいちばん高い（幾何ロジック 0% に対し **14.2%**）。
+> → **この 211 枚相当（約3割）は、今後は職員が1枚ずつ開いて確認することになる。**
+> 手間は増えるが、検算も人の目も通らない回答が登録される状態のほうが危ない。
+> 戻したい場合は `kclAutoOk` の `via === 'vision'` の 1 行を外せば元に戻る（非推奨）。
+
 ### 精度の実測（移行前 / 移行後を同じ尺度で）
+
+★下の数字の出どころ。**コメントではなく手元で測り直せる形で残す。**
+1. の実測は本番 Firestore の読み出し（`recognitions` と `measurements` を
+`recognitionId` で突合）＋ Storage に残っている用紙の画像を Gemini で読み直したもの。
+2. は `cd functions && STRESS_ENGINE=gemini GCLOUD_PROJECT=cruto-motion node test/kclread.stress.cjs`。
+3. は `recognitions` の全件集計。**どれも読み取りのみで、1 件も書き込んでいない。**
+1. と 3. の集計スクリプトはリポジトリに置いていない（本番の個人データを読むものを
+公開デモを含むリポジトリに入れないため）。測り直すときは
+「`recognitions` を collection group で読む → `measurements.recognitionId` で突合 →
+`fields[].value` と `values[]` を比べる」で再現できる。
 
 1. **記録用紙（体力測定の数値）・実際の写真60枚・職員が登録した値を正解とした一致率**
 

@@ -66,10 +66,16 @@ function resolveEngine(env, log) {
 /* ---- Document AI 経路（従来どおり。動きを変えない） ------------------------ */
 /* processDocument は @google-cloud/documentai を読み込むので、gemini だけで運用する
    ときに読み込みたくない。使うときだけ require する（コールドスタートも軽くなる）。 */
-async function recognizeByDocai({ content, gcsUri, mimeType, meta }) {
+async function recognizeByDocai({ content, gcsUri, mimeType, meta, sheetOnly }) {
   const { processDocument } = require('./documentai')
   const document = await processDocument({ content, gcsUri, mimeType })
   const sheet = mapDocumentToSheet(document)
+  /* 単票読み取り(HTTPS の recognizeSheet)は測定値の表だけを返す。
+     ★ここで止めないと、以前は Storage トリガにしか無かった処理
+       （readKcl の画素展開 400MB と Gemini の呼び出し 1 回）が
+       単票読み取りにも付いてしまう。HTTPS 関数は 512MiB / 60 秒しか無く、
+       しかも結果の rec は使われずに捨てられる（＝課金と OOM が増えるだけ）。 */
+  if (sheetOnly) return { sheet, rec: null, engine: 'docai' }
   const rec = buildRecognitionFromSheet(sheet, meta)
   rec.ocrEngine = 'docai'
 
@@ -121,7 +127,7 @@ async function recognizeByDocai({ content, gcsUri, mimeType, meta }) {
 }
 
 /* ---- Gemini だけの経路（東京のみ。国外へ出ない） --------------------------- */
-async function recognizeByGemini({ content, gcsUri, mimeType, meta }) {
+async function recognizeByGemini({ content, gcsUri, mimeType, meta, sheetOnly }) {
   if (!content || !content.length) {
     /* gs:// の指定は Document AI 側の機能だったので、こちらでは画像そのものを受ける。
        アプリは常に画像を送っている（src/lib/ocr.js）ので実際には通らない道。 */
@@ -137,6 +143,8 @@ async function recognizeByGemini({ content, gcsUri, mimeType, meta }) {
   if (!vis) throw new Error('Gemini の読み取り結果を受け取れませんでした')
 
   const sheet = sheetFromVision(vis)
+  // 単票読み取りは測定値の表だけを返す（モデルの呼び出しは 1 回で済んでいる）
+  if (sheetOnly) return { sheet, rec: null, engine: 'gemini' }
   const rec = buildRecognitionFromSheet(sheet, meta)
   rec.ocrEngine = 'gemini'
   /* ★確信度を返さないモデルの読みなので、必ず人が見る。
@@ -164,15 +172,26 @@ async function recognizeByGemini({ content, gcsUri, mimeType, meta }) {
 /**
  * 写真 1 枚 → { sheet, rec, engine }。engine の切り替えはここだけ。
  * @param {{content?: Buffer, gcsUri?: string, mimeType?: string, meta?: object}} input
- * @param {{engine?: string}} [opts] テストから engine を直接渡すため（本番では使わない）
+ * @param {{engine?: string, sheetOnly?: boolean}} [opts]
+ *   engine …… テストから直接指定するため（本番では環境変数で決める）
+ *   sheetOnly … 測定値の表だけを返す（単票読み取り。問診票の読み取りと統合を行わない）
  */
 async function recognizeSheetImage(input, opts = {}) {
-  const engine = opts.engine ? pickEngine(opts.engine).engine : resolveEngine()
+  let engine
+  if (opts.engine) {
+    /* テストからの直接指定。黙って既定へ倒すとテスト側の取り違えに気づけないので断る。 */
+    const picked = pickEngine(opts.engine)
+    if (picked.rejected) throw new Error(rejectionMessage(picked.rejected))
+    engine = picked.engine
+  } else {
+    engine = resolveEngine()
+  }
   const args = {
     content: input.content,
     gcsUri: input.gcsUri,
     mimeType: input.mimeType,
     meta: { threshold: cfg.reviewThreshold, ...(input.meta || {}) },
+    sheetOnly: !!opts.sheetOnly,
   }
   return engine === 'gemini' ? recognizeByGemini(args) : recognizeByDocai(args)
 }
