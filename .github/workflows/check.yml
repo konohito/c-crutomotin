@@ -30,6 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ★2026-11-10 AI の許可の控えに秘密が残っていないか（全リポジトリ共通）
+      #   ★チェックアウトの**後**に置くこと（前だとファイルが無くて必ず落ちる）
+      - name: AI の許可の控えに秘密が無いか
+        run: node scripts/check-claude-settings.mjs
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -38,9 +43,6 @@ jobs:
       # フロントエンドの検査（未定義参照・全画面描画・測定値の点検・保存まわり・
       # AI のリージョンと使ってよいモデル・ルールの3か所 ほか）
       - run: npm ci
-      # ★2026-11-10 AI の許可の控えに秘密が残っていないか（全リポジトリ共通）
-      - name: AI の許可の控えに秘密が無いか
-        run: node scripts/check-claude-settings.mjs
       - name: フロントエンドの検査
         run: npm run check
 
