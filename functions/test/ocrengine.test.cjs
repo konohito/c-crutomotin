@@ -35,9 +35,18 @@ const ok = (label, fn) => {
 }
 
 // ---- 1) 切り替えの判定 -------------------------------------------------------
-ok('既定は docai（環境変数が無ければ今までと同じ）', () => {
-  assert.strictEqual(engine.DEFAULT_ENGINE, 'docai')
-  assert.strictEqual(engine.resolveEngine({}, () => {}), 'docai')
+/* ★2026-11-10 ユーザー確定「切り替えてください」で既定を gemini にした。
+     狙いは**国外へ出る経路を無くす**こと（Document AI は米国でしか動かない）。
+     ★ここを docai に戻すときは、3省2ガイドラインの説明も一緒に直すこと
+       （「保存も処理もすべて東京」と言えなくなる）。 */
+ok('既定は gemini（環境変数が無ければ東京のGeminiで読む）', () => {
+  assert.strictEqual(engine.DEFAULT_ENGINE, 'gemini')
+  assert.strictEqual(engine.resolveEngine({}, () => {}), 'gemini')
+})
+ok('知らない値を入れても、黙って米国へ流れない（既定の gemini に倒す）', () => {
+  const logs = []
+  assert.strictEqual(engine.resolveEngine({ OCR_ENGINE: 'docaii' }, (m) => logs.push(m)), 'gemini')
+  assert.strictEqual(logs.length, 1, '理由が記録に残っていない')
 })
 ok('OCR_ENGINE=gemini / docai はそのまま使われ、記録は出ない', () => {
   for (const v of ['gemini', 'docai', 'GEMINI', ' Docai ']) {
@@ -51,7 +60,8 @@ ok('知らない値・空は使わずに既定へ倒し、必ず記録に残す'
   for (const v of ['', 'documentai', 'vision', 'openai', 'docai;gemini']) {
     const logs = []
     const got = engine.resolveEngine({ OCR_ENGINE: v }, (m) => logs.push(m))
-    assert.strictEqual(got, 'docai', `既定へ倒れていない: "${v}" → ${got}`)
+    /* ★既定の名前を書き写さない。既定を変えたときにここだけ取り残されるため。 */
+    assert.strictEqual(got, engine.DEFAULT_ENGINE, `既定へ倒れていない: "${v}" → ${got}`)
     assert.strictEqual(logs.length, 1, `記録が1件でない: "${v}"`)
     assert.ok(logs[0].includes('OCR_ENGINE'), 'どの設定かが記録に無い')
     assert.ok(logs[0].includes('docai'), '実際に使う値が記録に無い')

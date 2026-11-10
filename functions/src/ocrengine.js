@@ -33,7 +33,20 @@ const {
 /** 使ってよい engine。増やすならここ。 */
 const ENGINES = Object.freeze(['docai', 'gemini'])
 /** 既定。★精度の裏取りが済むまで従来どおり docai（理由は docs/OCR-BACKEND.md）。 */
-const DEFAULT_ENGINE = 'docai'
+/* ★2026-11-10 ユーザー確定「切り替えてください」
+     既定を docai → gemini にした。狙いは**国外へ出る経路を無くす**こと。
+     Document AI は米国でしか動かない（日本リージョンが無い）が、
+     Gemini は東京（asia-northeast1）で呼べる。
+     これで「保存も処理もすべて東京」と言い切れる。
+
+   ★実測した読み取りの精度（記録用紙・実際の写真60枚・職員が登録した値を正解に）
+       docai  … 222/525 = 42.3%（取り違え 51.7%）
+       gemini … 489/530 = 92.3%（取り違え 4.3%）
+     本番全件を見ると、Document AI の**フォームパーサは測定値を1件も取れておらず**、
+     読めた2,191件は100%が座標フォールバック由来だった。
+
+   ★戻したいときは環境変数 OCR_ENGINE=docai を設定するだけ（コードは触らない）。 */
+const DEFAULT_ENGINE = 'gemini'
 /** 環境変数の名前。 */
 const ENGINE_ENV = 'OCR_ENGINE'
 

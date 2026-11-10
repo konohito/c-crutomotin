@@ -213,8 +213,14 @@ const engineSrc = fs.readFileSync(enginePath, 'utf8')
    振る舞いの検証は functions/test/ocrengine.test.cjs が受け持つ。 */
 const engineCode = stripComments(engineSrc)
 
-test('engine の既定は docai（設定しなければ今までと同じ）', () => {
-  assert.match(engineCode, /const DEFAULT_ENGINE = 'docai'/, '既定が docai でない')
+/* ★2026-11-10 ユーザー確定「切り替えてください」で既定を docai → gemini にした。
+     狙いは**国外へ出る経路を無くす**こと。
+     Document AI は米国でしか動かない（日本リージョンが無い）が、
+     Gemini は東京（asia-northeast1）で呼べる。
+     ★ここを docai に戻すなら、3省2ガイドラインの説明も一緒に直すこと
+       （「保存も処理もすべて東京」と言えなくなる）。 */
+test('engine の既定は gemini（設定しなければ東京の Gemini で読む）', () => {
+  assert.match(engineCode, /const DEFAULT_ENGINE = 'gemini'/, '既定が gemini でない')
   assert.match(engineCode, /const ENGINE_ENV = 'OCR_ENGINE'/, '環境変数の名前が変わっている')
 })
 
