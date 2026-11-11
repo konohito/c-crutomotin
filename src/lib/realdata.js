@@ -66,14 +66,23 @@ const sortKeyOf = (m) => compactDate(m.date) || `${m.year}0000`
    InBody 単独の記録は身長・体重しか持たないので、ここで分かれる。 */
 export const FITNESS_KEYS = Object.freeze(['walk5', 'walk5max', 'balR', 'balL', 'gripR', 'gripL', 'tug'])
 
+/* 数字として読める値か。
+   ★`Number(x)` にそのまま通さないこと。`Number` は 空白だけの文字 → 0、
+     true → 1、false → 0、[] → 0、[5] → 5 と黙って数字にしてしまう。
+     そのまま使うと、値が入っていない記録を「値がある」と数えてしまう。 */
+function numeric(x) {
+  if (typeof x === 'number') return Number.isFinite(x)
+  if (typeof x !== 'string') return false          // 真偽値・配列・オブジェクトは値ではない
+  const s = x.trim()
+  if (s === '') return false
+  return Number.isFinite(Number(s))
+}
+
 /* その測定に**体力測定の値が実際に入っているか**。
    ★この判定はここ 1 か所だけに置く。2 か所に書くと必ず食い違う。 */
 export function hasFitnessValues(values) {
-  const v = values || {}
-  return FITNESS_KEYS.some((k) => {
-    const x = v[k]
-    return x !== null && x !== undefined && x !== '' && Number.isFinite(Number(x))
-  })
+  if (!values || typeof values !== 'object' || Array.isArray(values)) return false
+  return FITNESS_KEYS.some((k) => numeric(values[k]))
 }
 
 /* 推移グラフ・スコア・参加年に数えない記録か。

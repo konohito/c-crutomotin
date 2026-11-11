@@ -110,7 +110,28 @@ console.log('== 4. 身長・体重・BMI は「体力測定あり」にしない
   ok(!hasFitnessValues({ walk5: 'あ' }), '数字でないものを値ありと数えている')
   ok(hasFitnessValues({ tug: 7.5 }), '数字を値ありと数えていない')
   ok(hasFitnessValues({ tug: '7.5' }), '文字で入った数字を値ありと数えていない')
+  ok(hasFitnessValues({ tug: ' 7.5 ' }), '前後に空白のある数字を値なしと数えている')
   ok(hasFitnessValues({ balR: 0 }), '0 を値なしと数えている')
+  ok(hasFitnessValues({ balR: '0' }), '文字の 0 を値なしと数えている')
+
+  /* ★`Number(x)` にそのまま通すと、ここが全部すり抜ける。
+       空白だけ→0 / true→1 / false→0 / []→0 / [5]→5 と黙って数字になるため。 */
+  ok(!hasFitnessValues({ tug: '   ' }), '空白だけの文字を数字と数えている（Number(" ")===0）')
+  ok(!hasFitnessValues({ tug: true }), 'true を数字と数えている（Number(true)===1）')
+  ok(!hasFitnessValues({ tug: false }), 'false を数字と数えている（Number(false)===0）')
+  ok(!hasFitnessValues({ tug: [] }), '空の配列を数字と数えている（Number([])===0）')
+  ok(!hasFitnessValues({ tug: [5] }), '配列を数字と数えている（Number([5])===5）')
+  ok(!hasFitnessValues({ tug: NaN }), 'NaN を値ありと数えている')
+  ok(!hasFitnessValues({ tug: Infinity }), 'Infinity を値ありと数えている')
+  ok(!hasFitnessValues([]), 'values に配列が来たときに値ありと数えている')
+  ok(!hasFitnessValues('x'), 'values に文字が来たときに値ありと数えている')
+  /* 異常な入力で落ちないこと（落ちると画面が真っ白になる） */
+  for (const [n, m] of [['null', null], ['undefined', undefined], ['空', {}],
+    ['values=文字', { inbodyOnly: true, values: 'x' }], ['values=配列', { inbodyOnly: true, values: [1] }]]) {
+    let threw = false
+    try { isInbodyOnlyRecord(m) } catch { threw = true }
+    ok(!threw, `${n} で例外が出る（画面が真っ白になる）`)
+  }
 }
 
 console.log('== 5. InBody の表示は消えない ==')
