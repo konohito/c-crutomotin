@@ -48,7 +48,9 @@
   --fg-1: var(--slate-900);
   --fg-2: var(--slate-700);
   --fg-3: var(--slate-500);
-  --fg-4: var(--slate-400);
+  /* ★補助テキストの最低コントラスト 3:1 を割らない色（実測 3.58:1 on #FFF / 3.28:1 on canvas）。
+     --slate-400(#9AA3B2) は 2.54:1 で読みにくかった。--slate-400 自体は枠線・placeholder 用に残す。 */
+  --fg-4: #7E8899;
   --fg-on-brand: #FFFFFF;
   --bg-canvas:   #F4F5F8;
   --bg-surface:  var(--slate-0);

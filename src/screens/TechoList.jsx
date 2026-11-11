@@ -25,7 +25,8 @@ function PortalPreview({ u, techo, onAddLog, onSaveProfile, onClose }) {
           <button className="btn btn-ghost btn-sm" onClick={onClose}>閉じる</button>
         </div>
         <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-          <TechoBook u={u} techo={techo} compact canAddLog canDelete={false} onAddLog={onAddLog} onSaveProfile={onSaveProfile} onDeleteLog={() => {}} />
+          {/* 利用者本人が見るのと同じ大きさ（large）で出す。プレビューの意味は「同じものが見える」こと */}
+          <TechoBook u={u} techo={techo} compact large canAddLog canDelete={false} onAddLog={onAddLog} onSaveProfile={onSaveProfile} onDeleteLog={() => {}} />
         </div>
       </div>
     </div>

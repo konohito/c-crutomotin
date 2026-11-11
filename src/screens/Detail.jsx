@@ -7,7 +7,7 @@ import { realDataEnabled, addUserMemo } from '../lib/realdata.js'
 import { planUserDeletion, deleteUser } from '../lib/deletion.js'
 import { wardLabel } from '../lib/db.js'
 import { useAuth } from '../ui/AuthGate.jsx'
-import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel } from '../ui/chart.jsx'
+import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel, AxisFrame } from '../ui/chart.jsx'
 import { Card, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -402,11 +402,12 @@ export default function Detail() {
                 <div style={{ fontSize: 10.5, color: 'var(--fg-4)' }}>点が低いほど良好</div>
               </div>
               <svg width="100%" height="88" viewBox="0 0 280 96" preserveAspectRatio="none" style={{ display: 'block', marginTop: 4 }}>
+                {/* §7.5: 補助線なし・目盛り外向き・軸は黒・縦軸は上端に蓋 */}
+                <AxisFrame x0={27} xEnd={272} yTop={6} yBottom={82} tick={4}
+                  yTicks={kclAuto.ticks.map(tk => tk.y)}
+                  xTicks={D.YEARS.map((_, i) => Math.round(40 + (i * (250 - 40)) / 5))} />
                 {kclAuto.ticks.map((tk, i) => (
-                  <g key={i}>
-                    <line x1="26" y1={tk.y} x2="272" y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
-                    <text x="22" y={tk.y + 3.5} textAnchor="end" fontSize="9" fill="var(--slate-400)" fontFamily="Inter">{tk.v}</text>
-                  </g>
+                  <text key={i} x="21" y={tk.y + 3.5} textAnchor="end" fontSize="9" fill="var(--fg-3)" fontFamily="Inter" style={{ fontVariantNumeric: 'tabular-nums' }}>{tk.v}</text>
                 ))}
                 <path d={kclLine.path} fill="none" stroke={kclL.bar} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                 {kclLine.pts.map((p, i) => (
@@ -445,11 +446,17 @@ export default function Detail() {
             <Card pad>
               <div className="t-h4">5領域評価</div>
               <svg width="100%" viewBox="0 0 260 232" style={{ display: 'block', marginTop: 4 }}>
-                {g.rings.map((rg, i) => <polygon key={i} points={rg} fill="none" stroke="var(--slate-100)" strokeWidth="1" />)}
+                {/* §7.5: 同心の格子は 1点刻みの読み取りに必要な最小限だけ薄く残し、
+                       外周（＝軸の輪郭）と5本の軸ははっきりした黒で描く */}
+                {g.rings.map((rg, i) => (
+                  <polygon key={i} points={rg} fill="none"
+                    stroke={i === g.rings.length - 1 ? 'var(--slate-900)' : 'var(--slate-100)'}
+                    strokeWidth={i === g.rings.length - 1 ? 1.5 : 1} />
+                ))}
                 {g.axesGeo.map((ax, i) => (
                   <g key={i}>
-                    <line x1="130" y1="112" x2={ax.x2} y2={ax.y2} stroke="var(--slate-200)" strokeWidth="1" />
-                    <text x={ax.lx} y={ax.ly} textAnchor="middle" fontSize="11" fontWeight="600" fill="var(--slate-600)">{ax.label}</text>
+                    <line x1="130" y1="112" x2={ax.x2} y2={ax.y2} stroke="var(--slate-900)" strokeWidth="0.8" />
+                    <text x={ax.lx} y={ax.ly} textAnchor="middle" fontSize="11" fontWeight="600" fill="var(--slate-700)">{ax.label}</text>
                   </g>
                 ))}
                 {muniAgg.count > 0 && <polygon points={g.poly(muniAgg.axes)} fill="none" stroke="var(--info-500)" strokeWidth="1.5" strokeDasharray="3 3" />}
@@ -475,17 +482,18 @@ export default function Detail() {
               </div>
               <div ref={trRef}>
                 <svg width="100%" height="196" viewBox={`0 0 ${trW} 196`} style={{ display: 'block', marginTop: 8 }}>
+                  {/* §7.5: 補助線なし・目盛り外向き・軸は黒・縦軸は上端に蓋 */}
+                  <AxisFrame x0={32} xEnd={trW - 8} yTop={10} yBottom={176}
+                    yTicks={tAuto.ticks.map(tk => tk.y)}
+                    xTicks={axisLabels.map((_, i) => Math.round(44 + (axisLabels.length > 1 ? (i * (trW - 18 - 44)) / (axisLabels.length - 1) : 0)))} />
                   {tAuto.ticks.map((tk, i) => (
-                    <g key={i}>
-                      <line x1="30" y1={tk.y} x2={trW - 8} y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
-                      <text x="24" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--slate-400)" fontFamily="Inter">{tk.label}</text>
-                    </g>
+                    <text key={i} x="24" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--fg-3)" fontFamily="Inter" style={{ fontVariantNumeric: 'tabular-nums' }}>{tk.label}</text>
                   ))}
                   {tAuto.lines[1] && <path d={tAuto.lines[1].path} fill="none" stroke="var(--slate-300)" strokeWidth="1.5" strokeDasharray="5 4" />}
                   <path d={tAuto.lines[0].path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   {/* key は測定キー。測定キーが無いデータでも重複しないよう添字を足す */}
                   {axisLabels.map((lb, i) => (
-                    <text key={`${axis[i] ?? 'x'}-${i}`} x={Math.round(44 + (axisLabels.length > 1 ? (i * (trW - 18 - 44)) / (axisLabels.length - 1) : 0))} y="189" textAnchor="middle" fontSize={axisLabels.length > 6 ? 9 : 10.5} fill="var(--slate-500)" fontFamily="Inter">{lb}</text>
+                    <text key={`${axis[i] ?? 'x'}-${i}`} x={Math.round(44 + (axisLabels.length > 1 ? (i * (trW - 18 - 44)) / (axisLabels.length - 1) : 0))} y="192" textAnchor="middle" fontSize={axisLabels.length > 6 ? 9 : 10.5} fill="var(--fg-3)" fontFamily="Inter">{lb}</text>
                   ))}
                   <ChartDots pts={tAuto.lines[0].pts} dec={mcol.dec} unit={mcol.unit || ''} yearFmt={state.yearFmt} chartW={trW} topFlip={40} />
                 </svg>
