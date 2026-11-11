@@ -3,7 +3,7 @@ import { useStore, pendingSheets, allEvents, staffNames, flagsFor, batchN, openS
 import { mdw, addDays, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
 import { dbEnabled } from '../lib/db.js'
 import { useAuth } from '../ui/AuthGate.jsx'
-import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel } from '../ui/chart.jsx'
+import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel, AxisFrame } from '../ui/chart.jsx'
 import { Card, Pill, Overline, Select } from '../ui/kit.jsx'
 import { Icon } from '../ui/icons.jsx'
 
@@ -279,11 +279,12 @@ export default function Dashboard() {
               <div style={{ height: CH, display: 'grid', placeItems: 'center', fontSize: 12.5, color: 'var(--fg-3)' }}>この項目の測定データがありません</div>
             ) : (
               <svg width="100%" height={CH} viewBox={`0 0 ${chartW} ${CH}`} style={{ display: 'block' }}>
+                {/* §7.5: 補助線なし・目盛り外向き・軸は黒・縦軸は上端に蓋 */}
+                <AxisFrame x0={42} xEnd={chartW - 12} yTop={16} yBottom={CH - 36}
+                  yTicks={dAuto.ticks.map(tk => tk.y)}
+                  xTicks={dLine.pts.map(p => p.x)} />
                 {dAuto.ticks.map((tk, i) => (
-                  <g key={i}>
-                    <line x1="40" y1={tk.y} x2={chartW - 12} y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
-                    <text x="34" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--slate-400)" fontFamily="Inter">{tk.label}</text>
-                  </g>
+                  <text key={i} x="34" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--fg-3)" fontFamily="Inter" style={{ fontVariantNumeric: 'tabular-nums' }}>{tk.label}</text>
                 ))}
                 <path d={dLine.path} fill="none" stroke="var(--brand-500)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                 {dLine.pts.map((p, i) => (

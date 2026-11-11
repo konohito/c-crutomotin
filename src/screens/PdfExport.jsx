@@ -176,10 +176,15 @@ function PdfPage({ p, state, count }) {
             <div style={{ border: '1px solid var(--slate-200)', padding: '8px 8px 5px' }}>
               <div style={{ fontSize: 13, letterSpacing: '0.08em', color: 'var(--slate-600)', textAlign: 'center' }}>5領域評価（5点満点）</div>
               <svg width="100%" viewBox="0 0 320 252" style={{ display: 'block' }}>
-                {PG.rings.map((rg, i) => <polygon key={i} points={rg} fill="none" stroke="var(--slate-100)" strokeWidth="1" />)}
+                {/* §7.5: 同心の格子は 1点刻みの最小限だけ薄く、外周と軸ははっきりした黒 */}
+                {PG.rings.map((rg, i) => (
+                  <polygon key={i} points={rg} fill="none"
+                    stroke={i === PG.rings.length - 1 ? 'var(--slate-900)' : 'var(--slate-100)'}
+                    strokeWidth={i === PG.rings.length - 1 ? 1.5 : 1} />
+                ))}
                 {PG.axesGeo.map((ax, i) => (
                   <g key={i}>
-                    <line x1="160" y1="122" x2={ax.x2} y2={ax.y2} stroke="var(--slate-200)" strokeWidth="1" />
+                    <line x1="160" y1="122" x2={ax.x2} y2={ax.y2} stroke="var(--slate-900)" strokeWidth="0.8" />
                     <text x={ax.lx} y={ax.ly} textAnchor="middle" fontSize="17" fontWeight="600" fill="var(--slate-700)">{ax.label}</text>
                   </g>
                 ))}
@@ -295,11 +300,16 @@ function PdfPage({ p, state, count }) {
           </div>
           {/* 等倍スケールで描画する(preserveAspectRatio: none だと文字と線が横に引き伸ばされるため) */}
           <svg width="100%" viewBox="0 0 660 100" style={{ display: 'block', marginTop: 4 }}>
+            {/* §7.5: 補助線なし・目盛り外向き・軸は黒・縦軸は上端に蓋（0点の線＝横軸） */}
+            <g shapeRendering="crispEdges">
+              <line x1="30" y1="8" x2="30" y2="78" stroke="var(--slate-900)" strokeWidth="1.5" />
+              <line x1="30" y1="78" x2="650" y2="78" stroke="var(--slate-900)" strokeWidth="1.5" />
+              {[14, 30, 46, 62].map((yy) => <line key={yy} x1="25" y1={yy} x2="30" y2={yy} stroke="var(--slate-900)" strokeWidth="1.25" />)}
+              {p.trendDots.map((d, i) => <line key={'xt' + i} x1={d.x} y1="78" x2={d.x} y2="83" stroke="var(--slate-900)" strokeWidth="1.25" />)}
+              <line x1="27.5" y1="8" x2="32.5" y2="8" stroke="var(--slate-900)" strokeWidth="1.5" />
+            </g>
             {[['100', 14], ['75', 30], ['50', 46], ['25', 62]].map(([lb, yy]) => (
-              <g key={lb}>
-                <line x1="30" y1={yy} x2="650" y2={yy} stroke={yy === 62 ? 'var(--slate-200)' : 'var(--slate-100)'} strokeWidth="1" />
-                <text x="25" y={+yy + 4} textAnchor="end" fontSize="11" fill="var(--slate-400)" fontFamily="Inter">{lb}</text>
-              </g>
+              <text key={lb} x="22" y={+yy + 4} textAnchor="end" fontSize="11" fill="var(--slate-500)" fontFamily="Inter" style={{ fontVariantNumeric: 'tabular-nums' }}>{lb}</text>
             ))}
             {/* 平均は青色(レーダーの市町村平均と揃える) */}
             <path d={p.muniPath} fill="none" stroke="var(--info-500)" strokeWidth="1.5" strokeDasharray="5 4" />

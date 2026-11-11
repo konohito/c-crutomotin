@@ -3,7 +3,7 @@ import { useStore } from '../store.jsx'
 import { deltaOf, eraOf, fmtD, colsPlus, itemAvg, autoLines, betterNote, frailtyOf, FRAIL_ITEMS, FRAIL_LEVELS } from '../lib/helpers.js'
 import { kclScore, KCL_DOMAINS, KCL_CRITERIA_NOTE } from '../data/kihon.js'
 import { wardLabel, dbEnabled } from '../lib/db.js'
-import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel } from '../ui/chart.jsx'
+import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel, AxisFrame } from '../ui/chart.jsx'
 import { Card, Select, Segmented } from '../ui/kit.jsx'
 
 /* 「いつから」の選択肢。年度を決め打ちすると毎年ずれるので、年度一覧から作る。
@@ -161,11 +161,12 @@ export default function Analytics() {
         </div>
         <div ref={exRef}>
           <svg width="100%" height="228" viewBox={`0 0 ${exW} 228`} style={{ display: 'block', marginTop: 6 }}>
+            {/* §7.5: 補助線なし・目盛り外向き・軸は黒・縦軸は上端に蓋 */}
+            <AxisFrame x0={48} xEnd={exW - 56} yTop={10} yBottom={198}
+              yTicks={exAuto.ticks.map(tk => tk.y)}
+              xTicks={exYears.map((_, i) => exXs(i))} />
             {exAuto.ticks.map((tk, i) => (
-              <g key={i}>
-                <line x1="46" y1={tk.y} x2={exW - 56} y2={tk.y} stroke="var(--slate-100)" strokeWidth="1" />
-                <text x="40" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--slate-400)" fontFamily="Inter">{tk.label}</text>
-              </g>
+              <text key={i} x="40" y={tk.y + 3.5} textAnchor="end" fontSize="10.5" fill="var(--fg-3)" fontFamily="Inter" style={{ fontVariantNumeric: 'tabular-nums' }}>{tk.label}</text>
             ))}
             {exAuto.lines.map((ln, i) => (
               <g key={i}>

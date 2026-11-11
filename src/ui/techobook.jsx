@@ -7,15 +7,20 @@ import { Overline } from './kit.jsx'
 /* 電子手帳の中身(画面表示)。職員の「手帳一覧」と利用者ポータルの両方から使う共有ビュー。
    - 私の目標・興味関心(編集可)
    - 今日の体調チェック・活動記録の追加フォーム + 記録一覧
-   - 私のからだの記録(体力測定・基本チェックリストの年度別表) */
+   - 私のからだの記録(体力測定・基本チェックリストの年度別表)
+
+   ★large … 利用者ポータル（高齢の利用者本人がスマホで読む）向けの大きめの文字・押しやすい大きさ。
+     職員の画面は情報密度を優先して従来の大きさのまま。見た目だけの違いで、中身・保存は同一。 */
 
 const num = (v) => (v === '' || v === null || v === undefined ? null : +v)
-const CELL = { padding: '7px 10px', borderBottom: '1px solid var(--border-subtle)', fontSize: 13 }
 
 // 直近 3 回分の測定結果 + 基本チェックリスト点数
-function BodyTable({ u }) {
+function BodyTable({ u, large = false }) {
+  const CELL = { padding: large ? '10px 10px' : '7px 10px', borderBottom: '1px solid var(--border-subtle)', fontSize: large ? 14.5 : 13 }
+  const HEAD = large ? 13.5 : 12
+  const LABEL = large ? 14 : 12.5
   const ys = Object.keys(u.meas || {}).map(Number).sort((a, b) => a - b).slice(-3)
-  if (!ys.length) return <div style={{ fontSize: 12.5, color: 'var(--fg-3)', padding: '4px 0' }}>体力測定の記録はまだありません。測定会に参加すると、ここに結果が表示されます。</div>
+  if (!ys.length) return <div style={{ fontSize: large ? 14 : 12.5, color: 'var(--fg-3)', padding: '4px 0', lineHeight: 1.7 }}>体力測定の記録はまだありません。測定会に参加すると、ここに結果が表示されます。</div>
   const items = D.SHEET_COLS.map(cid => D.COLS.find(c => c.id === cid))
   const rows = items.map(col => [col.label + '（' + col.unit + '）', (y) => u.meas[y] ? D.fmt(u.meas[y].values[col.id], col.dec) : ''])
     .concat([
@@ -26,12 +31,12 @@ function BodyTable({ u }) {
   return (
     <div style={{ border: '1px solid var(--border-default)', borderRadius: 10, overflow: 'hidden' }}>
       <div style={{ display: 'grid', gridTemplateColumns: `minmax(130px, 1.4fr) repeat(${ys.length}, 1fr)` }}>
-        <div style={{ ...CELL, background: 'var(--bg-subtle)', fontWeight: 700, fontSize: 12 }}>測定項目</div>
-        {ys.map(y => <div key={y} className="t-num" style={{ ...CELL, background: 'var(--bg-subtle)', fontWeight: 700, fontSize: 12, textAlign: 'center' }}>{D.ERA[y] || y}年度</div>)}
+        <div style={{ ...CELL, background: 'var(--bg-subtle)', fontWeight: 700, fontSize: HEAD }}>測定項目</div>
+        {ys.map(y => <div key={y} className="t-num" style={{ ...CELL, background: 'var(--bg-subtle)', fontWeight: 700, fontSize: HEAD, textAlign: 'center' }}>{D.ERA[y] || y}年度</div>)}
         {rows.map(([label, get], ri) => {
           const last = ri === rows.length - 1
           return [
-            <div key={label} style={{ ...CELL, borderBottom: last ? 'none' : CELL.borderBottom, fontSize: 12.5, color: 'var(--fg-2)' }}>{label}</div>,
+            <div key={label} style={{ ...CELL, borderBottom: last ? 'none' : CELL.borderBottom, fontSize: LABEL, color: 'var(--fg-2)' }}>{label}</div>,
             ...ys.map(y => <div key={label + y} className="t-num" style={{ ...CELL, borderBottom: last ? 'none' : CELL.borderBottom, textAlign: 'center', fontWeight: 600 }}>{get(y) || '—'}</div>),
           ]
         })}
@@ -40,7 +45,7 @@ function BodyTable({ u }) {
   )
 }
 
-export default function TechoBook({ u, techo, onSaveProfile, onAddLog, onDeleteLog, canAddLog = true, canDelete = false, compact = false }) {
+export default function TechoBook({ u, techo, onSaveProfile, onAddLog, onDeleteLog, canAddLog = true, canDelete = false, compact = false, large = false }) {
   const [goal, setGoal] = useState('')
   const [ints, setInts] = useState([])
   const [dirty, setDirty] = useState(false)
@@ -77,8 +82,10 @@ export default function TechoBook({ u, techo, onSaveProfile, onAddLog, onDeleteL
       setF(s => ({ ...blank, date: s.date }))
     } finally { setAdding(false) }
   }
-  const IN = { width: '100%', height: 34 }
-  const lab = (t) => <span style={{ fontSize: 11, color: 'var(--fg-3)', fontWeight: 600 }}>{t}</span>
+  /* ★large の入力欄は 16px 未満にしない（iOS はフォーカス時に画面ごと拡大してしまう）。
+     高さ 48px は「押しやすい大きさ 44px 以上」の決まりに合わせたもの。 */
+  const IN = large ? { width: '100%', height: 48, fontSize: 16 } : { width: '100%', height: 34 }
+  const lab = (t) => <span style={{ fontSize: large ? 13 : 11, color: 'var(--fg-3)', fontWeight: 600 }}>{t}</span>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? 12 : 16 }}>
@@ -86,13 +93,14 @@ export default function TechoBook({ u, techo, onSaveProfile, onAddLog, onDeleteL
       <div className="card" style={{ padding: compact ? '14px 16px' : '16px 20px' }}>
         <Overline style={{ marginBottom: 8 }}>私の目標（なりたい姿）・興味関心</Overline>
         <textarea className="field" rows={2} value={goal} placeholder="例: 孫と旅行に行けるよう足腰を丈夫に保つ"
-          onChange={(e) => { setGoal(e.target.value); setDirty(true) }} style={{ width: '100%', resize: 'vertical', lineHeight: 1.6 }} />
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+          onChange={(e) => { setGoal(e.target.value); setDirty(true) }}
+          style={{ width: '100%', resize: 'vertical', lineHeight: 1.6, ...(large ? { fontSize: 16, padding: '10px 12px' } : {}) }} />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: large ? 8 : 6, marginTop: 10 }}>
           {INTERESTS.map(t => {
             const on = ints.includes(t)
             return (
               <button key={t} className="chip" onClick={() => { setInts(s => on ? s.filter(x => x !== t) : [...s, t]); setDirty(true) }}
-                style={{ height: 26, fontSize: 12, cursor: 'pointer', border: '1px solid ' + (on ? 'var(--brand-500)' : 'var(--border-default)'), background: on ? 'var(--brand-50)' : 'transparent', color: on ? 'var(--brand-700)' : 'var(--fg-2)', fontWeight: on ? 700 : 400 }}>
+                style={{ height: large ? 38 : 26, fontSize: large ? 14.5 : 12, padding: large ? '0 14px' : undefined, cursor: 'pointer', border: '1px solid ' + (on ? 'var(--brand-500)' : 'var(--border-default)'), background: on ? 'var(--brand-50)' : 'transparent', color: on ? 'var(--brand-700)' : 'var(--fg-2)', fontWeight: on ? 700 : 400 }}>
                 {t}
               </button>
             )
@@ -100,8 +108,9 @@ export default function TechoBook({ u, techo, onSaveProfile, onAddLog, onDeleteL
         </div>
         {dirty && (
           <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button className="btn btn-primary btn-sm" onClick={doSave} disabled={saving}>{saving ? '保存中…' : '保存する'}</button>
-            <span style={{ fontSize: 11.5, color: 'var(--fg-3)' }}>変更があります</span>
+            <button className={'btn btn-primary' + (large ? '' : ' btn-sm')} style={large ? { height: 46, fontSize: 15 } : undefined}
+              onClick={doSave} disabled={saving}>{saving ? '保存中…' : '保存する'}</button>
+            <span style={{ fontSize: large ? 13 : 11.5, color: 'var(--fg-3)' }}>変更があります</span>
           </div>
         )}
       </div>
@@ -131,7 +140,7 @@ export default function TechoBook({ u, techo, onSaveProfile, onAddLog, onDeleteL
               <div style={{ display: 'flex', gap: 4 }}>
                 {MOODS.map(m => (
                   <button key={m} onClick={() => setF(s => ({ ...s, mood: s.mood === m ? '' : m }))}
-                    style={{ flex: 1, height: 34, borderRadius: 8, cursor: 'pointer', fontSize: 15, fontWeight: 700, border: '1px solid ' + (f.mood === m ? 'var(--brand-500)' : 'var(--border-default)'), background: f.mood === m ? 'var(--brand-50)' : 'var(--bg-surface)', color: f.mood === m ? 'var(--brand-700)' : 'var(--fg-3)' }}>
+                    style={{ flex: 1, height: large ? 48 : 34, borderRadius: 8, cursor: 'pointer', fontSize: large ? 19 : 15, fontWeight: 700, border: '1px solid ' + (f.mood === m ? 'var(--brand-500)' : 'var(--border-default)'), background: f.mood === m ? 'var(--brand-50)' : 'var(--bg-surface)', color: f.mood === m ? 'var(--brand-700)' : 'var(--fg-3)' }}>
                     {m}
                   </button>
                 ))}
@@ -142,7 +151,7 @@ export default function TechoBook({ u, techo, onSaveProfile, onAddLog, onDeleteL
             <label style={{ display: 'flex', flexDirection: 'column', gap: 3, gridColumn: compact ? 'span 3' : 'span 4' }}>{lab('メモ・気づき')}
               <input className="field" style={IN} value={f.memo} onChange={setField('memo')} placeholder="体調の変化など" /></label>
           </div>
-          <button className="btn btn-primary" style={{ marginTop: 10 }} onClick={doAdd} disabled={adding}>
+          <button className="btn btn-primary" style={{ marginTop: large ? 14 : 10, ...(large ? { height: 50, fontSize: 16, width: '100%' } : {}) }} onClick={doAdd} disabled={adding}>
             {adding ? '記録中…' : 'この内容で記録する'}
           </button>
         </div>
@@ -152,15 +161,15 @@ export default function TechoBook({ u, techo, onSaveProfile, onAddLog, onDeleteL
       <div className="card" style={{ padding: compact ? '14px 16px' : '16px 20px' }}>
         <Overline style={{ marginBottom: 8 }}>記録の一覧（新しい順）</Overline>
         {techo.logs.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: 'var(--fg-3)', padding: '4px 0' }}>まだ記録がありません。上のフォームから今日の記録をつけましょう。</div>
+          <div style={{ fontSize: large ? 14 : 12.5, color: 'var(--fg-3)', padding: '4px 0', lineHeight: 1.7 }}>まだ記録がありません。上のフォームから今日の記録をつけましょう。</div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <div style={{ minWidth: compact ? 560 : 680 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: `86px 64px 58px 44px 44px 44px 40px 60px 1fr${canDelete ? ' 30px' : ''}`, gap: 0, fontSize: 11, color: 'var(--fg-3)', fontWeight: 600, borderBottom: '1px solid var(--border-default)', paddingBottom: 5 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `86px 64px 58px 44px 44px 44px 40px 60px 1fr${canDelete ? ' 30px' : ''}`, gap: 0, fontSize: large ? 12.5 : 11, color: 'var(--fg-3)', fontWeight: 600, borderBottom: '1px solid var(--border-default)', paddingBottom: 5 }}>
                 <span>日付</span><span>血圧</span><span>体重</span><span>睡眠</span><span>食事</span><span>水分</span><span>気分</span><span>歩数</span><span>場所・メモ</span>{canDelete && <span />}
               </div>
               {techo.logs.map(l => (
-                <div key={l.id} style={{ display: 'grid', gridTemplateColumns: `86px 64px 58px 44px 44px 44px 40px 60px 1fr${canDelete ? ' 30px' : ''}`, alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', padding: '6px 0', fontSize: 12.5 }}>
+                <div key={l.id} style={{ display: 'grid', gridTemplateColumns: `86px 64px 58px 44px 44px 44px 40px 60px 1fr${canDelete ? ' 30px' : ''}`, alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', padding: large ? '9px 0' : '6px 0', fontSize: large ? 14 : 12.5 }}>
                   <span className="t-num" style={{ fontWeight: 600 }}>{String(l.date || '').slice(5)}</span>
                   <span className="t-num">{l.bpH != null ? `${l.bpH}/${l.bpL != null ? l.bpL : '—'}` : '—'}</span>
                   <span className="t-num">{l.weight != null ? l.weight : '—'}</span>
@@ -183,7 +192,7 @@ export default function TechoBook({ u, techo, onSaveProfile, onAddLog, onDeleteL
       {/* からだの記録 */}
       <div className="card" style={{ padding: compact ? '14px 16px' : '16px 20px' }}>
         <Overline style={{ marginBottom: 8 }}>私のからだの記録（体力測定・基本チェックリスト）</Overline>
-        <BodyTable u={u} />
+        <BodyTable u={u} large={large} />
       </div>
     </div>
   )

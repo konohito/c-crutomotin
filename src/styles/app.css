@@ -524,6 +524,9 @@ select.field, select.select {
 }
 
 @media (max-width: 700px) {
+  /* ★携帯の入力欄は 16px 未満にしない。iOS はフォーカスした瞬間に画面ごと拡大して
+       戻らず、高齢の利用者は元に戻せない（ログイン画面・ポータルで実際に起きる）。 */
+  input.field, select.field, textarea.field, .select { font-size: 16px; }
   .screen { padding: 14px; gap: 12px; }
   .app-header { padding: 0 14px; gap: 8px; }
   .header-sub { display: none; }
