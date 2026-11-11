@@ -62,6 +62,35 @@ export const measKey = (id, date, year) => {
 // 並べ替え用のキー。評価日が無いものは年度の頭に置く
 const sortKeyOf = (m) => compactDate(m.date) || `${m.year}0000`
 
+/* 体力測定の項目（身長・体重・BMI は体格なので入れない）。
+   InBody 単独の記録は身長・体重しか持たないので、ここで分かれる。 */
+export const FITNESS_KEYS = Object.freeze(['walk5', 'walk5max', 'balR', 'balL', 'gripR', 'gripL', 'tug'])
+
+/* その測定に**体力測定の値が実際に入っているか**。
+   ★この判定はここ 1 か所だけに置く。2 か所に書くと必ず食い違う。 */
+export function hasFitnessValues(values) {
+  const v = values || {}
+  return FITNESS_KEYS.some((k) => {
+    const x = v[k]
+    return x !== null && x !== undefined && x !== '' && Number.isFinite(Number(x))
+  })
+}
+
+/* 推移グラフ・スコア・参加年に数えない記録か。
+   `inbodyOnly` は「体力測定が無い記録」の印で、スコア 0 の点が推移グラフに出るのを
+   防ぐために付ける（merge.js / etl-inbody.py / db.js が付ける）。
+
+   ★印だけを見てはいけない。印が付いたあとに体力測定の値が入ることがある
+     （例: InBody 単独で先に作られた記録へ、あとから紙の測定値を足した）。
+     そのとき印が残っていると、**値は入っているのに画面に 1 つも出ない**。
+     2026-11-11 に本番で実際に起きていた（20 件・R7 の推移グラフが空のままだった）。
+   → **値があるかどうかを先に見る。** 値があれば印は古いものとして扱い、測定として数える。
+     値が無いときだけ印に従う（従来どおりの動き）。 */
+export function isInbodyOnlyRecord(m) {
+  if (!m || !m.inbodyOnly) return false
+  return !hasFitnessValues(m.values)
+}
+
 // Firestore の user ドキュメント + 測定群 → エンジン形式の利用者オブジェクト
 // (電子手帳のポータル読み込み(techo.js)からも使う)
 export function toEngineUser(u, measList) {
@@ -84,7 +113,7 @@ export function toEngineUser(u, measList) {
     // 参加履歴・スコアには入れず、InBody 欄にのみ表示する。
     // 問診票の実回答(kclAnswers)。kihon.js の kclScore が読む raw 形式に変換する
     if (m.kclAnswers) kcl[m.year] = { raw: { ...((kcl[m.year] || {}).raw || {}), ...m.kclAnswers }, date: m.date || null }
-    if (m.inbodyOnly) continue
+    if (isInbodyOnlyRecord(m)) continue
     const s = scoreOf(u.sex, m.values || {})
     series.push({
       ...s, date: m.date || null, review: !!m.review,
