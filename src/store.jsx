@@ -197,10 +197,14 @@ export function openSheetVals(state, no) {
 export async function importCsvText({ text, fname, state, set, showToast }) {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim())
   if (lines.length < 2) { showToast('CSV にデータ行が見つかりません'); return }
-  const head = csvSplit(lines[0]).map(h => h.replace(/[\s　"]/g, ''))
+  /* ★2026-11-24 InBody(LookinBody)の生エクスポート（英語ヘッダ）にも対応する。
+     ・ヘッダ先頭の番号プレフィックス「1.」「15.」を外す（"1. Name"→"Name"。etl-inbody.py と同じ）。
+     ・基準値の列（"Lower Limit (Weight Normal Range)" 等）を誤って拾わないよう limit/range/標準 を除外。 */
+  const head = csvSplit(lines[0]).map(h => h.replace(/[\s　"]/g, '').replace(/^\d+\./, ''))
   const fi = (f) => head.findIndex(f)
+  const noLim = (h) => !/limit|range|標準|norm/i.test(h)   // 基準値・正常範囲の列を外す
   const iId = fi(h => /ID|ＩＤ|番号/i.test(h) && !/会場|電話|郵便|ＦＡＸ|FAX/i.test(h))
-  const iName = fi(h => (h.includes('氏名') || h.includes('名前')) && !/かな|カナ|ふりがな|フリガナ/.test(h))
+  const iName = fi(h => (h.includes('氏名') || h.includes('名前') || /^name$/i.test(h)) && !/かな|カナ|ふりがな|フリガナ|nickname/i.test(h))
   const iKana = fi(h => /かな|カナ|ふりがな|フリガナ/.test(h))
   const iBirth = fi(h => h.includes('生年月日'))
   const iSex = fi(h => h.includes('性別'))
@@ -211,18 +215,21 @@ export async function importCsvText({ text, fname, state, set, showToast }) {
   const iGripR = fi(h => h.includes('握力') && h.includes('右'))
   const iGripL = fi(h => h.includes('握力') && h.includes('左'))
   const iTug = fi(h => /TUG|ＴＵＧ/i.test(h))
-  const iHt = fi(h => h.includes('身長'))
-  const iWt = fi(h => h.includes('体重'))
+  const iHt = fi(h => (h.includes('身長') || /^height$/i.test(h)) && noLim(h))
+  const iWt = fi(h => (h.includes('体重') || /^weight$/i.test(h)) && noLim(h))
   if (iName < 0) { showToast('「氏名」列が見つかりません。ヘッダー行をご確認ください'); return }
 
   // 体組成計の書き出し形式の判別: 骨格筋量・体脂肪率・SMI などの列があれば紐づけ取り込みにする
-  const iSmm = fi(h => h.includes('骨格筋量'))
-  const iFat = fi(h => h.includes('体脂肪'))
-  const iSmi = fi(h => /SMI|ＳＭＩ|骨格筋指数/i.test(h))
-  const iScore = fi(h => /InBody点数|ＩｎＢｏｄｙ|点数/i.test(h))
+  //   ★英語ヘッダ(LookinBody 生エクスポート)にも対応。基準値列は noLim で除外。
+  //   ★SMM(骨格筋量・全身)と SMI(骨格筋指数)は別物。SMI は smm を含まない 'smi' で拾う（etl と同じ）。
+  const iSmm = fi(h => (h.includes('骨格筋量') || /skeletalmusclemass/i.test(h) || /^smm$/i.test(h)) && noLim(h))
+  const iFat = fi(h => (h.includes('体脂肪') || /percentbodyfat/i.test(h) || /^pbf$/i.test(h)) && noLim(h))
+  const iSmi = fi(h => (/骨格筋指数/.test(h) || /skeletalmuscleindex/i.test(h) || /asmi/i.test(h)
+    || /smi/i.test(h.toLowerCase().replace(/smm/g, ''))) && noLim(h))
+  const iScore = fi(h => /InBody点数|ＩｎＢｏｄｙ点数|inbodyscore/i.test(h) || h === '点数')
   if (iSmm >= 0 || iSmi >= 0 || iFat >= 0) {
     let linked = 0, unmatched = 0, failed = 0
-    const iWtLocal = fi(h => h.includes('体重'))
+    const iWtLocal = fi(h => (h.includes('体重') || /^weight$/i.test(h)) && noLim(h))
     for (const line of lines.slice(1)) {
       const c = csvSplit(line)
       const val = (i) => (i >= 0 && i < c.length ? String(c[i]).trim() : '')
