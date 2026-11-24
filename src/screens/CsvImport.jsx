@@ -132,6 +132,7 @@ export default function CsvImport() {
             <Rule n={2}>見つからない方は<b>新規登録</b>されます（ID は自動採番）</Rule>
             <Rule n={3}>測定値の列があれば<b>今年度の結果</b>として登録し、チャートに反映します</Rule>
             <Rule n={4}>骨格筋量・SMI などの列がある場合は <b>体組成計のデータ</b>として台帳に紐づけます（画面と出力に出るのは <b>SMI（骨格筋指数）</b>のみです）</Rule>
+            <Rule n={5}>InBody（LookinBody）から書き出した<b>英語の見出しのファイルもそのまま</b>取り込めます（Name / ID / SMI などの列を自動で読みます）</Rule>
           </div>
         </Card>
       </div>
