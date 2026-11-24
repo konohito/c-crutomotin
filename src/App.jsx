@@ -6,6 +6,7 @@ import { dbEnabled, watchPendingCount, loadEvents, loadLegacyExaminers } from '.
 import { Icon } from './ui/icons.jsx'
 import { Toast } from './ui/kit.jsx'
 import AuthGate, { useAuth } from './ui/AuthGate.jsx'
+import NewVersionBar from './ui/NewVersionBar.jsx'
 import Dashboard from './screens/Dashboard.jsx'
 import ImportScreen from './screens/Import.jsx'
 import CsvImport from './screens/CsvImport.jsx'
@@ -301,6 +302,8 @@ function AppInner() {
       {state.editKcl && <EditKclModal />}
       {state.pwOpen && <PasswordModal />}
       <Toast msg={state.toast} />
+      {/* 新しい版が出たら帯で知らせる（勝手には読み直さない）。★2026-11-24 全アプリ共通 */}
+      <NewVersionBar />
     </div>
   )
 }
