@@ -2,6 +2,7 @@ import D from '../data/engine.js'
 import { useStore, pendingSheets, allEvents, staffNames, flagsFor, batchN, openSheetVals } from '../store.jsx'
 import { mdw, addDays, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
 import { dbEnabled } from '../lib/db.js'
+import { smiCutOf } from '../lib/validate.js'
 import { useAuth } from '../ui/AuthGate.jsx'
 import { useChartWidth, ChartDots, YearFmtSwitch, yearLabel, AxisFrame } from '../ui/chart.jsx'
 import { Card, Pill, Overline, Select } from '../ui/kit.jsx'
@@ -33,6 +34,10 @@ export default function Dashboard() {
   const statAge = Math.round((ages.reduce((a, b) => a + b, 0) / Math.max(1, ages.length)) * 10) / 10
   const statFRate = Math.round((D.users.filter(u => u.sex === 'F').length / Math.max(1, D.users.length)) * 100)
   const statOld = D.users.filter(u => u.age >= 85).length
+  /* 骨格筋指数（SMI・体組成計）の今年度の状況（★2026-11-24 現場要望「ダッシュボードでも見れるように」）。
+     判定値は lib/validate.js の smiCutOf 1か所（AWGS: 男性7.0 / 女性5.7 kg/m² 未満が低値）。 */
+  const smiUsers = D.users.filter(u => u.inbody && u.inbody[cur] && u.inbody[cur].smi != null)
+  const smiLow = smiUsers.filter(u => u.inbody[cur].smi < smiCutOf(u.sex)).length
 
   // 本番(単一圏域)では圏域別ではなく行政区別に集計する
   const progField = demo ? 'region' : 'venueName'
@@ -180,10 +185,15 @@ export default function Dashboard() {
       </Card>
 
       {/* 統計カード */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${demo ? 4 : 3}, 1fr)`, gap: 16 }}>
+      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: `repeat(${demo ? 5 : 4}, 1fr)`, gap: 16 }}>
         <StatCard label="登録利用者" value={D.users.length} unit="名" foot={<>うち今年度の新規 <span className="t-num">{newN}</span> 名</>} />
         <StatCard label="今年度 測定済" value={done} unit="名" foot={<>参加率 <span className="t-num">{Math.round((done / Math.max(1, D.users.length)) * 100)}</span>%</>} />
         {demo && <StatCard label="要確認" labelColor="var(--warning-700)" value={pend.length} valueColor={pend.length ? 'var(--warning-700)' : 'var(--fg-1)'} unit="件" foot="読み取り結果の確認待ち" onClick={() => set({ screen: 'imp' })} />}
+        {/* ★2026-11-24 現場要望「InBody（SMI）をダッシュボードでも見れるように」。
+            個人の値は手帳（詳細）の SMI カードで見る。ここでは全体の取り込み状況と低値の人数。 */}
+        <StatCard label="骨格筋指数（SMI）" value={smiUsers.length} unit="名"
+          foot={<>うち低値（男性7.0 / 女性5.7未満） <span className="t-num" style={smiLow ? { color: 'var(--danger-700)', fontWeight: 700 } : undefined}>{smiLow}</span> 名</>}
+          onClick={() => set({ screen: 'ros' })} />
         <StatCard label="参加者の平均年齢" value={statAge} unit="歳" foot={<>女性 <span className="t-num">{statFRate}</span>% · 85歳以上 <span className="t-num">{statOld}</span> 名</>} />
       </div>
 
