@@ -79,9 +79,15 @@ def find_cols(header):
             put('testDate')
         elif hl == 'weight' or h == '体重':
             put('weight')
+        elif ('appendicular' in hl or 'asmm' in hl or hl == 'asm' or '四肢筋肉量' in h or '四肢骨格筋量' in h) \
+                and 'limit' not in hl and 'range' not in hl and 'index' not in hl and '指数' not in h:
+            # 四肢骨格筋量(ASM)。SMI の分子。骨格筋量(SMM・全身)とは別物なので先に拾う。
+            put('asm')
         elif ('skeletal muscle mass' in hl or '骨格筋量' in h) and 'limit' not in hl and 'range' not in hl and '/wt' not in hl:
             put('smm')
-        elif 'skeletal muscle index' in hl or '骨格筋指数' in h or hl == 'smi':
+        elif ('skeletal muscle index' in hl or '骨格筋指数' in h or '四肢骨格筋指数' in h
+              or 'asmi' in hl or hl == 'smi' or 'smi' in hl.replace('smm', '')):
+            # SMI（骨格筋指数 kg/m²）。書式により ASMI / SMI(kg/m²) 等の表記ゆれがある。
             put('smi')
         elif ('percent body fat' in hl or '体脂肪率' in h or hl == 'pbf') and 'limit' not in hl and 'range' not in hl:
             put('fatPct')
@@ -225,7 +231,12 @@ def parse_rows(rows):
             'sex': (str(val('gender') or '').strip().upper()[:1] or ''),
             'age': to_float(val('age')), 'height': h, 'weight': w,
             'year': year, 'testDate': date,
-            'smm': to_float(val('smm')), 'smi': to_float(val('smi')),
+            'smm': to_float(val('smm')), 'asm': to_float(val('asm')),
+            # SMI（骨格筋指数 kg/m²）。列があればそれを使い、無ければ ASM(四肢骨格筋量)÷身長² で算出する
+            # （LookinBody の書式に SMI 列が無いことがある。SMI の分子は全身の骨格筋量 SMM ではなく ASM）。
+            'smi': (to_float(val('smi')) if to_float(val('smi')) is not None
+                    else (round(to_float(val('asm')) / (h / 100) ** 2, 2)
+                          if (to_float(val('asm')) is not None and h) else None)),
             'fatPct': to_float(val('fatPct')), 'score': to_float(val('score')),
         })
     return out
@@ -421,7 +432,7 @@ def main():
             batch, n_in_batch = db.batch(), 0
 
     for ib, uid, year in winners:
-        inbody = {k: ib[k] for k in ('smm', 'smi', 'fatPct', 'score', 'height', 'weight', 'ibId', 'district', 'testDate')}
+        inbody = {k: ib[k] for k in ('smm', 'asm', 'smi', 'fatPct', 'score', 'height', 'weight', 'ibId', 'district', 'testDate')}
         inbody['source'] = 'lookinbody'
         m = meas_by_key.get((uid, year))
         if m:
