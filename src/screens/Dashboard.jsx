@@ -38,6 +38,20 @@ export default function Dashboard() {
      判定値は lib/validate.js の smiCutOf 1か所（AWGS: 男性7.0 / 女性5.7 kg/m² 未満が低値）。 */
   const smiUsers = D.users.filter(u => u.inbody && u.inbody[cur] && u.inbody[cur].smi != null)
   const smiLow = smiUsers.filter(u => u.inbody[cur].smi < smiCutOf(u.sex)).length
+  /* ★2026-11-25 現場要望（報告会）「SMIが下がっている率・上がっている率・基準値を下回った率」。
+     ・下回った率 … 今年度 SMI が AWGS 基準値（男7.0/女5.7）未満の人の割合。
+     ・下がった/上がった率 … 昨年度と今年度の両方に SMI がある人だけで、前年より低い/高い割合。
+       （片方しか無い人は分母に入れない＝比較できないため）。判定値は smiCutOf の1か所。 */
+  const pctOf = (n, d) => (d ? Math.round((n / d) * 100) : null)
+  const smiBelowPct = pctOf(smiLow, smiUsers.length)
+  const smiPrevY = D.YEARS.filter(y => y < cur).sort((a, b) => b - a)[0]
+  const smiPair = smiPrevY != null
+    ? smiUsers.filter(u => u.inbody[smiPrevY] && u.inbody[smiPrevY].smi != null)
+    : []
+  const smiDown = smiPair.filter(u => u.inbody[cur].smi < u.inbody[smiPrevY].smi).length
+  const smiUp = smiPair.filter(u => u.inbody[cur].smi > u.inbody[smiPrevY].smi).length
+  const smiDownPct = pctOf(smiDown, smiPair.length)
+  const smiUpPct = pctOf(smiUp, smiPair.length)
 
   // 本番(単一圏域)では圏域別ではなく行政区別に集計する
   const progField = demo ? 'region' : 'venueName'
@@ -192,7 +206,14 @@ export default function Dashboard() {
         {/* ★2026-11-24 現場要望「InBody（SMI）をダッシュボードでも見れるように」。
             個人の値は手帳（詳細）の SMI カードで見る。ここでは全体の取り込み状況と低値の人数。 */}
         <StatCard label="骨格筋指数（SMI）" value={smiUsers.length} unit="名"
-          foot={<>うち低値（男性7.0 / 女性5.7未満） <span className="t-num" style={smiLow ? { color: 'var(--danger-700)', fontWeight: 700 } : undefined}>{smiLow}</span> 名</>}
+          foot={<>
+            <div>基準値未満（男7.0 / 女5.7） <span className="t-num" style={smiLow ? { color: 'var(--danger-700)', fontWeight: 700 } : undefined}>{smiLow}</span> 名{smiBelowPct != null ? <>（<span className="t-num">{smiBelowPct}</span>%）</> : null}</div>
+            {smiPair.length > 0 ? (
+              <div style={{ marginTop: 2 }}>前年比（{smiPair.length}名）: 下降 <span className="t-num" style={{ color: 'var(--danger-700)' }}>{smiDownPct}</span>% · 上昇 <span className="t-num" style={{ color: 'var(--success-700, var(--brand-700))' }}>{smiUpPct}</span>%</div>
+            ) : (
+              <div style={{ marginTop: 2, color: 'var(--fg-3)' }}>前年の値がある人がいないため、増減率はまだ出せません</div>
+            )}
+          </>}
           onClick={() => set({ screen: 'ros' })} />
         <StatCard label="参加者の平均年齢" value={statAge} unit="歳" foot={<>女性 <span className="t-num">{statFRate}</span>% · 85歳以上 <span className="t-num">{statOld}</span> 名</>} />
       </div>
