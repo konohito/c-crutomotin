@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import D from '../data/engine.js'
 import { useStore, pendingSheets, allEvents, staffNames, flagsFor, batchN, openSheetVals } from '../store.jsx'
 import { mdw, addDays, colsPlus, itemAvg, autoLines, betterNote, fmtD, loginGreeting } from '../lib/helpers.js'
@@ -27,6 +28,7 @@ export default function Dashboard() {
   // 本番(実データ)では OCR キュー・直近の取り込み等のダミーは出さない
   const demo = !dbEnabled()
   const cur = D.CUR
+  const [areaF, setAreaF] = useState('')   // ★InBodyまとめの行政区フィルタ（空＝全体）
   const done = D.users.filter(u => u.meas[cur]).length
   const newN = D.users.filter(u => u.joined === cur).length
   const pend = pendingSheets(state)
@@ -34,24 +36,34 @@ export default function Dashboard() {
   const statAge = Math.round((ages.reduce((a, b) => a + b, 0) / Math.max(1, ages.length)) * 10) / 10
   const statFRate = Math.round((D.users.filter(u => u.sex === 'F').length / Math.max(1, D.users.length)) * 100)
   const statOld = D.users.filter(u => u.age >= 85).length
-  /* 骨格筋指数（SMI・体組成計）の今年度の状況（★2026-11-24 現場要望「ダッシュボードでも見れるように」）。
-     判定値は lib/validate.js の smiCutOf 1か所（AWGS: 男性7.0 / 女性5.7 kg/m² 未満が低値）。 */
-  const smiUsers = D.users.filter(u => u.inbody && u.inbody[cur] && u.inbody[cur].smi != null)
-  const smiLow = smiUsers.filter(u => u.inbody[cur].smi < smiCutOf(u.sex)).length
-  /* ★2026-11-25 現場要望（報告会）「SMIが下がっている率・上がっている率・基準値を下回った率」。
-     ・下回った率 … 今年度 SMI が AWGS 基準値（男7.0/女5.7）未満の人の割合。
-     ・下がった/上がった率 … 昨年度と今年度の両方に SMI がある人だけで、前年より低い/高い割合。
-       （片方しか無い人は分母に入れない＝比較できないため）。判定値は smiCutOf の1か所。 */
+  /* InBody（体組成）の今年度まとめ（★2026-11-24〜25 現場要望・報告会）。
+     判定値は lib/validate.js の smiCutOf 1か所（AWGS: 男性7.0 / 女性5.7 kg/m² 未満が低値）。
+     ・基準値未満の率 … 今年度 SMI が基準値未満の人の割合。
+     ・下がった/上がった率 … 昨年度と今年度の両方に SMI がある人だけで、前年より低い/高い割合
+       （片方しか無い人は分母に入れない＝比較できないため）。
+     ・平均（SMI・体脂肪率・骨格筋量）… 値のある人だけで平均（空は分母に入れない・小数1桁）。
+     ★行政区などで絞れるよう、利用者の集合を受け取る関数にしてある（ibStats）。判定は1か所。 */
   const pctOf = (n, d) => (d ? Math.round((n / d) * 100) : null)
-  const smiBelowPct = pctOf(smiLow, smiUsers.length)
+  const avg1 = (arr) => (arr.length ? Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10 : null)
   const smiPrevY = D.YEARS.filter(y => y < cur).sort((a, b) => b - a)[0]
-  const smiPair = smiPrevY != null
-    ? smiUsers.filter(u => u.inbody[smiPrevY] && u.inbody[smiPrevY].smi != null)
-    : []
-  const smiDown = smiPair.filter(u => u.inbody[cur].smi < u.inbody[smiPrevY].smi).length
-  const smiUp = smiPair.filter(u => u.inbody[cur].smi > u.inbody[smiPrevY].smi).length
-  const smiDownPct = pctOf(smiDown, smiPair.length)
-  const smiUpPct = pctOf(smiUp, smiPair.length)
+  const ibStats = (users) => {
+    const su = users.filter(u => u.inbody && u.inbody[cur] && u.inbody[cur].smi != null)
+    const low = su.filter(u => u.inbody[cur].smi < smiCutOf(u.sex)).length
+    const pair = smiPrevY != null ? su.filter(u => u.inbody[smiPrevY] && u.inbody[smiPrevY].smi != null) : []
+    const down = pair.filter(u => u.inbody[cur].smi < u.inbody[smiPrevY].smi).length
+    const up = pair.filter(u => u.inbody[cur].smi > u.inbody[smiPrevY].smi).length
+    const ib = users.map(u => u.inbody && u.inbody[cur]).filter(Boolean)
+    const has = ib.filter(x => x.smi != null || x.smm != null || x.fatPct != null)
+    return {
+      smiN: su.length, low, belowPct: pctOf(low, su.length),
+      pairN: pair.length, downPct: pctOf(down, pair.length), upPct: pctOf(up, pair.length),
+      ibN: has.length,
+      avgSmi: avg1(ib.map(x => x.smi).filter(v => v != null)),
+      avgFat: avg1(ib.map(x => x.fatPct).filter(v => v != null)),
+      avgSmm: avg1(ib.map(x => x.smm).filter(v => v != null)),
+    }
+  }
+  const smiAll = ibStats(D.users)
 
   // 本番(単一圏域)では圏域別ではなく行政区別に集計する
   const progField = demo ? 'region' : 'venueName'
@@ -63,6 +75,10 @@ export default function Dashboard() {
     const d = D.users.filter(u => u[progField] === r && u.meas[cur]).length
     return { name: r, done: d, total, w: Math.round((d / Math.max(1, total)) * 100) + '%' }
   })
+  /* ★2026-11-25 現場要望「行政区域や全体などでフィルターがかけれるように」。
+     InBody まとめを選んだ行政区（空＝全体）で絞る。判定・式は ibStats の1か所のまま。 */
+  const areaUsers = areaF ? D.users.filter(u => u[progField] === areaF) : D.users
+  const ibView = ibStats(areaUsers)
 
   const stMap = { done: ['本登録済', 'var(--success-50)', 'var(--success-700)'], wait: ['読み取り待ち', 'var(--warning-50)', 'var(--warning-700)'], review: ['確認待ち', 'var(--warning-50)', 'var(--warning-700)'] }
   const curSt = state.imp === 'committed' ? 'done' : (state.imp === 'scanned' ? (pend.length ? 'review' : 'done') : 'wait')
@@ -204,19 +220,38 @@ export default function Dashboard() {
         <StatCard label="今年度 測定済" value={done} unit="名" foot={<>参加率 <span className="t-num">{Math.round((done / Math.max(1, D.users.length)) * 100)}</span>%</>} />
         {demo && <StatCard label="要確認" labelColor="var(--warning-700)" value={pend.length} valueColor={pend.length ? 'var(--warning-700)' : 'var(--fg-1)'} unit="件" foot="読み取り結果の確認待ち" onClick={() => set({ screen: 'imp' })} />}
         {/* ★2026-11-24 現場要望「InBody（SMI）をダッシュボードでも見れるように」。
-            個人の値は手帳（詳細）の SMI カードで見る。ここでは全体の取り込み状況と低値の人数。 */}
-        <StatCard label="骨格筋指数（SMI）" value={smiUsers.length} unit="名"
-          foot={<>
-            <div>基準値未満（男7.0 / 女5.7） <span className="t-num" style={smiLow ? { color: 'var(--danger-700)', fontWeight: 700 } : undefined}>{smiLow}</span> 名{smiBelowPct != null ? <>（<span className="t-num">{smiBelowPct}</span>%）</> : null}</div>
-            {smiPair.length > 0 ? (
-              <div style={{ marginTop: 2 }}>前年比（{smiPair.length}名）: 下降 <span className="t-num" style={{ color: 'var(--danger-700)' }}>{smiDownPct}</span>% · 上昇 <span className="t-num" style={{ color: 'var(--success-700, var(--brand-700))' }}>{smiUpPct}</span>%</div>
-            ) : (
-              <div style={{ marginTop: 2, color: 'var(--fg-3)' }}>前年の値がある人がいないため、増減率はまだ出せません</div>
-            )}
-          </>}
+            ここは全体のかんたんな目安。くわしい率・平均・行政区フィルタは下の InBody まとめ。 */}
+        <StatCard label="骨格筋指数（SMI）" value={smiAll.smiN} unit="名"
+          foot={<>うち基準値未満 <span className="t-num" style={smiAll.low ? { color: 'var(--danger-700)', fontWeight: 700 } : undefined}>{smiAll.low}</span> 名{smiAll.belowPct != null ? <>（<span className="t-num">{smiAll.belowPct}</span>%）</> : null}</>}
           onClick={() => set({ screen: 'ros' })} />
         <StatCard label="参加者の平均年齢" value={statAge} unit="歳" foot={<>女性 <span className="t-num">{statFRate}</span>% · 85歳以上 <span className="t-num">{statOld}</span> 名</>} />
       </div>
+
+      {/* ★2026-11-25 現場要望「InBody（体組成）もダッシュボードで／行政区域や全体でフィルター」。
+          今年度 InBody を取り込めた人の平均と、基準値未満率・前年比の増減率。行政区で絞れる。 */}
+      {smiAll.ibN > 0 && (
+        <Card style={{ padding: '14px 20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+            <span style={{ fontWeight: 700 }}>InBody（体組成）今年度のまとめ</span>
+            <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>取り込めた人 <span className="t-num">{ibView.ibN}</span> 名{areaF ? '（この行政区）' : '（全体）'}</span>
+            <div style={{ marginLeft: 'auto' }}>
+              <Select sm value={areaF} onChange={e => setAreaF(e.target.value)}
+                options={[{ v: '', l: '全体' }, ...progGroups.map(r => ({ v: r, l: r }))]} />
+            </div>
+          </div>
+          {ibView.ibN === 0 ? (
+            <div style={{ color: 'var(--fg-3)', fontSize: 13 }}>この行政区では今年度の InBody がまだ取り込まれていません。</div>
+          ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 16 }}>
+            <div><div style={{ fontSize: 12, color: 'var(--fg-3)' }}>平均 骨格筋指数（SMI）</div><div className="t-num" style={{ fontSize: 20, fontWeight: 700 }}>{ibView.avgSmi ?? '—'} <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--fg-3)' }}>kg/m²</span></div></div>
+            <div><div style={{ fontSize: 12, color: 'var(--fg-3)' }}>平均 体脂肪率</div><div className="t-num" style={{ fontSize: 20, fontWeight: 700 }}>{ibView.avgFat ?? '—'} <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--fg-3)' }}>%</span></div></div>
+            <div><div style={{ fontSize: 12, color: 'var(--fg-3)' }}>平均 骨格筋量</div><div className="t-num" style={{ fontSize: 20, fontWeight: 700 }}>{ibView.avgSmm ?? '—'} <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--fg-3)' }}>kg</span></div></div>
+            <div><div style={{ fontSize: 12, color: 'var(--fg-3)' }}>基準値未満（男7.0/女5.7）</div><div className="t-num" style={{ fontSize: 20, fontWeight: 700, color: ibView.low ? 'var(--danger-700)' : undefined }}>{ibView.belowPct ?? '—'}<span style={{ fontSize: 12, fontWeight: 400, color: 'var(--fg-3)' }}>%</span></div><div style={{ fontSize: 11, color: 'var(--fg-3)' }}>{ibView.low} / {ibView.smiN} 名</div></div>
+            <div><div style={{ fontSize: 12, color: 'var(--fg-3)' }}>前年比 下降 / 上昇</div>{ibView.pairN > 0 ? (<><div className="t-num" style={{ fontSize: 20, fontWeight: 700 }}><span style={{ color: 'var(--danger-700)' }}>{ibView.downPct}</span><span style={{ fontSize: 13, color: 'var(--fg-3)' }}>%</span> / <span style={{ color: 'var(--success-700, var(--brand-700))' }}>{ibView.upPct}</span><span style={{ fontSize: 13, color: 'var(--fg-3)' }}>%</span></div><div style={{ fontSize: 11, color: 'var(--fg-3)' }}>前年も値がある {ibView.pairN} 名</div></>) : (<div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 4 }}>前年の値がある人がいないため、まだ出せません</div>)}</div>
+          </div>
+          )}
+        </Card>
+      )}
 
       {/* 本日・明日の測定会 */}
       {dashEvCards.map((ec, i) => (
