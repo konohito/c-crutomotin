@@ -75,6 +75,13 @@ export default function Dashboard() {
     const d = D.users.filter(u => u[progField] === r && u.meas[cur]).length
     return { name: r, done: d, total, w: Math.round((d / Math.max(1, total)) * 100) + '%' }
   })
+  /* ★2026-11-26 現場要望「（SMI基準値に）満たなかった方の割合を行政区別に表示できるように」。
+     区ごとに ibStats（判定は1か所のまま）を回すだけ。SMI の値がある人がいない区は出さない
+     （0% と「対象者がいない」を混ぜない）。並びは割合の高い順＝手当てが要る区が上。 */
+  const areaBelow = progGroups
+    .map(r => ({ name: r, ...ibStats(D.users.filter(u => u[progField] === r)) }))
+    .filter(x => x.smiN > 0)
+    .sort((a, b) => (b.belowPct ?? -1) - (a.belowPct ?? -1) || a.name.localeCompare(b.name, 'ja'))
   /* ★2026-11-25 現場要望「行政区域や全体などでフィルターがかけれるように」。
      InBody まとめを選んだ行政区（空＝全体）で絞る。判定・式は ibStats の1か所のまま。 */
   const areaUsers = areaF ? D.users.filter(u => u[progField] === areaF) : D.users
@@ -249,6 +256,25 @@ export default function Dashboard() {
             <div><div style={{ fontSize: 12, color: 'var(--fg-3)' }}>基準値未満（男7.0/女5.7）</div><div className="t-num" style={{ fontSize: 20, fontWeight: 700, color: ibView.low ? 'var(--danger-700)' : undefined }}>{ibView.belowPct ?? '—'}<span style={{ fontSize: 12, fontWeight: 400, color: 'var(--fg-3)' }}>%</span></div><div style={{ fontSize: 11, color: 'var(--fg-3)' }}>{ibView.low} / {ibView.smiN} 名</div></div>
             <div><div style={{ fontSize: 12, color: 'var(--fg-3)' }}>前年比 下降 / 上昇</div>{ibView.pairN > 0 ? (<><div className="t-num" style={{ fontSize: 20, fontWeight: 700 }}><span style={{ color: 'var(--danger-700)' }}>{ibView.downPct}</span><span style={{ fontSize: 13, color: 'var(--fg-3)' }}>%</span> / <span style={{ color: 'var(--success-700, var(--brand-700))' }}>{ibView.upPct}</span><span style={{ fontSize: 13, color: 'var(--fg-3)' }}>%</span></div><div style={{ fontSize: 11, color: 'var(--fg-3)' }}>前年も値がある {ibView.pairN} 名</div></>) : (<div style={{ fontSize: 12, color: 'var(--fg-3)', marginTop: 4 }}>前年の値がある人がいないため、まだ出せません</div>)}</div>
           </div>
+          )}
+          {/* ★2026-11-26 現場要望「満たなかった方の割合を行政区別に表示」。
+               区ごとの基準値未満（男7.0/女5.7）を割合の高い順に。SMIの値がある人がいない区は出さない。 */}
+          {areaBelow.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, color: 'var(--fg-3)', marginBottom: 6 }}>行政区別 基準値未満の割合（男7.0 / 女5.7 kg/m²）</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {areaBelow.map(a => (
+                  <div key={a.name} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ width: 110, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.name}>{a.name}</span>
+                    <div style={{ flex: 1, height: 10, borderRadius: 5, background: 'var(--bg-2, #f1ece2)', overflow: 'hidden' }}>
+                      <div style={{ width: `${a.belowPct ?? 0}%`, height: '100%', borderRadius: 5, background: (a.belowPct ?? 0) > 0 ? 'var(--danger-500, var(--danger-700))' : 'var(--brand-300, var(--brand-700))' }} />
+                    </div>
+                    <span className="t-num" style={{ width: 52, textAlign: 'right', fontSize: 13, fontWeight: 700, color: a.low ? 'var(--danger-700)' : undefined }}>{a.belowPct ?? '—'}%</span>
+                    <span className="t-num" style={{ width: 70, textAlign: 'right', fontSize: 11.5, color: 'var(--fg-3)' }}>{a.low} / {a.smiN} 名</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </Card>
       )}
